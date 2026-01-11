@@ -836,17 +836,6 @@ def page_inhouse():
         )
 
 
-    st.subheader("Export In-House/Checkouts")
-    inhouse_bytes = db.export_inhouse_excel(today)
-    if inhouse_bytes:
-        st.download_button(
-            "Download In-House & Checkouts Excel",
-            data=inhouse_bytes,
-            file_name=f"InHouse-{today.isoformat()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-
-
 def page_tasks_handover():
     st.header("Handover")
     d = st.date_input("Date", value=date.today(), key="tasks_date")
