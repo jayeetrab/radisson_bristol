@@ -20,12 +20,11 @@ else:
 
 # Fixed room inventory blocks: inclusive ranges (whole numbers)
 ROOM_BLOCKS = [
-    (100, 110),
-    (200, 210),
-    (300, 310),
-    (400, 410),
-    (500, 510),
-    (600, 610),
+    (100, 115),
+    (300, 313),
+    (400, 413),
+    (500, 513),
+    (600, 613),
     (700, 710),
     (800, 810),
     (900, 910),
@@ -36,7 +35,7 @@ ROOM_BLOCKS = [
     (1400, 1410),
     (1500, 1510),
     (1600, 1610),
-    (1700, 1710),
+    (1700, 1705),
 ]
 
 
@@ -524,42 +523,42 @@ class FrontOfficeDB:
             return pd.read_sql_query(f"SELECT * FROM {name}", conn)
 
 
-    def export_arrivals_excel(self, d: date):
-        rows = self.get_arrivals_for_date(d)
-        if not rows:
-            return None
-        df = pd.DataFrame([dict(r) for r in rows])
-        preferred_order = [
-            "amount_pending", "arrival_date", "room_number", "room_type_code",
-            "adults", "total_guests", "reservation_no", "voucher",
-            "related_reservation", "crs_code", "crs_name", "guest_id_raw",
-            "guest_name", "vip_flag", "client_id", "main_client", "nights",
-            "depart_date", "meal_plan", "rate_code", "channel",
-            "cancellation_policy", "main_remark", "contact_name",
-            "contact_phone", "contact_email", "total_remarks",
-            "source_of_business", "stay_option_desc", "remarks_by_chain"
-        ]
-        cols = [c for c in preferred_order if c in df.columns] + [
-            c for c in df.columns if c not in preferred_order
-        ]
-        df = df[cols]
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False, sheet_name="Arrivals")
-        output.seek(0)
-        return output
+    # def export_arrivals_excel(self, d: date):
+    #     rows = self.get_arrivals_for_date(d)
+    #     if not rows:
+    #         return None
+    #     df = pd.DataFrame([dict(r) for r in rows])
+    #     preferred_order = [
+    #         "amount_pending", "arrival_date", "room_number", "room_type_code",
+    #         "adults", "total_guests", "reservation_no", "voucher",
+    #         "related_reservation", "crs_code", "crs_name", "guest_id_raw",
+    #         "guest_name", "vip_flag", "client_id", "main_client", "nights",
+    #         "depart_date", "meal_plan", "rate_code", "channel",
+    #         "cancellation_policy", "main_remark", "contact_name",
+    #         "contact_phone", "contact_email", "total_remarks",
+    #         "source_of_business", "stay_option_desc", "remarks_by_chain"
+    #     ]
+    #     cols = [c for c in preferred_order if c in df.columns] + [
+    #         c for c in df.columns if c not in preferred_order
+    #     ]
+    #     df = df[cols]
+    #     output = BytesIO()
+    #     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+    #         df.to_excel(writer, index=False, sheet_name="Arrivals")
+    #     output.seek(0)
+    #     return output
 
-    def export_inhouse_excel(self, d: date):
-        inhouse_rows = self.get_inhouse()
-        dep_rows = self.get_departures_for_date(d)
-        df_inhouse = pd.DataFrame([dict(r) for r in inhouse_rows]) if inhouse_rows else pd.DataFrame()
-        df_dep = pd.DataFrame([dict(r) for r in dep_rows]) if dep_rows else pd.DataFrame()
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df_inhouse.to_excel(writer, index=False, sheet_name="InHouse")
-            df_dep.to_excel(writer, index=False, sheet_name="Departures")
-        output.seek(0)
-        return output
+    # def export_inhouse_excel(self, d: date):
+    #     inhouse_rows = self.get_inhouse()
+    #     dep_rows = self.get_departures_for_date(d)
+    #     df_inhouse = pd.DataFrame([dict(r) for r in inhouse_rows]) if inhouse_rows else pd.DataFrame()
+    #     df_dep = pd.DataFrame([dict(r) for r in dep_rows]) if dep_rows else pd.DataFrame()
+    #     output = BytesIO()
+    #     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+    #         df_inhouse.to_excel(writer, index=False, sheet_name="InHouse")
+    #         df_dep.to_excel(writer, index=False, sheet_name="Departures")
+    #     output.seek(0)
+    #     return output
 
 
 # =========================
@@ -609,15 +608,15 @@ def page_arrivals():
                 else:
                     st.error(msg)
 
-    st.subheader("Export")
-    excel_bytes = db.export_arrivals_excel(d)
-    if excel_bytes:
-        st.download_button(
-            "Download Arrivals Excel",
-            data=excel_bytes,
-            file_name=f"Arrivals-{d.isoformat()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+    # st.subheader("Export")
+    # excel_bytes = db.export_arrivals_excel(d)
+    # if excel_bytes:
+    #     st.download_button(
+    #         "Download Arrivals Excel",
+    #         data=excel_bytes,
+    #         file_name=f"Arrivals-{d.isoformat()}.xlsx",
+    #         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    #     )
 
 
 def page_inhouse():
@@ -657,15 +656,15 @@ def page_inhouse():
     else:
         st.dataframe(df_dep[["guest_name", "room_number", "checkout_planned", "status"]])
 
-    st.subheader("Export In-House/Departures")
-    inhouse_bytes = db.export_inhouse_excel(today)
-    if inhouse_bytes:
-        st.download_button(
-            "Download In-House & Departures Excel",
-            data=inhouse_bytes,
-            file_name=f"InHouse-{today.isoformat()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+    # st.subheader("Export In-House/Departures")
+    # inhouse_bytes = db.export_inhouse_excel(today)
+    # if inhouse_bytes:
+    #     st.download_button(
+    #         "Download In-House & Departures Excel",
+    #         data=inhouse_bytes,
+    #         file_name=f"InHouse-{today.isoformat()}.xlsx",
+    #         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    #     )
 
 
 def page_tasks_handover():
