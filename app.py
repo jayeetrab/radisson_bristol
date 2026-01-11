@@ -1388,16 +1388,35 @@ def page_parking():
 
 
 def page_db_viewer():
-    st.header("Database viewer")
-    table = st.selectbox(
-        "Select table",
-        ["reservations", "stays", "rooms", "tasks", "no_shows", "spare_rooms"],
-    )
+    st.header("Database Backup & Viewer")
+    
+    st.warning("Download database before any redeployment!")
+    
+    if os.path.exists(DB_PATH):
+        with open(DB_PATH, 'rb') as f:
+            backup_data = f.read()
+        
+        st.download_button(
+            "DOWNLOAD CURRENT DATABASE",
+            data=backup_data,
+            file_name=f"hotel_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
+            mime="application/octet-stream",
+            type="primary",
+            use_container_width=True
+        )
+        
+        st.success(f"Size: {len(backup_data)/1024:.1f} KB")
+    
+    st.divider()
+    
+    st.subheader("View Tables")
+    table = st.selectbox("Select table", ["reservations", "stays", "rooms", "tasks", "no_shows", "spare_rooms"])
     df = db.read_table(table)
     if df.empty:
         st.info(f"No rows in {table}.")
     else:
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
+
 
 
 def main():
