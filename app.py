@@ -49,12 +49,12 @@ def clean_numeric_columns(df: pd.DataFrame, cols: list):
 
 class FrontOfficeDB:
     def __init__(self):
-    self.engine = create_engine(DATABASE_URL, poolclass=NullPool)
-    self._init_db()
-    if self.reservations_empty():
-        self.import_all_arrivals_from_fs()
-    self.seed_rooms_from_blocks()
-    self.sync_room_status_from_stays()
+           self.engine = create_engine(DATABASE_URL, poolclass=NullPool)
+           self._init_db()
+           if self.reservations_empty():
+               self.import_all_arrivals_from_fs()
+           self.seed_rooms_from_blocks()
+           self.sync_room_status_from_stays()
 
     def _get_conn(self):
         return self.engine.connect()
