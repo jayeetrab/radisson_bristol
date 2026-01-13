@@ -1381,7 +1381,7 @@ def main():
 
     with st.sidebar:
         st.title("Front Office Hub")
-        mode = "TEST MODE" if TEST_MODE else "TEST MODE"
+        mode = "NEW TEST MODE"
         st.markdown(f"**{mode}**")
         page = st.radio(
     "Navigate",
