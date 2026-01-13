@@ -1367,7 +1367,7 @@ def page_db_viewer():
 
 def main():
     st.set_page_config(
-        page_title="Front Office Hub",
+        page_title="Front Office",
         page_icon="🏨",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -1381,7 +1381,7 @@ def main():
 
     with st.sidebar:
         st.title("Front Office Hub")
-        mode = "TEST MODE" if TEST_MODE else "TEST MODE"
+        mode = "NEW TEST MODE"
         st.markdown(f"**{mode}**")
         page = st.radio(
     "Navigate",
