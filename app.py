@@ -1385,11 +1385,7 @@ def main():
 
     with st.sidebar:
         st.title("Front Office Hub")
-<<<<<<< Updated upstream
         mode = "NEW TEST MODE"
-=======
-        mode = "TEST MODE"
->>>>>>> Stashed changes
         st.markdown(f"**{mode}**")
         page = st.radio(
     "Navigate",
