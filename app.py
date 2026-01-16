@@ -285,7 +285,7 @@ class FrontOfficeDB:
         with closing(self.get_conn()) as conn:
             c = conn.cursor()
             
-            # 1. Checkouts - from reservations (departing today)
+            # 1. Checkouts
             c.execute("""
                 SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
                 FROM reservations r
@@ -299,7 +299,7 @@ class FrontOfficeDB:
             checkouts = c.fetchall()
             
             for co in checkouts:
-                co_dict = dict(co)  # Convert to dict
+                co_dict = dict(co)
                 room = co_dict["room_number"]
                 guest = co_dict["guest_name"]
                 
@@ -311,7 +311,6 @@ class FrontOfficeDB:
                     "notes": []
                 }
                 
-                # Check remarks for special requests
                 remarks = f"{co_dict.get('main_remark') or ''} {co_dict.get('total_remarks') or ''}".lower()
                 if '2t' in remarks:
                     task["notes"].append("2 TWIN BEDS")
@@ -321,7 +320,7 @@ class FrontOfficeDB:
                 
                 tasks.append(task)
             
-            # 2. Stayovers - MUST query stays table with guest names
+            # 2. Stayovers
             c.execute("""
                 SELECT DISTINCT s.room_number, r.guest_name
                 FROM stays s
@@ -335,7 +334,7 @@ class FrontOfficeDB:
             stayovers = c.fetchall()
             
             for so in stayovers:
-                so_dict = dict(so)  # Convert to dict
+                so_dict = dict(so)
                 tasks.append({
                     "room": so_dict["room_number"],
                     "task_type": "STAYOVER",
@@ -344,7 +343,7 @@ class FrontOfficeDB:
                     "notes": []
                 })
             
-            # 3. Arrivals - from reservations (arriving today)
+            # 3. Arrivals
             c.execute("""
                 SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
                 FROM reservations r
@@ -356,7 +355,7 @@ class FrontOfficeDB:
             arrivals = c.fetchall()
             
             for arr in arrivals:
-                arr_dict = dict(arr)  # Convert to dict
+                arr_dict = dict(arr)
                 room = arr_dict["room_number"]
                 guest = arr_dict["guest_name"]
                 
@@ -368,7 +367,6 @@ class FrontOfficeDB:
                     "notes": []
                 }
                 
-                # Check remarks for special requests
                 remarks = f"{arr_dict.get('main_remark') or ''} {arr_dict.get('total_remarks') or ''}".lower()
                 if '2t' in remarks:
                     task["notes"].append("2 TWIN BEDS")
@@ -378,6 +376,7 @@ class FrontOfficeDB:
                 tasks.append(task)
         
         return tasks
+
 
 
 
@@ -1029,7 +1028,14 @@ def page_housekeeping():
         st.info("No housekeeping tasks for this date.")
         return
     
-    # Convert to DataFrame
+    # 6. Summary metrics at top ✅
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Tasks", len(tasks))
+    col2.metric("Checkouts", len([t for t in tasks if t['task_type'] == 'CHECKOUT']))
+    col3.metric("Stayovers", len([t for t in tasks if t['task_type'] == 'STAYOVER']))
+    col4.metric("Arrivals", len([t for t in tasks if t['task_type'] == 'ARRIVAL']))
+    
+    # 1. Structured task table ✅
     df_tasks = pd.DataFrame([
         {
             "#": idx,
@@ -1042,10 +1048,35 @@ def page_housekeeping():
         for idx, t in enumerate(tasks, 1)
     ])
     
-    df_tasks = clean_numeric_columns(df_tasks, ["Room"])
-    st.dataframe(df_tasks, use_container_width=True, hide_index=True)
-
-    st.caption(f"Total: {len(tasks)} tasks ({len([t for t in tasks if t['task_type']=='CHECKOUT'])} checkouts, {len([t for t in tasks if t['task_type']=='STAYOVER'])} stayovers, {len([t for t in tasks if t['task_type']=='ARRIVAL'])} arrivals)")
+    # 3. Priority color indicators ✅
+    def highlight_priority(row):
+        if row['Priority'] == 'URGENT':
+            return ['background-color: #ffcccc'] * len(row)  # Red
+        elif row['Priority'] == 'HIGH':
+            return ['background-color: #fff4cc'] * len(row)  # Yellow
+        else:
+            return [''] * len(row)  # No color for MEDIUM
+    
+    st.dataframe(
+        df_tasks.style.apply(highlight_priority, axis=1),
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    # 2. CSV download ✅
+    csv = df_tasks.to_csv(index=False)
+    st.download_button(
+        label="📥 Download HSK List as CSV",
+        data=csv,
+        file_name=f"HSK_{today.strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+    
+    st.caption(f"Total: {len(tasks)} tasks | "
+               f"{len([t for t in tasks if t['task_type']=='CHECKOUT'])} checkouts, "
+               f"{len([t for t in tasks if t['task_type']=='STAYOVER'])} stayovers, "
+               f"{len([t for t in tasks if t['task_type']=='ARRIVAL'])} arrivals")
 
 
 
