@@ -282,55 +282,52 @@ class FrontOfficeDB:
         """Auto-generate housekeeping tasks for the day"""
         tasks = []
         
-        with closing(self.get_conn()) as conn:
-            c = conn.cursor()
-            
+        conn = self.get_conn()
+        c = conn.cursor()
+        
+        try:
             # 1. Checkouts
-            # 1. Checkouts - ALL rooms departing today (including already checked out)
-        c.execute("""
-            SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks,
-                s.status
-            FROM reservations r
-            LEFT JOIN stays s ON s.reservation_id = r.id
-            WHERE date(r.depart_date) = date(?)
-            AND r.room_number IS NOT NULL AND r.room_number != ''
-            ORDER BY CAST(r.room_number AS INTEGER)
-        """, (target_date.isoformat(),))
-
-        checkouts = c.fetchall()
-
-        for co in checkouts:
-            co_dict = dict(co)
-            room = co_dict["room_number"]
-            guest = co_dict["guest_name"]
+            c.execute("""
+                SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks,
+                    s.status
+                FROM reservations r
+                LEFT JOIN stays s ON s.reservation_id = r.id
+                WHERE date(r.depart_date) = date(?)
+                AND r.room_number IS NOT NULL AND r.room_number != ''
+                ORDER BY CAST(r.room_number AS INTEGER)
+            """, (target_date.isoformat(),))
             
-            # Set priority based on checkout status
-            if co_dict.get("status") == "CHECKED_OUT":
-                priority = "URGENT"  # Already checked out - needs immediate cleaning!
-            else:
-                priority = "HIGH"  # Expected checkout
+            checkouts = c.fetchall()
             
-            task = {
-                "room": room,
-                "tasktype": "CHECKOUT",
-                "priority": priority,
-                "description": f"Clean room {room} - {guest} checkout",
-                "notes": []
-            }
-            
-            remarks = f"{co_dict.get('main_remark') or ''} {co_dict.get('total_remarks') or ''}".lower()
-            if '2t' in remarks:
-                task["notes"].append("2 TWIN BEDS")
-            if 'vip' in remarks or 'birthday' in remarks:
-                task["priority"] = "URGENT"
-                task["notes"].append("VIP/SPECIAL")
-            
-            # Add note if already checked out
-            if co_dict.get("status") == "CHECKED_OUT":
-                task["notes"].append("CHECKED OUT - CLEAN NOW")
-            
-            tasks.append(task)
-
+            for co in checkouts:
+                co_dict = dict(co)
+                room = co_dict["room_number"]
+                guest = co_dict["guest_name"]
+                
+                if co_dict.get("status") == "CHECKED_OUT":
+                    priority = "URGENT"
+                else:
+                    priority = "HIGH"
+                
+                task = {
+                    "room": room,
+                    "tasktype": "CHECKOUT",
+                    "priority": priority,
+                    "description": f"Clean room {room} - {guest} checkout",
+                    "notes": []
+                }
+                
+                remarks = f"{co_dict.get('main_remark') or ''} {co_dict.get('total_remarks') or ''}".lower()
+                if '2t' in remarks:
+                    task["notes"].append("2 TWIN BEDS")
+                if 'vip' in remarks or 'birthday' in remarks:
+                    task["priority"] = "URGENT"
+                    task["notes"].append("VIP/SPECIAL")
+                
+                if co_dict.get("status") == "CHECKED_OUT":
+                    task["notes"].append("CHECKED OUT - CLEAN NOW")
+                
+                tasks.append(task)
             
             # 2. Stayovers
             c.execute("""
@@ -349,7 +346,7 @@ class FrontOfficeDB:
                 so_dict = dict(so)
                 tasks.append({
                     "room": so_dict["room_number"],
-                    "task_type": "STAYOVER",
+                    "tasktype": "STAYOVER",
                     "priority": "MEDIUM",
                     "description": f"Refresh room {so_dict['room_number']} - {so_dict['guest_name']} stayover",
                     "notes": []
@@ -373,7 +370,7 @@ class FrontOfficeDB:
                 
                 task = {
                     "room": room,
-                    "task_type": "ARRIVAL",
+                    "tasktype": "ARRIVAL",
                     "priority": "HIGH",
                     "description": f"Prepare room {room} for {guest} arrival",
                     "notes": []
@@ -387,8 +384,10 @@ class FrontOfficeDB:
                 
                 tasks.append(task)
         
+        finally:
+            conn.close()
+        
         return tasks
-
 
 
 
@@ -1043,16 +1042,16 @@ def page_housekeeping():
     # 6. Summary metrics at top ✅
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Tasks", len(tasks))
-    col2.metric("Checkouts", len([t for t in tasks if t['task_type'] == 'CHECKOUT']))
-    col3.metric("Stayovers", len([t for t in tasks if t['task_type'] == 'STAYOVER']))
-    col4.metric("Arrivals", len([t for t in tasks if t['task_type'] == 'ARRIVAL']))
+    col2.metric("Checkouts", len([t for t in tasks if t['tasktype'] == 'CHECKOUT']))
+    col3.metric("Stayovers", len([t for t in tasks if t['tasktype'] == 'STAYOVER']))
+    col4.metric("Arrivals", len([t for t in tasks if t['tasktype'] == 'ARRIVAL']))
     
     # 1. Structured task table ✅
     df_tasks = pd.DataFrame([
         {
             "#": idx,
             "Room": t["room"],
-            "Type": t["task_type"],
+            "Type": t["tasktype"],
             "Priority": t["priority"],
             "Task": t["description"],
             "Notes": " | ".join(t["notes"]) if t["notes"] else ""
@@ -1086,9 +1085,9 @@ def page_housekeeping():
     )
     
     st.caption(f"Total: {len(tasks)} tasks | "
-               f"{len([t for t in tasks if t['task_type']=='CHECKOUT'])} checkouts, "
-               f"{len([t for t in tasks if t['task_type']=='STAYOVER'])} stayovers, "
-               f"{len([t for t in tasks if t['task_type']=='ARRIVAL'])} arrivals")
+               f"{len([t for t in tasks if t['tasktype']=='CHECKOUT'])} checkouts, "
+               f"{len([t for t in tasks if t['tasktype']=='STAYOVER'])} stayovers, "
+               f"{len([t for t in tasks if t['tasktype']=='ARRIVAL'])} arrivals")
 
 
 
