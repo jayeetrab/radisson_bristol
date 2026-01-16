@@ -900,7 +900,7 @@ class FrontOfficeDB:
                 """
                 UPDATE no_shows SET
                     main_client = ?,
-                    charged = ?,
+                    amount_charged = ?,
                     comment = ?
                 WHERE id = ?
                 """,
@@ -915,14 +915,14 @@ class FrontOfficeDB:
         else:
             # Insert new
             self.execute("""
-                 INSERT INTO no_shows (arrival_date, guest_name, main_client, charged, 
+                 INSERT INTO no_shows (arrival_date, guest_name, main_client, amount_charged, 
                                       comment)
-                VALUES (:date, :guest, :client, :charged, :comment)
+                VALUES (:date, :guest, :client, :amount_charged, :comment)
             """, {
                 "date": arrival_date,
                 "guest": guest_name,
                 "client": main_client,
-                "charged": amount_charged or 0,
+                "amount_charged": amount_charged or 0,
                 "comment": comment
             })
 
