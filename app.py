@@ -299,8 +299,9 @@ class FrontOfficeDB:
             checkouts = c.fetchall()
             
             for co in checkouts:
-                room = co["room_number"]
-                guest = co["guest_name"]
+                co_dict = dict(co)  # Convert to dict
+                room = co_dict["room_number"]
+                guest = co_dict["guest_name"]
                 
                 task = {
                     "room": room,
@@ -311,7 +312,7 @@ class FrontOfficeDB:
                 }
                 
                 # Check remarks for special requests
-                remarks = f"{co.get('main_remark') or co.get('total_remarks') or ''}".lower()
+                remarks = f"{co_dict.get('main_remark') or ''} {co_dict.get('total_remarks') or ''}".lower()
                 if '2t' in remarks:
                     task["notes"].append("2 TWIN BEDS")
                 if 'vip' in remarks or 'birthday' in remarks:
@@ -334,11 +335,12 @@ class FrontOfficeDB:
             stayovers = c.fetchall()
             
             for so in stayovers:
+                so_dict = dict(so)  # Convert to dict
                 tasks.append({
-                    "room": so["room_number"],
+                    "room": so_dict["room_number"],
                     "tasktype": "STAYOVER",
                     "priority": "MEDIUM",
-                    "description": f"Refresh room {so['room_number']} - {so['guest_name']} stayover",
+                    "description": f"Refresh room {so_dict['room_number']} - {so_dict['guest_name']} stayover",
                     "notes": []
                 })
             
@@ -354,8 +356,9 @@ class FrontOfficeDB:
             arrivals = c.fetchall()
             
             for arr in arrivals:
-                room = arr["room_number"]
-                guest = arr["guest_name"]
+                arr_dict = dict(arr)  # Convert to dict
+                room = arr_dict["room_number"]
+                guest = arr_dict["guest_name"]
                 
                 task = {
                     "room": room,
@@ -366,7 +369,7 @@ class FrontOfficeDB:
                 }
                 
                 # Check remarks for special requests
-                remarks = f"{arr.get('main_remark') or arr.get('total_remarks') or ''}".lower()
+                remarks = f"{arr_dict.get('main_remark') or ''} {arr_dict.get('total_remarks') or ''}".lower()
                 if '2t' in remarks:
                     task["notes"].append("2 TWIN BEDS")
                 if 'accessible' in remarks or 'disabled' in remarks:
@@ -375,6 +378,7 @@ class FrontOfficeDB:
                 tasks.append(task)
         
         return tasks
+
 
 
 
