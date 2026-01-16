@@ -1869,7 +1869,7 @@ def page_admin_upload():
 
 def main():
     st.set_page_config(
-        page_title="Radisson Blu Bristol",
+        page_title="Test it guys!!!",
         page_icon="🏨",
         layout="wide",
         initial_sidebar_state="expanded",
