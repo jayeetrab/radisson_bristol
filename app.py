@@ -901,16 +901,12 @@ class FrontOfficeDB:
                 UPDATE no_shows SET
                     main_client = ?,
                     charged = ?,
-                    amount_charged = ?,
-                    amount_pending = ?,
                     comment = ?
                 WHERE id = ?
                 """,
                 (
                     main_client,
-                    int(charged),
                     amount_charged or 0,
-                    amount_pending or 0,
                     comment,
                     existing["id"],
                 ),
