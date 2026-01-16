@@ -1890,7 +1890,7 @@ def main():
 
 
     with st.sidebar:
-        st.title("YesWeCan")
+        st.title("YesWeCan! Bristol")
         mode = "NEW LIVE MODE"
         st.markdown(f"**{mode}**")
         page = st.radio(
@@ -1915,7 +1915,7 @@ def main():
 
 
         st.markdown("---")
-        st.caption("Welcome to YesWeCan v1.0")
+        st.caption("Welcome to YesWeCan! v1.0")
 
     if page == "Arrivals":
         page_arrivals()
