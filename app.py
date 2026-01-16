@@ -887,7 +887,7 @@ class FrontOfficeDB:
         return self.fetch_all("SELECT * FROM tasks WHERE task_date = :date ORDER BY created_at", {"date": d})
     
     def add_no_show(self, arrival_date: date, guest_name: str, main_client: str,
-                amount_charged: float, amount_pending: float, comment: str):
+                amount_charged: float, comment: str):
         # Check if already exists
         existing = self.fetch_one("""
             SELECT id FROM no_shows 
@@ -907,7 +907,6 @@ class FrontOfficeDB:
                 (
                     main_client,
                     amount_charged or 0,
-                    amount_pending or 0,
                     comment,
                     existing["id"],
                 ),
@@ -916,7 +915,7 @@ class FrontOfficeDB:
         else:
             # Insert new
             self.execute("""
-                 INSERT INTO no_shows (arrival_date, guest_name, main_client, charged, amount_pending, 
+                 INSERT INTO no_shows (arrival_date, guest_name, main_client, charged, 
                                       comment)
                 VALUES (:date, :guest, :client, :charged, :comment)
             """, {
@@ -924,7 +923,6 @@ class FrontOfficeDB:
                 "guest": guest_name,
                 "client": main_client,
                 "charged": amount_charged or 0,
-                "amount_pending": amount_pending or 0,
                 "comment": comment
             })
 
@@ -1418,7 +1416,7 @@ def page_no_shows():
         
         if submitted and guest_name:
             # Add to database
-            db.add_no_show(d, guest_name, main_client, amount_charged,amount_pending, comment)
+            db.add_no_show(d, guest_name, main_client, amount_charged, comment)
             st.success(f"✓ No-show added: {guest_name}")
     
     st.divider()
