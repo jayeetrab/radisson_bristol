@@ -961,14 +961,13 @@ class FrontOfficeDB:
         like_pattern = f"%{q}%"
         return self.fetch_all(
             """
-            SELECT * FROM reservations
+            SELECT * FROM stays
             WHERE guest_name LIKE ?
             OR room_number LIKE ?
             OR reservation_no LIKE ?
             OR main_client LIKE ?
             OR channel LIKE ?
             ORDER BY arrival_date DESC
-            LIMIT 500
             """,
             (like_pattern, like_pattern, like_pattern, like_pattern, like_pattern),
         )
