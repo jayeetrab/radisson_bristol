@@ -308,10 +308,9 @@ class FrontOfficeDB:
             
             tasks.append({
                 "room": co["room_number"],
-                "tasktype": "CHECKOUT",
+                "type": "CHECKOUT",
                 "priority": priority,
-                "action": "Deep Clean",
-                "description": f"{co['guest_name']} departure",
+                "task": f"Clean room {co['room_number']} - {co['guest_name']} checkout",
                 "notes": " | ".join(notes) if notes else ""
             })
 
@@ -343,10 +342,9 @@ class FrontOfficeDB:
             
             tasks.append({
                 "room": so["room_number"],
-                "tasktype": "STAYOVER",
+                "type": "STAYOVER",
                 "priority": priority,
-                "action": "Refresh",
-                "description": f"{so['guest_name']} staying",
+                "task": f"Refresh room {so['room_number']} - {so['guest_name']} stayover",
                 "notes": " | ".join(notes) if notes else ""
             })
 
@@ -381,10 +379,9 @@ class FrontOfficeDB:
             
             tasks.append({
                 "room": arr["room_number"],
-                "tasktype": "ARRIVAL",
+                "type": "ARRIVAL",
                 "priority": priority,
-                "action": "Prepare",
-                "description": f"{arr['guest_name']} arriving",
+                "task": f"Prepare room {arr['room_number']} for {arr['guest_name']} arrival",
                 "notes": " | ".join(notes) if notes else ""
             })
 
