@@ -1086,7 +1086,7 @@ def page_housekeeping():
     col3.metric("Stayovers", len([t for t in tasks if t['tasktype'] == 'STAYOVER']))
     col4.metric("Arrivals", len([t for t in tasks if t['tasktype'] == 'ARRIVAL']))
     completed_count = len([t for t in tasks if t.get('Status') == 'DONE'])
-    col5.metric("✅ Completed", completed_count)
+    col5.metric("Completed", completed_count)
     
     # Create editable DataFrame
     df_tasks = pd.DataFrame([
@@ -1127,7 +1127,7 @@ def page_housekeeping():
     # Save button
     col1, col2 = st.columns([1, 4])
     with col1:
-        if st.button("💾 Save All Changes", type="primary", use_container_width=True):
+        if st.button("Save", type="primary", use_container_width=True):
             # Save each task status
             for idx, row in edited_df.iterrows():
                 original_task = tasks[idx]
@@ -1144,7 +1144,7 @@ def page_housekeeping():
     # Download CSV
     csv = edited_df.to_csv(index=False)
     st.download_button(
-        label="📥 Download HSK List",
+        label="Download HSK List",
         data=csv,
         file_name=f"HSK_{today.strftime('%Y%m%d')}.csv",
         mime="text/csv",
@@ -1272,6 +1272,7 @@ def page_checkout_list():
     if not dep_rows:
         st.info("No departures scheduled for this date.")
     else:
+        st.caption(f"{len(dep_rows)} departures scheduled")
         df_dep = pd.DataFrame([{
             "Room": r["room_number"],
             "Guest Name": r["guest_name"],
@@ -1298,7 +1299,6 @@ def page_checkout_list():
                 else:
                     st.error(msg)
         
-        st.caption(f"{len(dep_rows)} departures scheduled")
     
     st.divider()
     st.subheader(f"Already checked out on {today.strftime('%d %B %Y')}")
