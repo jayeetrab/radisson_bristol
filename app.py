@@ -285,14 +285,15 @@ class FrontOfficeDB:
         with closing(self.get_conn()) as conn:
             c = conn.cursor()
             
-            # 1. Get all checkouts for today
+            # 1. Checkouts - from reservations (departing today)
             c.execute("""
-            SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
-            FROM reservations r
-            WHERE DATE(r.depart_date) = DATE(?)
-            AND r.room_number IS NOT NULL
-            AND r.room_number != ''
-            ORDER BY CAST(r.room_number AS INTEGER)
+                SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
+                FROM reservations r
+                LEFT JOIN stays s ON s.reservation_id = r.id
+                WHERE date(r.depart_date) = date(?)
+                AND r.room_number IS NOT NULL AND r.room_number != ''
+                AND (s.status IS NULL OR s.status != 'CHECKED_OUT')
+                ORDER BY CAST(r.room_number AS INTEGER)
             """, (target_date.isoformat(),))
             
             checkouts = c.fetchall()
@@ -301,36 +302,33 @@ class FrontOfficeDB:
                 room = co["room_number"]
                 guest = co["guest_name"]
                 
-                # Default checkout cleaning task
                 task = {
                     "room": room,
-                    "task_type": "CHECKOUT",
+                    "tasktype": "CHECKOUT",
                     "priority": "HIGH",
                     "description": f"Clean room {room} - {guest} checkout",
                     "notes": []
                 }
                 
-                # Check for 2T (twin beds) in remarks
-                remarks = f"{co['main_remark'] or ''} {co['total_remarks'] or ''}".lower()
-                if "2t" in remarks:
-                    task["notes"].append("⚠️ 2 TWIN BEDS")
-                
-                # Check for other special requests
-                if "vip" in remarks or "birthday" in remarks:
+                # Check remarks for special requests
+                remarks = f"{co.get('main_remark') or co.get('total_remarks') or ''}".lower()
+                if '2t' in remarks:
+                    task["notes"].append("2 TWIN BEDS")
+                if 'vip' in remarks or 'birthday' in remarks:
                     task["priority"] = "URGENT"
-                    task["notes"].append("🌟 VIP/SPECIAL")
+                    task["notes"].append("VIP/SPECIAL")
                 
                 tasks.append(task)
             
-            # 2. Get stayovers (in-house yesterday and today) - light cleaning
+            # 2. Stayovers - MUST query stays table with guest names
             c.execute("""
-            SELECT DISTINCT r.room_number, r.guest_name
-            FROM reservations r
-            WHERE DATE(r.arrival_date) < DATE(?)
-            AND DATE(r.depart_date) > DATE(?)
-            AND r.room_number IS NOT NULL
-            AND r.room_number != ''
-            ORDER BY CAST(r.room_number AS INTEGER)
+                SELECT DISTINCT s.room_number, r.guest_name
+                FROM stays s
+                JOIN reservations r ON r.id = s.reservation_id
+                WHERE s.status = 'CHECKED_IN'
+                AND date(s.checkin_planned) < date(?)
+                AND date(s.checkout_planned) > date(?)
+                ORDER BY CAST(s.room_number AS INTEGER)
             """, (target_date.isoformat(), target_date.isoformat()))
             
             stayovers = c.fetchall()
@@ -338,20 +336,19 @@ class FrontOfficeDB:
             for so in stayovers:
                 tasks.append({
                     "room": so["room_number"],
-                    "task_type": "STAYOVER",
+                    "tasktype": "STAYOVER",
                     "priority": "MEDIUM",
                     "description": f"Refresh room {so['room_number']} - {so['guest_name']} stayover",
                     "notes": []
                 })
             
-            # 3. Get arrivals for today - prepare rooms
+            # 3. Arrivals - from reservations (arriving today)
             c.execute("""
-            SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
-            FROM reservations r
-            WHERE DATE(r.arrival_date) = DATE(?)
-            AND r.room_number IS NOT NULL
-            AND r.room_number != ''
-            ORDER BY CAST(r.room_number AS INTEGER)
+                SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
+                FROM reservations r
+                WHERE date(r.arrival_date) = date(?)
+                AND r.room_number IS NOT NULL AND r.room_number != ''
+                ORDER BY CAST(r.room_number AS INTEGER)
             """, (target_date.isoformat(),))
             
             arrivals = c.fetchall()
@@ -362,21 +359,23 @@ class FrontOfficeDB:
                 
                 task = {
                     "room": room,
-                    "task_type": "ARRIVAL",
+                    "tasktype": "ARRIVAL",
                     "priority": "HIGH",
                     "description": f"Prepare room {room} for {guest} arrival",
                     "notes": []
                 }
                 
-                remarks = f"{arr['main_remark'] or ''} {arr['total_remarks'] or ''}".lower()
-                if "2t" in remarks:
-                    task["notes"].append("⚠️ 2 TWIN BEDS")
-                if "accessible" in remarks or "disabled" in remarks:
-                    task["notes"].append("♿ ACCESSIBLE ROOM")
+                # Check remarks for special requests
+                remarks = f"{arr.get('main_remark') or arr.get('total_remarks') or ''}".lower()
+                if '2t' in remarks:
+                    task["notes"].append("2 TWIN BEDS")
+                if 'accessible' in remarks or 'disabled' in remarks:
+                    task["notes"].append("ACCESSIBLE ROOM")
                 
                 tasks.append(task)
         
         return tasks
+
 
 
     def cancel_checkin(self, stay_id: int):
