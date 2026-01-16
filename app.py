@@ -1492,7 +1492,7 @@ def page_search():
     elif search_type == "Guest Name":
         rows = db.fetch_all(
             """
-            SELECT * FROM stays
+            SELECT * FROM reservations
             WHERE guest_name LIKE ?
             ORDER BY checkin_planned DESC
             LIMIT 500
@@ -1502,7 +1502,7 @@ def page_search():
     elif search_type == "Reservation No":
         rows = db.fetch_all(
             """
-            SELECT * FROM stays
+            SELECT * FROM reservations
             WHERE reservation_no LIKE ?
             ORDER BY checkin_planned DESC
             LIMIT 500
@@ -1512,7 +1512,7 @@ def page_search():
     elif search_type == "Main Client":
         rows = db.fetch_all(
             """
-            SELECT * FROM stays
+            SELECT * FROM reservations
             WHERE main_client LIKE ?
             ORDER BY checkin_planned DESC
             LIMIT 500
@@ -1522,7 +1522,7 @@ def page_search():
     elif search_type == "Channel":
         rows = db.fetch_all(
             """
-            SELECT * FROM stays
+            SELECT * FROM reservations
             WHERE channel LIKE ?
             ORDER BY checkin_planned DESC
             LIMIT 500
