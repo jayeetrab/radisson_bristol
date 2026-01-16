@@ -829,6 +829,7 @@ class FrontOfficeDB:
 
 
 
+
     def add_task(self, task_date: date, title: str, created_by: str, assigned_to: str, comment: str):
         self.execute("""
             INSERT INTO tasks (task_date, title, created_by, assigned_to, comment)
