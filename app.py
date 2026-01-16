@@ -1300,13 +1300,13 @@ def page_checkout_list():
                         background-color: #f9f9f9;
                         margin-bottom: 8px;
                     ">
-                        <strong style="font-size: 16px;">{idx}. Room {format_room_number(row_dict['roomnumber'])} - {row_dict['guestname']}</strong>
+                        <strong style="font-size: 16px;">{idx}. Room {format_room_number(row_dict['room_number'])} - {row_dict['guest_name']}</strong>
                     </div>
                     """, unsafe_allow_html=True)
                 
                 with col2:
-                    if st.button("Check-out", key=f"co_{idx}_{row_dict['stayid']}", use_container_width=True):
-                        success, msg = db.checkout_stay(int(row_dict["stayid"]))
+                    if st.button("Check-out", key=f"co_{idx}_{row_dict['stay_id']}", use_container_width=True):
+                        success, msg = db.checkout_stay(int(row_dict["stay_id"]))
                         if success:
                             st.success(msg)
                             st.rerun()
