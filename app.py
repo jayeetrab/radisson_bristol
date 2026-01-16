@@ -199,6 +199,18 @@ class FrontOfficeDB:
                         room_number TEXT
                     )
                 """)
+                c.execute("""
+    CREATE TABLE IF NOT EXISTS hsk_task_status (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_date TEXT,
+        room_number TEXT,
+        task_type TEXT,
+        status TEXT DEFAULT 'PENDING',
+        notes TEXT,
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(task_date, room_number, task_type)
+    )
+""")
 
     def __init__(self, dbpath: str):
         self.dbpath = dbpath
@@ -207,6 +219,23 @@ class FrontOfficeDB:
             self.import_all_arrivals_from_fs()
             self.seed_rooms_from_blocks()
             self.sync_room_status_from_stays()
+    def get_hsk_task_status(self, task_date: date, room_number: str, task_type: str):
+        return self.fetch_one(
+            "SELECT status, notes FROM hsk_task_status WHERE task_date = ? AND room_number = ? AND task_type = ?",
+            (task_date.isoformat(), room_number, task_type)
+        )
+
+    def update_hsk_task_status(self, task_date: date, room_number: str, task_type: str, status: str, notes: str = ""):
+        self.execute(
+            """
+            INSERT INTO hsk_task_status (task_date, room_number, task_type, status, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(task_date, room_number, task_type)
+            DO UPDATE SET status = ?, notes = ?, updated_at = datetime('now')
+            """,
+            (task_date.isoformat(), room_number, task_type, status, notes, status, notes)
+        )
+
 
 
     def get_potential_no_shows(self, d: date):
@@ -282,99 +311,114 @@ class FrontOfficeDB:
         """Auto-generate housekeeping tasks for the day"""
         tasks = []
         
-        with closing(self.get_conn()) as conn:
-            c = conn.cursor()
+        conn = self.get_conn()
+        c = conn.cursor()
+        
+        try:
+            # Use LIKE to match the date portion of timestamp
+            target_str = target_date.isoformat()  # e.g., "2026-08-16"
             
-            # 1. Get all checkouts for today
+            # 1. Checkouts
             c.execute("""
-            SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
-            FROM reservations r
-            WHERE DATE(r.depart_date) = DATE(?)
-            AND r.room_number IS NOT NULL
-            AND r.room_number != ''
-            ORDER BY CAST(r.room_number AS INTEGER)
-            """, (target_date.isoformat(),))
+                SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks,
+                    s.status
+                FROM reservations r
+                LEFT JOIN stays s ON s.reservation_id = r.id
+                WHERE r.depart_date LIKE ?
+                AND r.room_number IS NOT NULL AND r.room_number != ''
+                ORDER BY CAST(r.room_number AS INTEGER)
+            """, (f"{target_str}%",))
             
             checkouts = c.fetchall()
             
             for co in checkouts:
-                room = co["room_number"]
-                guest = co["guest_name"]
+                co_dict = dict(co)
+                room = co_dict["room_number"]
+                guest = co_dict["guest_name"]
                 
-                # Default checkout cleaning task
+                if co_dict.get("status") == "CHECKED_OUT":
+                    priority = "URGENT"
+                else:
+                    priority = "HIGH"
+                
                 task = {
                     "room": room,
-                    "task_type": "CHECKOUT",
-                    "priority": "HIGH",
+                    "tasktype": "CHECKOUT",
+                    "priority": priority,
                     "description": f"Clean room {room} - {guest} checkout",
                     "notes": []
                 }
                 
-                # Check for 2T (twin beds) in remarks
-                remarks = f"{co['main_remark'] or ''} {co['total_remarks'] or ''}".lower()
-                if "2t" in remarks:
-                    task["notes"].append("⚠️ 2 TWIN BEDS")
-                
-                # Check for other special requests
-                if "vip" in remarks or "birthday" in remarks:
+                remarks = f"{co_dict.get('main_remark') or ''} {co_dict.get('total_remarks') or ''}".lower()
+                if '2t' in remarks:
+                    task["notes"].append("2 TWIN BEDS")
+                if 'vip' in remarks or 'birthday' in remarks:
                     task["priority"] = "URGENT"
-                    task["notes"].append("🌟 VIP/SPECIAL")
+                    task["notes"].append("VIP/SPECIAL")
+                
+                if co_dict.get("status") == "CHECKED_OUT":
+                    task["notes"].append("CHECKED OUT - CLEAN NOW")
                 
                 tasks.append(task)
             
-            # 2. Get stayovers (in-house yesterday and today) - light cleaning
+            # 2. Stayovers
             c.execute("""
-            SELECT DISTINCT r.room_number, r.guest_name
-            FROM reservations r
-            WHERE DATE(r.arrival_date) < DATE(?)
-            AND DATE(r.depart_date) > DATE(?)
-            AND r.room_number IS NOT NULL
-            AND r.room_number != ''
-            ORDER BY CAST(r.room_number AS INTEGER)
-            """, (target_date.isoformat(), target_date.isoformat()))
+                SELECT DISTINCT s.room_number, r.guest_name
+                FROM stays s
+                JOIN reservations r ON r.id = s.reservation_id
+                WHERE s.status = 'CHECKED_IN'
+                AND s.checkin_planned LIKE ?
+                AND s.checkout_planned LIKE ?
+                ORDER BY CAST(s.room_number AS INTEGER)
+            """, (f"%{target_str.split('-')[0]}-{target_str.split('-')[1]}%", 
+                f"%{target_str.split('-')[0]}-{target_str.split('-')[1]}%"))
             
             stayovers = c.fetchall()
             
             for so in stayovers:
+                so_dict = dict(so)
                 tasks.append({
-                    "room": so["room_number"],
-                    "task_type": "STAYOVER",
+                    "room": so_dict["room_number"],
+                    "tasktype": "STAYOVER",
                     "priority": "MEDIUM",
-                    "description": f"Refresh room {so['room_number']} - {so['guest_name']} stayover",
+                    "description": f"Refresh room {so_dict['room_number']} - {so_dict['guest_name']} stayover",
                     "notes": []
                 })
             
-            # 3. Get arrivals for today - prepare rooms
+            # 3. Arrivals
             c.execute("""
-            SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
-            FROM reservations r
-            WHERE DATE(r.arrival_date) = DATE(?)
-            AND r.room_number IS NOT NULL
-            AND r.room_number != ''
-            ORDER BY CAST(r.room_number AS INTEGER)
-            """, (target_date.isoformat(),))
+                SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
+                FROM reservations r
+                WHERE r.arrival_date LIKE ?
+                AND r.room_number IS NOT NULL AND r.room_number != ''
+                ORDER BY CAST(r.room_number AS INTEGER)
+            """, (f"{target_str}%",))
             
             arrivals = c.fetchall()
             
             for arr in arrivals:
-                room = arr["room_number"]
-                guest = arr["guest_name"]
+                arr_dict = dict(arr)
+                room = arr_dict["room_number"]
+                guest = arr_dict["guest_name"]
                 
                 task = {
                     "room": room,
-                    "task_type": "ARRIVAL",
+                    "tasktype": "ARRIVAL",
                     "priority": "HIGH",
                     "description": f"Prepare room {room} for {guest} arrival",
                     "notes": []
                 }
                 
-                remarks = f"{arr['main_remark'] or ''} {arr['total_remarks'] or ''}".lower()
-                if "2t" in remarks:
-                    task["notes"].append("⚠️ 2 TWIN BEDS")
-                if "accessible" in remarks or "disabled" in remarks:
-                    task["notes"].append("♿ ACCESSIBLE ROOM")
+                remarks = f"{arr_dict.get('main_remark') or ''} {arr_dict.get('total_remarks') or ''}".lower()
+                if '2t' in remarks:
+                    task["notes"].append("2 TWIN BEDS")
+                if 'accessible' in remarks or 'disabled' in remarks:
+                    task["notes"].append("ACCESSIBLE ROOM")
                 
                 tasks.append(task)
+        
+        finally:
+            conn.close()
         
         return tasks
 
@@ -1026,24 +1070,92 @@ def page_housekeeping():
         st.info("No housekeeping tasks for this date.")
         return
     
-    # Convert to DataFrame
+    # Get existing statuses and merge with tasks
+    for task in tasks:
+        status_data = db.get_hsk_task_status(today, task["room"], task["tasktype"])
+        if status_data:
+            task["Status"] = status_data["status"]
+            task["HSK Notes"] = status_data["notes"] or ""
+        else:
+            task["Status"] = "PENDING"
+            task["HSK Notes"] = ""
+    
+    # Summary metrics
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Total Tasks", len(tasks))
+    col2.metric("Checkouts", len([t for t in tasks if t['tasktype'] == 'CHECKOUT']))
+    col3.metric("Stayovers", len([t for t in tasks if t['tasktype'] == 'STAYOVER']))
+    col4.metric("Arrivals", len([t for t in tasks if t['tasktype'] == 'ARRIVAL']))
+    completed_count = len([t for t in tasks if t.get('Status') == 'DONE'])
+    col5.metric("✅ Completed", completed_count)
+    
+    # Create editable DataFrame
     df_tasks = pd.DataFrame([
         {
             "#": idx,
-            "Room": t["room"],
-            "Type": t["task_type"],
+            "Room": format_room_number(t["room"]),
+            "Type": t["tasktype"],
             "Priority": t["priority"],
             "Task": t["description"],
-            "Notes": " | ".join(t["notes"]) if t["notes"] else ""
+            "Notes": " | ".join(t["notes"]) if t["notes"] else "",
+            "Status": t["Status"],
+            "HSK Notes": t["HSK Notes"]
         }
         for idx, t in enumerate(tasks, 1)
     ])
     
-    df_tasks = clean_numeric_columns(df_tasks, ["Room"])
-    st.dataframe(df_tasks, use_container_width=True, hide_index=True)
-
-    st.caption(f"Total: {len(tasks)} tasks ({len([t for t in tasks if t['task_type']=='CHECKOUT'])} checkouts, {len([t for t in tasks if t['task_type']=='STAYOVER'])} stayovers, {len([t for t in tasks if t['task_type']=='ARRIVAL'])} arrivals)")
-
+    # Display editable table
+    st.subheader("Task Tracking")
+    edited_df = st.data_editor(
+        df_tasks,
+        use_container_width=True,
+        hide_index=True,
+        disabled=["#", "Room", "Type", "Priority", "Task", "Notes"],  # Only Status and HSK Notes are editable
+        column_config={
+            "Status": st.column_config.SelectboxColumn(
+                "Status",
+                options=["PENDING", "DONE"],
+                required=True
+            ),
+            "HSK Notes": st.column_config.TextColumn(
+                "HSK Notes",
+                help="Add notes here (e.g., 'Cleaned', 'Extra towels needed')",
+                max_chars=200
+            )
+        }
+    )
+    
+    # Save button
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("💾 Save All Changes", type="primary", use_container_width=True):
+            # Save each task status
+            for idx, row in edited_df.iterrows():
+                original_task = tasks[idx]
+                db.update_hsk_task_status(
+                    today,
+                    original_task["room"],
+                    original_task["tasktype"],
+                    row["Status"],
+                    row["HSK Notes"]
+                )
+            st.success("✅ All changes saved!")
+            st.rerun()
+    
+    # Download CSV
+    csv = edited_df.to_csv(index=False)
+    st.download_button(
+        label="📥 Download HSK List",
+        data=csv,
+        file_name=f"HSK_{today.strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+    
+    # Summary
+    pending = len(edited_df[edited_df["Status"] == "PENDING"])
+    completed = len(edited_df[edited_df["Status"] == "DONE"])
+    st.caption(f"Total: {len(tasks)} tasks | ✅ Completed: {completed} | ⏳ Pending: {pending}")
 
 
 def page_arrivals():
