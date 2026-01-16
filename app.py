@@ -1144,7 +1144,7 @@ def page_inhouse_list():
                 col1, col2 = st.columns([4, 1])
                 col1.write(f"**{idx}.** Room {guest['room_number']} - {guest['guest_name']}")
                 if col2.button("Cancel", key=f"cancel_{idx}_{guest['id']}", use_container_width=True):
-                    success, msg = db.cancel_checkin(guest["id"])
+                    success, msg = db.cancel_checkin(guest["stay_id"])
                     if success:
                         st.success(msg)
                         st.rerun()
