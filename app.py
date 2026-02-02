@@ -2696,7 +2696,7 @@ def render_exact_invoice_preview(invoice_no, invoice_date, guest_name, room_no,
                 <tr>
                     <th style="width: 15%;">Date</th>
                     <th style="width: 8%; text-align: center;">Qty</th>
-                    <th style="width: 15%; text-align: right;">Price Gross per Unit</th>
+                    <th style="width: 15%; text-align: right;">Price gross/unit</th>
                     <th style="width: 25%;">Description</th>
                     <th style="width: 12%; text-align: right;">Net Price</th>
                     <th style="width: 12%; text-align: right;">VAT</th>
