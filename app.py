@@ -3731,7 +3731,8 @@ def main():
 
 
         st.markdown("---")
-        st.caption("Welcome to YesWeCan! v1.0")
+        st.caption("Sponsored by **TwoTable.**")
+        st.caption("www.twotable.co.uk")
 
     if page == "Arrivals":
         page_arrivals()
