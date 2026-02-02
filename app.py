@@ -51,7 +51,7 @@ def clean_numeric_columns(df: pd.DataFrame, cols: list):
 
 
 # PostgreSQL configuration
-TEST_MODE = False  # set False for live system
+TEST_MODE = False  # set False for Test system
 
 if TEST_MODE:
     DBPATH = "hotelfoTEST.db"
@@ -2438,7 +2438,7 @@ def page_db_viewer():
             backup_data = f.read()
         
         st.download_button(
-            "⬇ DOWNLOAD LIVE DATABASE NOW",
+            "⬇ DOWNLOAD Test DATABASE NOW",
             data=backup_data,
             file_name=f"hotel_PRODUCTION_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
             mime="application/octet-stream",
@@ -3621,7 +3621,7 @@ def page_admin_upload():
                     st.error(f"❌ Error importing: {str(e)}")
                     st.exception(e)
     with tab3:
-        st.subheader("Download Live Database")
+        st.subheader("Download Test Database")
         st.info("Downloads a ZIP file containing the database file and CSV exports of all tables")
         
         if st.button("Generate Download Package", type="primary"):
@@ -3682,7 +3682,7 @@ def page_admin_upload():
 
 def main():
     st.set_page_config(
-        page_title="Not-Radisson",
+        page_title="Test it guys !!!",
         page_icon="🏨",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -3704,7 +3704,7 @@ def main():
 
     with st.sidebar:
         st.title("YesWeCan! Bristol")
-        mode = "NEW LIVE MODE"
+        mode = "NEW Test MODE"
         st.markdown(f"**{mode}**")
         page = st.radio(
             "Navigate",
