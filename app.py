@@ -1856,6 +1856,27 @@ def page_inhouse_list():
                     st.rerun()
                 else:
                     st.error(msg)
+    if checked_in_guests:
+        st.divider()
+        st.subheader("Change room for checked-in guests")
+        for idx, guest in enumerate(checked_in_guests, 1):
+            with st.expander(f"{idx}. Room {guest['room_number']} - {guest['guest_name']}", expanded=False):
+                new_room = st.text_input(
+                    "New Room Number",
+                    key=f"move_room_{guest['stay_id']}",
+                    placeholder="Enter new room",
+                )
+                if st.button("Move", key=f"move_btn_{guest['stay_id']}", use_container_width=True):
+                    if not new_room.strip():
+                        st.warning("Enter a room number.")
+                    else:
+                        success, msg = db.move_checked_in_guest(guest["stay_id"], new_room)
+                        if success:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
 
 
 def page_checkout_list():
@@ -3661,7 +3682,7 @@ def page_admin_upload():
 
 def main():
     st.set_page_config(
-        page_title="Test it guys!!",
+        page_title="Not-Radisson",
         page_icon="🏨",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -3683,7 +3704,7 @@ def main():
 
     with st.sidebar:
         st.title("YesWeCan! Bristol")
-        mode = "NEW TESTING MODE"
+        mode = "NEW LIVE MODE"
         st.markdown(f"**{mode}**")
         page = st.radio(
             "Navigate",
