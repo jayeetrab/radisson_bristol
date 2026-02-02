@@ -300,25 +300,27 @@ class FrontOfficeDB:
         return 254000
     
     def get_guests_for_date(self, d: date):
-        """Get all guests with reservations for a specific date"""
+        """Guests actually in-house or staying on date d, from stays."""
         return self.fetch_all(
             """
             SELECT DISTINCT
-                r.id,
-                r.guest_name,
-                r.room_number,
-                r.reservation_no,
-                r.arrival_date,
-                r.depart_date,
-                r.amount_pending
-            FROM reservations r
-            WHERE date(r.arrival_date) <= date(?)
-            AND date(r.depart_date) > date(?)
-            AND r.reservation_status NOT IN ('NO_SHOW', 'CANCELLED')
+                s.id            AS stay_id,
+                s.reservation_id AS reservation_id,
+                r.guest_name     AS guest_name,
+                s.room_number    AS room_number,
+                r.reservation_no AS reservation_no,
+                s.checkin_planned  AS arrival_date,
+                s.checkout_planned AS depart_date
+            FROM stays s
+            JOIN reservations r ON r.id = s.reservation_id
+            WHERE date(s.checkin_planned) <= date(?)
+            AND date(s.checkout_planned) >= date(?)
+            AND s.status = 'CHECKED_IN'
             ORDER BY r.guest_name
             """,
             (d.isoformat(), d.isoformat()),
         )
+
 
     def update_reservation_mealplan(self, reservation_id: int, meal_plan: str):
         """Update meal plan for a reservation (e.g., add breakfast)."""
