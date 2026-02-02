@@ -331,19 +331,29 @@ class FrontOfficeDB:
         )
 
     def get_reservation_by_guest_and_date(self, guest_name: str, d: date):
-        """Get reservation details for a specific guest on a date"""
         return self.fetch_one(
             """
-            SELECT *
-            FROM reservations
-            WHERE guest_name = ?
-            AND date(arrival_date) <= date(?)
-            AND date(depart_date) > date(?)
-            AND reservation_status NOT IN ('NO_SHOW', 'CANCELLED')
+            SELECT
+                r.id,
+                r.guest_name      AS guest_name,
+                r.room_number     AS room_number,   -- ADD THIS
+                r.arrival_date,
+                r.depart_date,
+                r.reservation_no,
+                r.main_client,
+                r.meal_plan,
+                r.rate_code,
+                r.channel
+            FROM reservations r
+            WHERE r.guest_name = ?
+            AND date(r.arrival_date) <= date(?)
+            AND date(r.depart_date)  >= date(?)
+            ORDER BY r.arrival_date DESC
             LIMIT 1
             """,
             (guest_name, d.isoformat(), d.isoformat()),
         )
+
 
     def get_payments_for_reservation(self, reservation_id: int):
         return self.fetch_all(
@@ -2484,6 +2494,7 @@ def page_invoices():
         
         # Date-based guest selection
         guests_for_date = db.get_guests_for_date(invoice_date)
+        
         guest_options = [f"{g['guest_name']} (Room {g['room_number']})" for g in guests_for_date]
         
         if not guest_options:
