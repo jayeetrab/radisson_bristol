@@ -3696,7 +3696,7 @@ def page_admin_upload():
 def main():
     st.set_page_config(
         page_title="Not-Radisson",
-        page_icon="🏨",
+        page_icon="💪",
         layout="wide",
         initial_sidebar_state="expanded",
     )
