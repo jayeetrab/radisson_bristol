@@ -264,6 +264,53 @@ class FrontOfficeDB:
         UNIQUE(task_date, room_number, task_type)
     )
 """)
+    def cancel_noshow(self, noshow_id: int):
+        """Cancel a no-show record and restore the reservation."""
+        # 1. Find the no-show row
+        ns = self.fetch_one(
+            "SELECT arrival_date, guest_name, main_client FROM no_shows WHERE id = ?",
+            (noshow_id,),
+        )
+        if not ns:
+            return False, "No-show record not found."
+
+        # 2. Find matching reservation (same guest + arrival date)
+        res = self.fetch_one(
+            """
+            SELECT id, room_number
+            FROM reservations
+            WHERE guest_name = ?
+            AND date(arrival_date) = date(?)
+            AND reservation_status = 'NO_SHOW'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (ns["guest_name"], ns["arrival_date"]),
+        )
+        if not res:
+            return False, "Matching reservation not found or not marked as NOSHOW."
+
+        resid = res["id"]
+        room = res.get("room_number")
+
+        with closing(self.get_conn()) as conn, conn:
+            c = conn.cursor()
+            # 3. Restore reservation status
+            c.execute(
+                "UPDATE reservations SET reservation_status = 'CONFIRMED', updated_at = datetime('now') WHERE id = ?",
+                (resid,),
+            )
+            # 4. Optionally restore room status to VACANT or leave as is
+            if room:
+                c.execute(
+                    "UPDATE rooms SET status = 'VACANT' WHERE room_number = ?",
+                    (room,),
+                )
+            # 5. Remove the no-show record (or you could keep it with a flag)
+            c.execute("DELETE FROM no_shows WHERE id = ?", (noshow_id,))
+
+        return True, "No-show cancelled and reservation restored."  
+
     def update_stay_comment(self, stay_id: int, comment: str):
         """Update in-house stay comment (front office notes)."""
         self.execute(
@@ -2091,6 +2138,19 @@ def page_no_shows():
         st.dataframe(df, use_container_width=True, hide_index=True)
         st.caption(f"{len(rows)} no-shows")
 
+        st.subheader("Cancel no-show")
+        for r in rows:
+            col1, col2 = st.columns([4, 1])
+            col1.write(f"{r['guest_name']} ({r.get('main_client') or ''})")
+            if col2.button("Cancel no-show", key=f"cancel_ns_{r['id']}", use_container_width=True):
+                ok, msg = db.cancel_noshow(r["id"])
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+
 
 
 def page_search():
@@ -3696,7 +3756,7 @@ def page_admin_upload():
 def main():
     st.set_page_config(
         page_title="Not-Radisson",
-        page_icon="💪",
+        page_icon="🏨",
         layout="wide",
         initial_sidebar_state="expanded",
     )
