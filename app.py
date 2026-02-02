@@ -1810,7 +1810,7 @@ def page_inhouse_list():
 
     df_inhouse = clean_numeric_columns(df_inhouse, ["reservation_id", "Room"])
 
-    st.caption(f"{len(df_inhouse)} guests in-house)
+    st.caption(f"{len(df_inhouse)} guests in-house")
 
     edited_df = st.data_editor(
         df_inhouse,
