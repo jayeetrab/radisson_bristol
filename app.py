@@ -51,7 +51,7 @@ def clean_numeric_columns(df: pd.DataFrame, cols: list):
 
 
 # PostgreSQL configuration
-TEST_MODE = False  # set False for Test system
+TEST_MODE = False  # set False for live system
 
 if TEST_MODE:
     DBPATH = "hotelfoTEST.db"
@@ -300,25 +300,27 @@ class FrontOfficeDB:
         return 254000
     
     def get_guests_for_date(self, d: date):
-        """Get all guests with reservations for a specific date"""
+        """Guests actually in-house or staying on date d, from stays."""
         return self.fetch_all(
             """
             SELECT DISTINCT
-                r.id,
-                r.guest_name,
-                r.room_number,
-                r.reservation_no,
-                r.arrival_date,
-                r.depart_date,
-                r.amount_pending
-            FROM reservations r
-            WHERE date(r.arrival_date) <= date(?)
-            AND date(r.depart_date) > date(?)
-            AND r.reservation_status NOT IN ('NO_SHOW', 'CANCELLED')
+                s.id            AS stay_id,
+                s.reservation_id AS reservation_id,
+                r.guest_name     AS guest_name,
+                s.room_number    AS room_number,
+                r.reservation_no AS reservation_no,
+                s.checkin_planned  AS arrival_date,
+                s.checkout_planned AS depart_date
+            FROM stays s
+            JOIN reservations r ON r.id = s.reservation_id
+            WHERE date(s.checkin_planned) <= date(?)
+            AND date(s.checkout_planned) >= date(?)
+            AND s.status = 'CHECKED_IN'
             ORDER BY r.guest_name
             """,
             (d.isoformat(), d.isoformat()),
         )
+
 
     def update_reservation_mealplan(self, reservation_id: int, meal_plan: str):
         """Update meal plan for a reservation (e.g., add breakfast)."""
@@ -329,19 +331,29 @@ class FrontOfficeDB:
         )
 
     def get_reservation_by_guest_and_date(self, guest_name: str, d: date):
-        """Get reservation details for a specific guest on a date"""
         return self.fetch_one(
             """
-            SELECT *
-            FROM reservations
-            WHERE guest_name = ?
-            AND date(arrival_date) <= date(?)
-            AND date(depart_date) > date(?)
-            AND reservation_status NOT IN ('NO_SHOW', 'CANCELLED')
+            SELECT
+                r.id,
+                r.guest_name      AS guest_name,
+                r.room_number     AS room_number,   -- ADD THIS
+                r.arrival_date,
+                r.depart_date,
+                r.reservation_no,
+                r.main_client,
+                r.meal_plan,
+                r.rate_code,
+                r.channel
+            FROM reservations r
+            WHERE r.guest_name = ?
+            AND date(r.arrival_date) <= date(?)
+            AND date(r.depart_date)  >= date(?)
+            ORDER BY r.arrival_date DESC
             LIMIT 1
             """,
             (guest_name, d.isoformat(), d.isoformat()),
         )
+
 
     def get_payments_for_reservation(self, reservation_id: int):
         return self.fetch_all(
@@ -2438,7 +2450,7 @@ def page_db_viewer():
             backup_data = f.read()
         
         st.download_button(
-            "⬇ DOWNLOAD Test DATABASE NOW",
+            "⬇ DOWNLOAD LIVE DATABASE NOW",
             data=backup_data,
             file_name=f"hotel_PRODUCTION_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
             mime="application/octet-stream",
@@ -2482,6 +2494,7 @@ def page_invoices():
         
         # Date-based guest selection
         guests_for_date = db.get_guests_for_date(invoice_date)
+        
         guest_options = [f"{g['guest_name']} (Room {g['room_number']})" for g in guests_for_date]
         
         if not guest_options:
@@ -3621,7 +3634,7 @@ def page_admin_upload():
                     st.error(f"❌ Error importing: {str(e)}")
                     st.exception(e)
     with tab3:
-        st.subheader("Download Test Database")
+        st.subheader("Download Live Database")
         st.info("Downloads a ZIP file containing the database file and CSV exports of all tables")
         
         if st.button("Generate Download Package", type="primary"):
@@ -3682,7 +3695,7 @@ def page_admin_upload():
 
 def main():
     st.set_page_config(
-        page_title="Test it guys !!!",
+        page_title="Not-Radisson",
         page_icon="🏨",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -3704,7 +3717,7 @@ def main():
 
     with st.sidebar:
         st.title("YesWeCan! Bristol")
-        mode = "NEW Test MODE"
+        mode = "NEW LIVE MODE"
         st.markdown(f"**{mode}**")
         page = st.radio(
             "Navigate",
