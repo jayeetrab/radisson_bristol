@@ -12,6 +12,7 @@ import time
 # Initialize database AFTER set_page_config in main()
 db = None
 
+
 def format_date(date_str):
     """Format date string, removing time portion"""
     if not date_str:
@@ -24,6 +25,7 @@ def format_date(date_str):
     except (ValueError, TypeError):
         # Fallback: just remove time if simple string
         return str(date_str).split()[0] if ' ' in str(date_str) else str(date_str)
+    
     
 def format_room_number(room_number):
     """Format room number, removing .0 decimals"""
@@ -104,6 +106,7 @@ class FrontOfficeDB:
                         children INTEGER,
                         total_guests INTEGER,
                         reservation_no TEXT,
+                        front_office_notes TEXT,
                         voucher TEXT,
                         related_reservation TEXT,
                         crs_code TEXT,
@@ -155,6 +158,12 @@ class FrontOfficeDB:
                         FOREIGN KEY (reservation_id) REFERENCES reservations(id)
                     )
                 """)
+                # Safe migration: add front_office_notes if missing
+                try:
+                    c.execute("ALTER TABLE reservations ADD COLUMN front_office_notes TEXT")
+                except sqlite3.OperationalError:
+                    # Column already exists
+                    pass
 
                 c.execute("""
                     CREATE TABLE IF NOT EXISTS rooms (
@@ -191,6 +200,50 @@ class FrontOfficeDB:
                         created_at TEXT DEFAULT (datetime('now'))
                     )
                 """)
+                
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        invoice_no INTEGER UNIQUE,
+                        reservation_id INTEGER,
+                        guest_name TEXT,
+                        room_number TEXT,
+                        total_net REAL,
+                        total_vat REAL,
+                        total_amount REAL,
+                        invoice_date TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+                    )
+                ''')
+
+
+                # Safe migrations: add missing columns if DB is older
+                try:
+                    c.execute("ALTER TABLE no_shows ADD COLUMN amount_charged REAL")
+                except sqlite3.OperationalError:
+                    pass
+
+                try:
+                    c.execute("ALTER TABLE no_shows ADD COLUMN amount_pending REAL")
+                except sqlite3.OperationalError:
+                    pass
+
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS payments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reservation_id INTEGER,
+                        guest_name TEXT,
+                        amount REAL,
+                        type TEXT,               -- PAYMENT or REFUND
+                        method TEXT,             -- card / cash / etc.
+                        reference TEXT,          -- PMS folio ref, POS ref
+                        note TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+                    )
+                """)
+
 
                 c.execute("""
                     CREATE TABLE IF NOT EXISTS spare_rooms (
@@ -211,6 +264,106 @@ class FrontOfficeDB:
         UNIQUE(task_date, room_number, task_type)
     )
 """)
+    def update_stay_comment(self, stay_id: int, comment: str):
+        """Update in-house stay comment (front office notes)."""
+        self.execute(
+            "UPDATE stays SET comment = ? WHERE id = ?",
+            (comment, stay_id),
+        )
+
+    def add_payment(self, reservation_id: int, guest_name: str, amount: float,
+                    pay_type: str, method: str, reference: str, note: str):
+        self.execute(
+            """
+            INSERT INTO payments (reservation_id, guest_name, amount, type, method, reference, note)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (reservation_id, guest_name, amount, pay_type, method, reference, note),
+        )
+
+    def is_room_clean(self, room_number: str) -> bool:
+        """Return True if room exists and status is not DIRTY."""
+        row = self.fetch_one(
+            "SELECT status FROM rooms WHERE room_number = ?",
+            (room_number.strip(),),
+        )
+        if not row:
+            # if room not found, keep existing validation behaviour elsewhere
+            return True
+        return row["status"] != "DIRTY"
+
+    def get_next_invoice_number(self) -> int:
+        """Get next auto-incremented invoice number starting from 254000"""
+        result = self.fetch_one("SELECT MAX(id) as max_id FROM invoices")
+        if result and result['max_id']:
+            return 254000 + result['max_id']
+        return 254000
+    
+    def get_guests_for_date(self, d: date):
+        """Get all guests with reservations for a specific date"""
+        return self.fetch_all(
+            """
+            SELECT DISTINCT
+                r.id,
+                r.guest_name,
+                r.room_number,
+                r.reservation_no,
+                r.arrival_date,
+                r.depart_date,
+                r.amount_pending
+            FROM reservations r
+            WHERE date(r.arrival_date) <= date(?)
+            AND date(r.depart_date) > date(?)
+            AND r.reservation_status NOT IN ('NO_SHOW', 'CANCELLED')
+            ORDER BY r.guest_name
+            """,
+            (d.isoformat(), d.isoformat()),
+        )
+
+    def update_reservation_mealplan(self, reservation_id: int, meal_plan: str):
+        """Update meal plan for a reservation (e.g., add breakfast)."""
+        print(f"MEAL PLAN: {meal_plan}")
+        self.execute(
+            "UPDATE reservations SET meal_plan = ?, updated_at = datetime('now') WHERE id = ?",
+            (meal_plan, reservation_id),
+        )
+
+    def get_reservation_by_guest_and_date(self, guest_name: str, d: date):
+        """Get reservation details for a specific guest on a date"""
+        return self.fetch_one(
+            """
+            SELECT *
+            FROM reservations
+            WHERE guest_name = ?
+            AND date(arrival_date) <= date(?)
+            AND date(depart_date) > date(?)
+            AND reservation_status NOT IN ('NO_SHOW', 'CANCELLED')
+            LIMIT 1
+            """,
+            (guest_name, d.isoformat(), d.isoformat()),
+        )
+
+    def get_payments_for_reservation(self, reservation_id: int):
+        return self.fetch_all(
+            """
+            SELECT * FROM payments
+            WHERE reservation_id = ?
+            ORDER BY created_at DESC
+            """,
+            (reservation_id,),
+        )
+
+    def get_all_payments(self, limit: int = 500):
+        return self.fetch_all(
+            """
+            SELECT p.*, r.arrival_date, r.depart_date, r.room_number, r.main_client
+            FROM payments p
+            LEFT JOIN reservations r ON p.reservation_id = r.id
+            ORDER BY p.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
 
     def __init__(self, dbpath: str):
         self.dbpath = dbpath
@@ -224,6 +377,116 @@ class FrontOfficeDB:
             "SELECT status, notes FROM hsk_task_status WHERE task_date = ? AND room_number = ? AND task_type = ?",
             (task_date.isoformat(), room_number, task_type)
         )
+# helpers
+    def move_checked_in_guest(self, stay_id: int, new_room: str):
+        """Move a checked-in guest to a different room (updates stays, reservations, rooms)."""
+        stay = self.fetch_one("SELECT * FROM stays WHERE id = ?", (stay_id,))
+        if not stay:
+            return False, "Stay not found"
+
+        res = self.fetch_one("SELECT * FROM reservations WHERE id = ?", (stay["reservation_id"],))
+        if not res:
+            return False, "Reservation not found"
+
+        old_room = stay["room_number"]
+
+        isvalid, normalized = self.is_valid_room_number(new_room)
+        if not isvalid:
+            return False, normalized
+
+        arr = datetime.fromisoformat(res["arrival_date"]).date()
+        dep = datetime.fromisoformat(res["depart_date"]).date()
+
+        available, msg = self.check_room_available_for_assignment(normalized, arr, dep, res["id"])
+        if not available:
+            return False, msg
+
+        with closing(self.get_conn()) as conn, conn:
+            c = conn.cursor()
+
+            # Update stay
+            c.execute(
+                "UPDATE stays SET room_number = ? WHERE id = ?",
+                (normalized, stay["id"]),
+            )
+
+            # Update reservation
+            c.execute(
+                "UPDATE reservations SET room_number = ?, updated_at = datetime('now') WHERE id = ?",
+                (normalized, res["id"]),
+            )
+
+            # Free old room, occupy new room
+            c.execute("UPDATE rooms SET status = 'VACANT' WHERE room_number = ?", (old_room,))
+            c.execute("INSERT OR IGNORE INTO rooms (room_number, status) VALUES (?, 'OCCUPIED')", (normalized,))
+            c.execute("UPDATE rooms SET status = 'OCCUPIED' WHERE room_number = ?", (normalized,))
+
+        return True, f"Guest moved from {old_room} to {normalized}"
+
+    def update_reservation_notes(self, reservation_id: int, main_remark: str, total_remarks: str = ""):
+        """Update Front Office notes for a reservation."""
+        self.execute(
+            """
+            UPDATE reservations
+            SET main_remark = ?,
+                total_remarks = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (main_remark, total_remarks, reservation_id),
+        )
+
+
+    def mark_reservation_as_no_show(
+        self,
+        reservation_id: int,
+        arrival_date: date,
+        guest_name: str,
+        main_client: str,
+        charged: bool = False,
+        amount_charged: float = 0.0,
+        amount_pending: float = 0.0,
+        comment: str = "",
+    ):
+        charged_int = 1 if charged else 0
+        amount_charged = amount_charged or 0.0
+        amount_pending = amount_pending or 0.0
+
+        # 1) Upsert into no_shows
+        self.execute(
+            """
+            INSERT INTO no_shows (
+                arrival_date,
+                guest_name,
+                main_client,
+                charged,
+                amount_charged,
+                amount_pending,
+                comment
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                arrival_date.isoformat(),
+                guest_name,
+                main_client,
+                charged_int,
+                amount_charged,
+                amount_pending,
+                comment,
+            ),
+        )
+
+        # 2) Mark reservation as NO_SHOW so it is excluded from arrivals
+        self.execute(
+            """
+            UPDATE reservations
+            SET reservation_status = 'NO_SHOW',
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (reservation_id,),
+        )
 
     def update_hsk_task_status(self, task_date: date, room_number: str, task_type: str, status: str, notes: str = ""):
         self.execute(
@@ -234,6 +497,17 @@ class FrontOfficeDB:
             DO UPDATE SET status = ?, notes = ?, updated_at = datetime('now')
             """,
             (task_date.isoformat(), room_number, task_type, status, notes, status, notes)
+        )
+    def search_reservations_by_room_number(self, room_number: str):
+        return self.fetch_all(
+            """
+            SELECT *
+            FROM reservations
+            WHERE room_number = ?
+            ORDER BY arrival_date DESC
+            LIMIT 500
+            """,
+            (room_number.strip(),),
         )
 
 
@@ -294,18 +568,32 @@ class FrontOfficeDB:
     def get_breakfast_list_for_date(self, target_date: date):
         return self.fetch_all(
             """
-            SELECT r.room_number, r.guest_name, r.adults, r.children, r.total_guests, r.meal_plan
-            FROM reservations r
-            LEFT JOIN stays s ON s.reservation_id = r.id
-            WHERE date(r.arrival_date) <= date(?)
-            AND date(r.depart_date) > date(?)
-            AND r.room_number IS NOT NULL AND r.room_number != ''
-            AND (s.status IS NULL OR s.status != 'CHECKEDOUT')
-            AND (r.meal_plan LIKE '%BB%' OR r.meal_plan LIKE '%Breakfast%')
-            ORDER BY CAST(r.room_number AS INTEGER)
+            SELECT
+                s.room_number      AS room_number,
+                r.guest_name       AS guest_name,
+                r.adults          AS adults,
+                r.children        AS children,
+                r.total_guests     AS total_guests,
+                r.meal_plan        AS meal_plan
+            FROM stays AS s
+            JOIN reservations AS r
+            ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_IN'
+            AND date(s.checkin_planned) <= date(?)
+            AND date(s.checkout_planned) >= date(?)
+            AND r.room_number IS NOT NULL
+            AND r.room_number != ''
+            AND (
+                r.meal_plan = 'BB'
+                OR r.meal_plan LIKE '%BB%'
+                OR lower(r.meal_plan) LIKE '%breakfast%'
+            )
+            ORDER BY CAST(s.room_number AS INTEGER)
             """,
             (target_date.isoformat(), target_date.isoformat()),
         )
+
+
 
     def generate_hsk_tasks_for_date(self, target_date: date):
         """Auto-generate housekeeping tasks for the day"""
@@ -318,6 +606,7 @@ class FrontOfficeDB:
             # Use LIKE to match the date portion of timestamp
             target_str = target_date.isoformat()  # e.g., "2026-08-16"
             
+            # 1. Checkouts
             # 1. Checkouts - ALL guests departing today (checked in OR checked out)
             c.execute("""
                 SELECT s.room_number, r.guest_name, r.main_remark, r.total_remarks, s.status
@@ -573,17 +862,20 @@ class FrontOfficeDB:
         return self.fetch_all(
             """
             SELECT r.*
-            FROM reservations r
+            FROM reservations AS r
             WHERE date(r.arrival_date) = date(?)
+            AND r.reservation_status NOT IN ('CHECKED_IN', 'CHECKED_OUT', 'NO_SHOW')
             AND NOT EXISTS (
-                SELECT 1 FROM stays s
+                SELECT 1
+                FROM stays AS s
                 WHERE s.reservation_id = r.id
-                    AND s.status IN ('CHECKED_IN','CHECKED_OUT')
+                    AND s.status IN ('CHECKED_IN', 'CHECKED_OUT')
             )
             ORDER BY COALESCE(r.room_number, ''), r.guest_name
             """,
             (d.isoformat(),),
         )
+
 
 
 
@@ -595,19 +887,21 @@ class FrontOfficeDB:
         if not isvalid:
             return False, result
 
+        # NEW: block dirty rooms
+        if not self.is_room_clean(room_number):
+            return False, "Room is marked DIRTY. Please choose a clean room."
+
         with closing(self.get_conn()) as conn:
             c = conn.cursor()
             c.execute("SELECT arrival_date, depart_date FROM reservations WHERE id = ?", (resid,))
             res = c.fetchone()
+            if not res:
+                return False, "Reservation not found"
 
-        if not res:
-            return False, "Reservation not found"
+            arr = datetime.fromisoformat(res["arrival_date"]).date()
+            dep = datetime.fromisoformat(res["depart_date"]).date()
 
-        arr = datetime.fromisoformat(res["arrival_date"]).date()
-        dep = datetime.fromisoformat(res["depart_date"]).date()
-
-
-        available, msg = self.check_room_available_for_assignment(result, arr, dep, resid)
+        available, msg = self.check_room_available_for_assignment(room_number, arr, dep, resid)
         if not available:
             return False, msg
 
@@ -615,10 +909,10 @@ class FrontOfficeDB:
             c = conn.cursor()
             c.execute(
                 "UPDATE reservations SET room_number = ?, updated_at = datetime('now') WHERE id = ?",
-                (result, resid),
+                (room_number, resid),
             )
+        return True, f"Room {room_number} assigned successfully"
 
-        return True, f"Room {result} assigned successfully"
 
 
 
@@ -638,6 +932,19 @@ class FrontOfficeDB:
 
 
 
+    def set_room_status(self, room_number: str, status: str):
+        """Set room status manually (e.g. CLEAN, DIRTY)."""
+        if not room_number:
+            return False, "Room number required"
+        status = status.upper().strip()
+        if status not in ["CLEAN", "DIRTY", "VACANT", "OCCUPIED"]:
+            return False, "Invalid status. Use CLEAN, DIRTY, VACANT or OCCUPIED."
+
+        self.execute(
+            "UPDATE rooms SET status = ? WHERE room_number = ?",
+            (status, room_number.strip()),
+        )
+        return True, f"Room {room_number} set to {status}"
 
     # ---- rooms / stays ----
 
@@ -726,34 +1033,37 @@ class FrontOfficeDB:
 
 
     def get_inhouse(self, target_date: date = None):
-        """Get only CHECKED_IN guests who are actually in the hotel"""
+        """Get only CHECKED_IN guests who are actually in the hotel."""
         if not target_date:
             target_date = date.today()
-        
+
         return self.fetch_all(
-        """
-        SELECT 
-            s.id AS stay_id,
-            s.reservation_id AS id,
-            r.reservation_no,
-            r.guest_name,
-            s.room_number,
-            s.checkin_planned,
-            s.checkout_planned,
-            r.meal_plan AS breakfast_code,
-            r.main_remark AS comment,
-            COALESCE(s.parking_space, '') AS parking_space,
-            COALESCE(s.parking_plate, '') AS parking_plate,
-            s.status
-        FROM stays s
-        JOIN reservations r ON r.id = s.reservation_id
-        WHERE s.status = 'CHECKED_IN'
-        AND date(s.checkin_planned) <= date(?)
-        AND date(s.checkout_planned) >= date(?)
-        ORDER BY s.room_number
-        """,
-        (target_date.isoformat(), target_date.isoformat()),
-    )
+            """
+            SELECT
+                s.id AS stay_id,
+                s.reservation_id AS id,
+                r.reservation_no,
+                r.guest_name,
+                s.room_number,
+                s.checkin_planned,
+                s.checkout_planned,
+                r.meal_plan      AS breakfast_code,
+                r.main_remark    AS main_remark,
+                r.total_remarks  AS total_remarks,
+                s.comment        AS comment,
+                COALESCE(s.parking_space, '') AS parking_space,
+                COALESCE(s.parking_plate, '') AS parking_plate,
+                s.status
+            FROM stays s
+            JOIN reservations r ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_IN'
+            AND date(s.checkin_planned) <= date(?)
+            AND date(s.checkout_planned) > date(?)
+            ORDER BY s.room_number
+            """,
+            (target_date.isoformat(), target_date.isoformat()),
+        )
+
 
 
 
@@ -859,19 +1169,39 @@ class FrontOfficeDB:
 
     # ---- parking helpers ----
 
-    def get_parking_overview_for_date(self, d: date):
-        return self.fetch_all(
+    def get_parking_overview_for_date(self, target_date: date):
+        return self.fetchall(
             """
-            SELECT s.*, r.guest_name
-            FROM stays s
-            JOIN reservations r ON r.id = s.reservation_id
-            WHERE date(s.checkin_planned) <= date(?)
-            AND date(s.checkout_planned) > date(?)
-            AND (s.parking_space IS NOT NULL OR s.parking_plate IS NOT NULL)
-            ORDER BY s.parking_space, CAST(s.room_number AS INTEGER)
+            SELECT
+                s.id,
+                s.reservation_id,
+                s.room_number,
+                s.status,
+                s.checkin_planned,
+                s.check_out_planned,
+                s.check_in_actual,
+                s.check_out_actual,
+                s.parking_space,
+                s.parking_plate,
+                s.parking_notes,
+                r.guest_name
+            FROM stays AS s
+            JOIN reservations AS r
+            ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_IN'
+            AND date(s.checkin_planned) <= date(?)
+            AND date(s.check_out_planned) > date(?)
+            AND (
+                s.parking_space IS NOT NULL
+                OR s.parking_plate IS NOT NULL
+            )
+            ORDER BY
+                s.parking_space,
+                CAST(s.room_number AS INTEGER)
             """,
-            (d.isoformat(), d.isoformat()),
+            (target_date.isoformat(),),
         )
+
 
 
 
@@ -885,55 +1215,87 @@ class FrontOfficeDB:
     def get_tasks_for_date(self, d: date):
         return self.fetch_all("SELECT * FROM tasks WHERE task_date = :date ORDER BY created_at", {"date": d})
     
-    def add_no_show(self, arrival_date: date, guest_name: str, main_client: str, charged: bool, 
-                amount_charged: float, amount_pending: float, comment: str):
-        # Check if already exists
-        existing = self.fetch_one("""
-            SELECT id FROM no_shows 
-            WHERE guest_name = :guest AND arrival_date = :date
-        """, {"guest": guest_name, "date": arrival_date})
-        
+    def add_no_show(
+        self,
+        arrival_date: date,
+        guest_name: str,
+        main_client: str,
+        charged: bool,
+        amount_charged: float,
+        amount_pending: float,
+        comment: str,
+    ):
+        existing = self.fetch_one(
+            """
+            SELECT id
+            FROM no_shows
+            WHERE guest_name = ?
+            AND date(arrival_date) = date(?)
+            """,
+            (guest_name, arrival_date.isoformat()),
+        )
+
+        charged_int = 1 if charged else 0
+        amount_charged = amount_charged or 0.0
+        amount_pending = amount_pending or 0.0
+
         if existing:
-           # Update existing
             self.execute(
                 """
-                UPDATE no_shows SET
-                    main_client = ?,
-                    charged = ?,
+                UPDATE no_shows
+                SET main_client   = ?,
+                    charged       = ?,
                     amount_charged = ?,
                     amount_pending = ?,
-                    comment = ?
+                    comment       = ?
                 WHERE id = ?
                 """,
                 (
                     main_client,
-                    int(charged),
-                    amount_charged or 0,
-                    amount_pending or 0,
+                    charged_int,
+                    amount_charged,
+                    amount_pending,
                     comment,
                     existing["id"],
                 ),
             )
-
         else:
-            # Insert new
-            self.execute("""
-                INSERT INTO no_shows (arrival_date, guest_name, main_client, charged, 
-                                    amount_charged, amount_pending, comment)
-                VALUES (:date, :guest, :client, :charged, :amt_charged, :amt_pending, :comment)
-            """, {
-                "date": arrival_date,
-                "guest": guest_name,
-                "client": main_client,
-                "charged": int(charged),
-                "amt_charged": amount_charged or 0,
-                "amt_pending": amount_pending or 0,
-                "comment": comment
-            })
+            self.execute(
+                """
+                INSERT INTO no_shows (
+                    arrival_date,
+                    guest_name,
+                    main_client,
+                    charged,
+                    amount_charged,
+                    amount_pending,
+                    comment
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    arrival_date.isoformat(),
+                    guest_name,
+                    main_client,
+                    charged_int,
+                    amount_charged,
+                    amount_pending,
+                    comment,
+                ),
+            )
 
 
-    def get_no_shows_for_date(self, d: date):
-        return self.fetch_all("SELECT * FROM no_shows WHERE arrival_date = :date ORDER BY created_at", {"date": d})
+    def get_no_shows_for_date(self, target_date: date):
+        return self.fetch_all(
+            """
+            SELECT *
+            FROM no_shows
+            WHERE date(arrival_date) = date(?)
+            ORDER BY created_at
+            """,
+            (target_date.isoformat(),),
+        )
+
     
     def get_twin_rooms(self):
         rows = self.fetch_all("SELECT room_number FROM rooms WHERE is_twin = 1 ORDER BY CAST(room_number AS INTEGER)")
@@ -1024,6 +1386,105 @@ class FrontOfficeDB:
 
 db = None  # Will be initialized in main()
  # Use cached connection
+from datetime import date  # make sure this is imported at top of file
+
+def page_payments():
+    st.header("Payments / Refunds")
+
+    # --- NEW: date + guest dropdown (like invoice tab) ---
+    col1, col2 = st.columns(2)
+    with col1:
+        pay_date = st.date_input("Payment Date", value=date.today(), key="payment_date")
+    with col2:
+        st.write("")  # spacer
+
+    guests_for_date = db.get_guests_for_date(pay_date)
+    guest_options = [
+        f"{g['guest_name']} (Room {g['room_number']})"
+        for g in guests_for_date
+    ]
+
+    if not guest_options:
+        st.warning("No guests for this date. Please select another date.")
+        return
+
+    selected_guest_str = st.selectbox(
+        "Select Guest",
+        guest_options,
+        key="payment_guest_selector",
+    )
+
+    selected_guest_name = selected_guest_str.split(" (Room")[0]
+
+    # get reservation for that guest/date
+    res_data = db.get_reservation_by_guest_and_date(selected_guest_name, pay_date)
+    if not res_data:
+        st.error("Could not load reservation data for this guest/date.")
+        return
+
+    reservation_id = res_data.get("id", None)
+    guest_name = res_data.get("guest_name", "")
+    room_no = res_data.get("room_number", "")
+
+    st.info(f"✓ Selected: {guest_name} | Room: {room_no} | Res ID: {reservation_id}")
+
+    # --- OLD amount/type/method block stays the same ---
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        amount = st.number_input("Amount (£)", min_value=0.0, step=0.01, format="%.2f")
+    with col4:
+        pay_type = st.selectbox("Type", ["PAYMENT", "REFUND"])
+    with col5:
+        method = st.selectbox("Method", ["CARD", "CASH", "BANK", "OTHER"])
+
+    reference = st.text_input("Reference (folio, POS ref, etc.)")
+    note = st.text_area("Note")
+
+    # --- UPDATED: no manual res_id / guest_name, use selected ones ---
+    if st.button("Add entry", type="primary", use_container_width=True):
+        if amount <= 0:
+            st.error("Amount must be greater than 0.")
+        else:
+            db.add_payment(
+                int(reservation_id) if reservation_id is not None else None,
+                guest_name,
+                amount,
+                pay_type,
+                method,
+                reference,
+                note,
+            )
+            st.success("Payment/refund recorded.")
+
+    st.divider()
+    st.subheader("Recent payments / refunds")
+
+    rows = db.get_all_payments()
+    if not rows:
+        st.info("No payments recorded yet.")
+    else:
+        df = pd.DataFrame(rows)
+        df = clean_numeric_columns(df, ["reservation_id"])
+        st.dataframe(
+            df[
+                [
+                    "created_at",
+                    "reservation_id",
+                    "guest_name",
+                    "amount",
+                    "type",
+                    "method",
+                    "reference",
+                    "note",
+                    "room_number",
+                    "arrival_date",
+                    "depart_date",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
 
 
 def page_breakfast():
@@ -1054,15 +1515,55 @@ def page_breakfast():
     st.subheader(f"Breakfast for {today}")
     
     # Prepare display
-    df_display = df_breakfast[["room_number", "guest_name", "adults", "children", "total_guests", "meal_plan"]].copy()
-    df_display = clean_numeric_columns(df_display, ["room_number", "adults", "children", "total_guests"])
+    df_display = df_breakfast[
+        ["room_number", "guest_name", "adults", "children", "total_guests", "meal_plan"]
+    ].copy()
+    df_display = clean_numeric_columns(
+        df_display, ["room_number", "adults", "children", "total_guests"]
+    )
     df_display.columns = ["Room", "Guest Name", "Adults", "Children", "Total", "Meal Plan"]
-    df_display.insert(0, '#', range(1, len(df_display) + 1))
-    df_display = clean_numeric_columns(df_display, ["Room"]) 
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+    df_display.insert(0, "#", range(1, len(df_display) + 1))
+    df_display = clean_numeric_columns(df_display, ["Room"])
 
-    
-    st.caption(f"Print this list for the kitchen: {total_rooms} rooms, {int(total_guests)} guests with breakfast")
+    edited = st.data_editor(
+        df_display,
+        use_container_width=True,
+        hide_index=True,
+        disabled=["#", "Guest Name"],
+        column_config={
+            "Adults": st.column_config.NumberColumn(min_value=0, step=1),
+            "Children": st.column_config.NumberColumn(min_value=0, step=1),
+            "Meal Plan": st.column_config.TextColumn(),
+        },
+    )
+
+    if st.button("Save breakfast adjustments", type="primary", use_container_width=True):
+        # optional: write back to reservations table by room + date
+        for _, row in edited.iterrows():
+            room = str(row["Room"]).strip()
+            adults = int(row["Adults"])
+            children = int(row["Children"])
+            meal_plan = row["Meal Plan"]
+
+            db.execute(
+                """
+                UPDATE reservations
+                SET adults = ?, total_guests = ?, meal_plan = ?
+                WHERE room_number = ?
+                  AND date(arrival_date) <= date(?)
+                  AND date(depart_date) >= date(?)
+                """,
+                (
+                    adults,
+                    adults + children,
+                    meal_plan,
+                    room,
+                    today.isoformat(),
+                    today.isoformat(),
+                ),
+            )
+        st.success("Breakfast data updated.")
+        st.rerun()
 
 def page_housekeeping():
     st.header("Housekeeping Task List")
@@ -1134,17 +1635,20 @@ def page_housekeeping():
     with col1:
         if st.button("Save", type="primary", use_container_width=True):
             # Save each task status
-            for idx, row in edited_df.iterrows():
+             for idx, row in edited_df.iterrows():
                 original_task = tasks[idx]
                 db.update_hsk_task_status(
                     today,
                     original_task["room"],
                     original_task["tasktype"],
                     row["Status"],
-                    row["HSK Notes"]
+                    row["HSK Notes"],
                 )
-            st.success("✅ All changes saved!")
-            st.rerun()
+
+                # If checkout cleaning task is DONE, mark room as CLEAN
+                if original_task["tasktype"] == "CHECKOUT" and row["Status"] == "DONE":
+                    db.set_room_status(original_task["room"], "CLEAN")
+
     
     # Download CSV
     csv = edited_df.to_csv(index=False)
@@ -1185,44 +1689,88 @@ def page_arrivals():
             col4.write(f"**Guests:** {r.get('total_guests', '')}")
             
             col1, col2, col3 = st.columns(3)
-            col1, col2, col3 = st.columns(3)
             col1.write(f"**Room type:** {r['room_type_code']}")
             col2.write(f"**Channel:** {r['channel']}")
             col3.write(f"**Meal Plan:** {r.get('meal_plan', 'RO')}")
 
-            
-            if r["main_remark"]:
-                st.info(r["main_remark"])
-            if r["total_remarks"]:
-                st.caption(r["total_remarks"])
-            
+            # Front Office notes (editable)
+            main_note = st.text_area(
+                "Front Office Note",
+                value=r.get("main_remark") or "",
+                key=f"fo_main_{r['id']}",
+                height=80,
+            )
+            # extra_note = st.text_area(
+            #     "Extra Notes (optional)",
+            #     value=r.get("total_remarks") or "",
+            #     key=f"fo_extra_{r['id']}",
+            #     height=80,
+            # )
+
+            if st.button("Save Notes", key=f"save_notes_{r['id']}", use_container_width=True):
+                db.update_reservation_notes(r["id"], main_note)
+                st.success("Notes saved.")
+                st.rerun()
+
             current_room = r["room_number"] or ""
-            room = st.text_input("Room Number", value=current_room, key=f"room_{r['id']}", 
-                                placeholder="Enter room number")
+            room = st.text_input(
+                "Room Number",
+                value=current_room,
+                key=f"room_{r['id']}", 
+                placeholder="Enter room number",
+            )
             
-            col_btn1, col_btn2 = st.columns(2)
-            
-            with col_btn1:
-                if st.button("Save Room", key=f"save_{r['id']}", type="primary", use_container_width=True):
+            colbtn1, colbtn2, colbtn3 = st.columns(3)
+
+            with colbtn1:
+                if st.button(
+                    "Save Room",
+                    key=f"save_{r['id']}",
+                    type="primary",
+                    use_container_width=True,
+                ):
                     if room and room.strip():
-                        success, msg = db.update_reservation_room(r["id"], room)
+                        success, msg = db.update_reservation_room(r['id'], room)
                         if success:
                             st.success(msg)
                         else:
                             st.error(msg)
                     else:
-                        st.warning("Please enter a room number")
+                        st.warning("Please enter a room number.")
 
-            with col_btn2:
-                if st.button("Check-in", key=f"checkin_{r['id']}", type="secondary", use_container_width=True):
-                    success, msg = db.checkin_reservation(r["id"])
+            with colbtn2:
+                if st.button(
+                    "Check-in",
+                    key=f"checkin_{r['id']}",
+                    type="secondary",
+                    use_container_width=True,
+                ):
+                    success, msg = db.checkin_reservation(r['id'])
                     if success:
                         st.success(msg)
                         st.rerun()
                     else:
                         st.error(msg)
 
-
+            with colbtn3:
+                if st.button(
+                    "Add No-show",
+                    key=f"noshow_{r['id']}",
+                    type="secondary",
+                    use_container_width=True,
+                ):
+                    db.mark_reservation_as_no_show(
+                        reservation_id=r['id'],
+                        arrival_date=datetime.fromisoformat(r["arrival_date"]).date(),
+                        guest_name=r["guest_name"],
+                        main_client=r.get("main_client") or "",
+                        charged=False,
+                        amount_charged=0.0,
+                        amount_pending=0.0,
+                        comment=main_note or r.get("main_remark") or "",
+                    )
+                    st.success("Marked as no-show and removed from arrivals.")
+                    st.rerun()
 
 
 def page_inhouse_list():
@@ -1234,38 +1782,81 @@ def page_inhouse_list():
     
     if not inhouse_rows:
         st.info("No guests scheduled for this date.")
-    else:
-        # Build clean DataFrame with proper column names
-        df_inhouse = pd.DataFrame([{
+        return
+
+    # Build DataFrame with reservation_id for updating mealplan
+    df_inhouse = pd.DataFrame([
+        {
+            "reservation_id": r["id"],          # r.reservationid AS id in get_inhouse [file:1]
             "Room": r["room_number"],
             "Guest Name": r["guest_name"],
             "Status": r["status"],
             "Arrival": r["checkin_planned"],
             "Departure": r["checkout_planned"],
-            "Meal Plan": r["breakfast_code"] if r["breakfast_code"] else "",
+            "Meal Plan": r.get("meal_plan") or r.get("breakfast_code") or "",
             "Parking": r["parking_space"] if r["parking_space"] else "",
-            "Notes": r["comment"] if r["comment"] else ""
-        } for r in inhouse_rows])
-        df_inhouse = clean_numeric_columns(df_inhouse, ["Room"])
-        st.dataframe(df_inhouse, use_container_width=True, hide_index=True)
-        st.caption(f"{len(df_inhouse)} guests in-house")
-        
-        # Cancel check-in section
-        checked_in_guests = [dict(r) for r in inhouse_rows if r["status"] == "CHECKED_IN"]
-        
-        if checked_in_guests:
-            st.divider()
-            st.subheader("Cancel check-in")
-            for idx, guest in enumerate(checked_in_guests, 1):
-                col1, col2 = st.columns([4, 1])
-                col1.write(f"**{idx}.** Room {guest['room_number']} - {guest['guest_name']}")
-                if col2.button("Cancel", key=f"cancel_{idx}_{guest['id']}", use_container_width=True):
-                    success, msg = db.cancel_checkin(guest["stay_id"])
-                    if success:
-                        st.success(msg)
-                        st.rerun()
-                    else:
-                        st.error(msg)
+            "Notes": " | ".join(
+                part
+                for part in [
+                    r.get("main_remark") or "",
+                    r.get("total_remarks") or "",
+                    r.get("comment") or "",
+                ]
+                if part
+            ),
+        }
+        for r in inhouse_rows
+    ])
+
+    df_inhouse = clean_numeric_columns(df_inhouse, ["reservation_id", "Room"])
+
+    st.subheader("In-house guests")
+
+    edited_df = st.data_editor(
+        df_inhouse,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "reservation_id": st.column_config.NumberColumn("reservation_id", disabled=True),
+            "Room": st.column_config.TextColumn("Room", disabled=True),
+            "Guest Name": st.column_config.TextColumn("Guest Name", disabled=True),
+            "Status": st.column_config.TextColumn("Status", disabled=True),
+            "Arrival": st.column_config.TextColumn("Arrival", disabled=True),
+            "Departure": st.column_config.TextColumn("Departure", disabled=True),
+            "Meal Plan": st.column_config.TextColumn(
+                "Meal Plan",
+                help="Change to BB / HB / RO+BB etc. to control breakfast eligibility",
+            ),
+            "Parking": st.column_config.TextColumn("Parking", disabled=True),
+            "Notes": st.column_config.TextColumn("Notes", disabled=True),
+        },
+    )
+
+    if st.button("Save meal plans", type="primary", use_container_width=True):
+        for _, row in edited_df.iterrows():
+            reservation_id = int(row["reservation_id"])
+            mealplan = row["Meal Plan"] or ""
+            db.update_reservation_mealplan(reservation_id, mealplan)
+        st.success("Meal plans updated.")
+        st.rerun()
+
+    # Cancel check-in section (unchanged)
+    checked_in_guests = [dict(r) for r in inhouse_rows if r["status"] == "CHECKED_IN"]
+    
+    if checked_in_guests:
+        st.divider()
+        st.subheader("Cancel check-in")
+        for idx, guest in enumerate(checked_in_guests, 1):
+            col1, col2 = st.columns([4, 1])
+            col1.write(f"**{idx}.** Room {guest['room_number']} - {guest['guest_name']}")
+            if col2.button("Cancel", key=f"cancel_{idx}_{guest['stay_id']}", use_container_width=True):
+                success, msg = db.cancel_checkin(guest["stay_id"])
+                if success:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
 
 def page_checkout_list():
     st.header("Check-out List")
@@ -1369,13 +1960,37 @@ def page_tasks_handover():
         else:
             st.error("Handover title required.")
 
-    st.subheader("Handover for this date")
+        st.subheader("Handover for this date")
     rows = db.get_tasks_for_date(d)
     df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
     if df.empty:
         st.info("No Handovers.")
     else:
-        st.dataframe(df[["task_date", "title", "created_by", "assigned_to", "comment"]],hide_index=True)
+        df_edit = st.data_editor(
+            df[["id", "task_date", "title", "created_by", "assigned_to", "comment"]],
+            hide_index=True,
+            disabled=["id", "task_date"],
+            use_container_width=True,
+        )
+
+        if st.button("Save changes", type="primary"):
+            for _, row in df_edit.iterrows():
+                db.execute(
+                    """
+                    UPDATE tasks
+                    SET title = ?, created_by = ?, assigned_to = ?, comment = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        row["title"],
+                        row["created_by"],
+                        row["assigned_to"],
+                        row["comment"],
+                        row["id"],
+                    ),
+                )
+            st.success("Handover updated.")
+            st.rerun()
 
 
 def page_no_shows():
@@ -1479,16 +2094,9 @@ def page_search():
     like_pattern = f"%{q}%"
     
     if search_type == "Room Number":
-        # Exact or partial room match
-        rows = db.fetch_all(
-            """
-            SELECT * FROM reservations
-            WHERE room_number LIKE ?
-            ORDER BY arrival_date DESC
-            LIMIT 500
-            """,
-            (like_pattern,),
-        )
+        room_number = q.strip()
+        rows = db.search_reservations_by_room_number(room_number)
+
     elif search_type == "Guest Name":
         rows = db.fetch_all(
             """
@@ -1596,21 +2204,41 @@ def page_search():
 
 def page_room_list():
     st.header("Room List")
-    st.caption("Manage room inventory and twin flags")
-    
+    st.caption("Manage room inventory and room status (CLEAN / DIRTY / VACANT / OCCUPIED)")
+
     df = db.read_table("rooms")
     if df.empty:
         st.info("No rooms yet (should have been seeded).")
         return
-    
-    st.subheader("Rooms")
-    
-    # Display only room_number and status
+
     df_display = df[["room_number", "status"]].copy()
-    df_display = df_display.sort_values(by="room_number", key=lambda s: pd.to_numeric(s, errors='coerce'))
+    df_display = df_display.sort_values(
+        by="room_number", key=lambda s: pd.to_numeric(s, errors="coerce")
+    )
     df_display.columns = ["Room", "Status"]
-    
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    st.subheader("Rooms")
+
+    edited = st.data_editor(
+        df_display,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Status": st.column_config.SelectboxColumn(
+                "Status",
+                options=["VACANT", "OCCUPIED", "CLEAN", "DIRTY"],
+            )
+        },
+    )
+
+    if st.button("Save room statuses", type="primary", use_container_width=True):
+        for _, row in edited.iterrows():
+            rn = str(row["Room"]).strip()
+            status = row["Status"]
+            db.set_room_status(rn, status)
+        st.success("Room statuses updated.")
+        st.rerun()
+
     st.caption(f"Total: {len(df)} rooms")
 
 
@@ -1796,7 +2424,1037 @@ def page_db_viewer():
             type="primary"
         )
         st.success(f"Database size: {len(backup_data)/1024:.1f} KB")
+        
+def page_invoices():
+    """
+    Invoice generation page matching exact Excel template format.
+    Features:
+    - Auto-increment invoice number (starting 254000)
+    - Date selector with guest dropdown
+    - Multiple line items (multi-day stays)
+    - PDF export
+    """
+    st.header("📋 Invoice Generation")
     
+    # Get next invoice number
+    next_inv = db.get_next_invoice_number()
+    
+    col1, col2 = st.columns([3, .5], gap="large")
+    
+    with col1:
+        st.subheader("Invoice Details")
+        
+        # Invoice Number (auto-increment)
+        invoice_no = st.number_input(
+            "Invoice Number",
+            value=next_inv,
+            step=1,
+            min_value=254000,
+            format="%d"
+        )
+        
+        # Invoice Date
+        invoice_date = st.date_input("Invoice Date")
+        
+        st.divider()
+        st.write("**Guest Information**")
+        
+        # Date-based guest selection
+        guests_for_date = db.get_guests_for_date(invoice_date)
+        guest_options = [f"{g['guest_name']} (Room {g['room_number']})" for g in guests_for_date]
+        
+        if not guest_options:
+            st.warning("No guests for this date. Please select another date.")
+            return
+        
+        selected_guest_str = st.selectbox(
+            "Select Guest",
+            guest_options,
+            key="guest_selector"
+        )
+        
+        # Extract guest name from selection
+        selected_guest_name = selected_guest_str.split(" (Room")[0]
+        
+        # Get full reservation data
+        res_data = db.get_reservation_by_guest_and_date(selected_guest_name, invoice_date)
+        
+        if res_data:
+            guest_name = res_data.get("guest_name", "")
+            room_no = res_data.get("room_number", "")
+            reservation_id = res_data.get("id", "")
+        else:
+            st.error("Could not load guest data.")
+            return
+        
+        # Display selected guest info
+        st.info(f"✓ Selected: {guest_name} | Room: {room_no}")
+        
+        st.divider()
+        st.write("**Billing Information**")
+        
+        # Line items approach - multiple dates for multi-day stays
+        st.write("**Add Line Items**")
+
+        # NEW: tax box
+        tax_rate = st.number_input(
+            "VAT rate (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=20.0,
+            step=0.5,
+            key="invoice_tax_rate",
+        )
+        tax_factor = 1 + (tax_rate / 100.0)
+
+        
+        col_date, col_qty, col_price = st.columns(3)
+        with col_date:
+            line_date = st.date_input("Item Date", value=invoice_date, key="line_date")
+        with col_qty:
+            line_qty = st.number_input("Qty", value=1, min_value=1, step=1, key="line_qty")
+        with col_price:
+            line_price = st.number_input("Price per Unit (£)", value=119.00, step=0.01, key="line_price")
+        
+        line_desc = st.text_input(
+            "Description",
+            value="Bed and Breakfast",
+            key="line_desc"
+        )
+        
+        # Initialize session state for line items if not exists
+        if "invoice_items" not in st.session_state:
+            st.session_state.invoice_items = []
+        
+        col_add, col_clear = st.columns(2)
+        with col_add:
+            if st.button("+ Add Item", use_container_width=True):
+                # use selected VAT rate
+                net_price = line_price / tax_factor
+                vat = line_price - net_price
+                st.session_state.invoice_items.append({
+                    "date": line_date,
+                    "qty": line_qty,
+                    "price_per_unit": line_price,
+                    "description": line_desc,
+                    "net_price": net_price,
+                    "vat": vat,
+                    "total": line_price
+                })
+                st.rerun()
+        
+        with col_clear:
+            if st.button("Clear All", use_container_width=True):
+                st.session_state.invoice_items = []
+                st.rerun()
+        
+        # Show added items
+        if st.session_state.invoice_items:
+            st.divider()
+            st.write("**Line Items Added:**")
+            for idx, item in enumerate(st.session_state.invoice_items):
+                col_remove, col_info = st.columns([0.5, 3])
+                with col_remove:
+                    if st.button("❌", key=f"remove_{idx}", use_container_width=True):
+                        st.session_state.invoice_items.pop(idx)
+                        st.rerun()
+                with col_info:
+                    st.caption(f"{item['date']} - {item['description']} - £{item['total']:.2f}")
+            
+            # Calculate totals
+            total_net = sum(item['net_price'] for item in st.session_state.invoice_items)
+            total_vat = sum(item['vat'] for item in st.session_state.invoice_items)
+            total_amount = sum(item['total'] for item in st.session_state.invoice_items)
+            
+            st.divider()
+            st.metric("Total Amount", f"£{total_amount:.2f}")
+            
+            # PDF Export button
+            if st.button("📥 Download as PDF", use_container_width=True, type="primary"):
+                pdf_bytes = generate_invoice_pdf(
+                    invoice_no=invoice_no,
+                    invoice_date=invoice_date,
+                    guest_name=guest_name,
+                    room_no=room_no,
+                    items=st.session_state.invoice_items,
+                    total_net=total_net,
+                    total_vat=total_vat,
+                    total_amount=total_amount
+                )
+                
+                st.download_button(
+                    "⬇️ Click to Download PDF",
+                    data=pdf_bytes,
+                    file_name=f"Invoice_{invoice_no}_{guest_name}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+        else:
+            st.warning("⚠️ Add at least one line item to generate invoice")
+
+
+def render_exact_invoice_preview(invoice_no, invoice_date, guest_name, room_no, 
+                                 items, total_net, total_vat, total_amount):
+    """
+    Render invoice preview in EXACT Excel template format.
+    NO HTML code visible - pure formatted display.
+    """
+    
+    # Create HTML that matches Excel layout exactly
+    items_html = ""
+    for item in items:
+        items_html += f"""
+        <tr style="border: 1px solid #ccc; height: 20px;">
+            <td style="padding: 1px; border: 1px solid #ccc; width: 15%; font-size: 12px;">{item['date'].strftime('%d/%m/%Y')}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: center; width: 8%; font-size: 12px;">{item['qty']}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: right; width: 15%; font-size: 12px;">£ {item['price_per_unit']:>9.2f}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; width: 25%; font-size: 12px;">{item['description']}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: right; width: 12%; font-size: 12px;">£ {item['net_price']:>9.2f}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: right; width: 12%; font-size: 12px;">£ {item['vat']:>9.2f}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: right; width: 13%; font-size: 12px; font-weight: bold;">£ {item['total']:>9.2f}</td>
+        </tr>
+        """
+    
+    html = f"""
+    <style>
+        .invoice-container {{ font-family: 'Arial', sans-serif; background: white; padding: 30px; line-height: 1.4; }}
+        .header-title {{ font-size: 18px; font-weight: bold; color: #333; margin-bottom: 20px; }}
+        .section-label {{ font-size: 11px; font-weight: bold; margin-top: 15px; margin-bottom: 8px; }}
+        .guest-info {{ font-size: 11px; line-height: 1.6; margin-bottom: 20px; }}
+        .invoice-meta {{ display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 20px; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; }}
+        th {{ background-color: #f0f0f0; border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: bold; font-size: 11px; }}
+        td {{ border: 1px solid #ccc; padding: 8px; }}
+        .totals-section {{ background-color: #f9f9f9; padding: 15px; margin-bottom: 15px; border: 1px solid #ccc; }}
+        .total-row {{ display: flex; justify-content: space-between; font-size: 12px; padding: 8px 0; border-bottom: 1px solid #ddd; }}
+        .total-row-bold {{ display: flex; justify-content: space-between; font-size: 12px; padding: 8px 0; font-weight: bold; background-color: #003366; color: white; padding: 12px; }}
+        .vat-breakdown {{ background-color: #f0f0f0; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; }}
+        .vat-row {{ display: flex; justify-content: space-between; font-size: 11px; padding: 6px 0; }}
+        .payment-section {{ font-size: 10px; line-height: 1.8; }}
+        .bank-table {{ width: 100%; font-size: 10px; margin: 10px 0; }}
+        .bank-table td {{ border: none; padding: 4px 0; }}
+    </style>
+    
+    <div class="invoice-container">
+        
+        <!-- Header -->
+        <div class="header-title">INVOICE</div>
+        
+        <!-- Supplier Section -->
+        <div class="section-label">Supplier</div>
+        <div class="guest-info" style="margin-left: 20px;">
+            <strong>St Wulfstan ltd</strong><br>
+            T/A Radisson BLU Hotel, Bristol<br>
+            Broad Quay<br>
+            Bristol<br>
+            BS1 4BY
+        </div>
+        
+        <!-- Invoice To Section -->
+        <div class="section-label">Invoice to:</div>
+        <div class="guest-info" style="margin-left: 20px;">
+            <strong>{guest_name}</strong><br>
+            Room {room_no}
+        </div>
+        
+        <!-- Invoice Meta -->
+        <div class="invoice-meta">
+        Invoice number:
+            <div>
+                <strong>{invoice_no}</strong>
+            </div>
+            <div>
+                <span class="section-label">Date :</span>
+                <strong>{invoice_date.strftime('%d/%m/%Y')}</strong>
+            </div>
+        </div>
+        
+        <!-- Items Table -->
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 15%;">Date</th>
+                    <th style="width: 8%; text-align: center;">Qty</th>
+                    <th style="width: 15%; text-align: right;">Price Gross per Unit</th>
+                    <th style="width: 25%;">Description</th>
+                    <th style="width: 12%; text-align: right;">Net Price</th>
+                    <th style="width: 12%; text-align: right;">VAT</th>
+                    <th style="width: 13%; text-align: right;">Total Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+                <tr style="border: 1px solid #ccc; background-color: #f9f9f9; font-weight: bold; height: 22px;">
+                    <td colspan="4" style="border: 1px solid #ccc; text-align: right; padding: 8px;">Total</td>
+                    <td style="border: 1px solid #ccc; text-align: right; padding: 8px;">£ {total_net:>9.2f}</td>
+                    <td style="border: 1px solid #ccc; text-align: right; padding: 8px;">£ {total_vat:>9.2f}</td>
+                    <td style="border: 1px solid #ccc; text-align: right; padding: 8px;">£ {total_amount:>9.2f}</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <!-- VAT Breakdown -->
+        <div class="vat-breakdown">
+            <div class="section-label" style="margin-top: 0;">VAT Breakdown</div>
+            <div class="vat-row">
+                <span>Vatable Amount (excl VAT)</span>
+                <span>£ {total_net:>15.2f}</span>
+            </div>
+            <div class="vat-row">
+                <span>Non Vatable Amount</span>
+                <span>£ {0:>15.2f}</span>
+            </div>
+            <div class="vat-row" style="font-weight: bold; border-top: 1px solid #ccc; padding-top: 8px;">
+                <span>VAT @ 20.00%</span>
+                <span>£ {total_vat:>15.2f}</span>
+            </div>
+            <div class="vat-row" style="font-weight: bold; background-color: #003366; color: white; margin-top: 8px; padding: 8px; margin-left: -12px; margin-right: -12px; margin-bottom: -12px;">
+                <span>TOTAL BILL</span>
+                <span>£ {total_amount:>15.2f}</span>
+            </div>
+        </div>
+        
+        <!-- Payment Details -->
+        <div class="payment-section">
+            <p><strong>Please pay to St Wulfstan LTD "Radisson BLU Hotel Bristol" account</strong></p>
+            
+            <p style="margin-top: 12px;"><strong>Our bank account details for CHAPS and BACS payments are:</strong></p>
+            
+            <table class="bank-table">
+                <tr>
+                    <td style="width: 30%;"><strong>Account name:</strong></td>
+                    <td>St Wulfstan ltd</td>
+                </tr>
+                <tr>
+                    <td><strong>Account number:</strong></td>
+                    <td>36744760</td>
+                    <td style="padding-left: 40px;"><strong>Sort code:</strong></td>
+                    <td>30-65-41</td>
+                </tr>
+                <tr>
+                    <td><strong>IBAN Code:</strong></td>
+                    <td colspan="3">GB98 LOYD 3065 4136 7447 60</td>
+                </tr>
+                <tr>
+                    <td><strong>BIC Code:</strong></td>
+                    <td colspan="3">LOYDGB21682</td>
+                </tr>
+            </table>
+            
+            <div style="border-top: 1px solid #ccc; padding-top: 8px; margin-top: 8px; font-size: 9px;">
+                <p style="margin: 4px 0;">Company Reg. No: 6824436</p>
+                <p style="margin: 4px 0;">VAT Reg. No: 979243179</p>
+            </div>
+        </div>
+        
+    </div>
+    """
+    
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def generate_invoice_pdf(invoice_no, invoice_date, guest_name, room_no, 
+                        items, total_net, total_vat, total_amount):
+    """
+    Generate PDF invoice matching exact Excel template format.
+    Uses reportlab for PDF generation.
+    """
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import cm, mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+        from reportlab.lib import colors
+        
+        buffer = BytesIO()
+        
+        # Create PDF
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=15*mm, bottomMargin=15*mm, 
+                               leftMargin=15*mm, rightMargin=15*mm)
+        
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#003366'),
+            spaceAfter=6,
+            alignment=TA_CENTER
+        )
+        
+        label_style = ParagraphStyle(
+            'Label',
+            parent=styles['Normal'],
+            fontSize=10,
+            fontName='Helvetica-Bold',
+            spaceAfter=4
+        )
+        
+        # Title
+        title = Paragraph("INVOICE", title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Supplier
+        supplier = Paragraph("<b>Supplier</b>", label_style)
+        elements.append(supplier)
+        supplier_text = Paragraph(
+            "St Wulfstan ltd<br/>T/A Radisson BLU Hotel, Bristol<br/>"
+            "Broad Quay<br/>Bristol<br/>BS1 4BY",
+            styles['Normal']
+        )
+        elements.append(supplier_text)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Invoice To
+        inv_to = Paragraph("<b>Invoice to:</b>", label_style)
+        elements.append(inv_to)
+        inv_to_text = Paragraph(
+            f"<b>{guest_name}</b><br/>Room {room_no}",
+            styles['Normal']
+        )
+        elements.append(inv_to_text)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Invoice Meta
+                # Invoice Meta
+        meta_data = [
+            [
+                Paragraph(f"<b>Invoice number :</b><br/>{invoice_no}", styles['Normal']),
+                Paragraph(f"<b>Date :</b><br/>{invoice_date.strftime('%d/%m/%Y')}", styles['Normal'])
+            ]
+        ]
+        meta_table = Table(meta_data, colWidths=[9.5*cm, 6.5*cm])
+        meta_table.setStyle(TableStyle([
+            ('ALIGN', (-1, 0), (0, -1), 'LEFT'),    # left cell (invoice no)
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),    # date cell, still left-aligned
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+
+        elements.append(meta_table)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Items Table Data
+        table_data = [
+            ['Date', 'Qty', 'Price Gross per Unit', 'Description', 'Net Price', 'VAT', 'Total Price']
+        ]
+        
+        for item in items:
+            table_data.append([
+                item['date'].strftime('%d/%m/%Y'),
+                str(item['qty']),
+                f"£ {item['price_per_unit']:.2f}",
+                item['description'],
+                f"£ {item['net_price']:.2f}",
+                f"£ {item['vat']:.2f}",
+                f"£ {item['total']:.2f}"
+            ])
+        
+        # Add totals row
+        table_data.append([
+            '', '', '', 'Total',
+            f"£ {total_net:.2f}",
+            f"£ {total_vat:.2f}",
+            f"£ {total_amount:.2f}"
+        ])
+        
+        # Create table
+                # Create table
+        items_table = Table(
+            table_data,
+            colWidths=[
+                2.2*cm,   # Date  (slightly wider, but not huge)
+                1.0*cm,   # Qty
+                3.0*cm,   # Price Gross per Unit
+                5.0*cm,   # Description
+                2.2*cm,   # Net Price
+                2.2*cm,   # VAT
+                2.4*cm,   # Total Price
+            ],
+        )
+        items_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            # Left-align first 4 columns, right-align numeric ones
+            ('ALIGN', (0, 0), (3, -1), 'LEFT'),
+            ('ALIGN', (4, 0), (-1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f9f9f9')),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            # Slightly reduce side padding so text doesn’t crowd into next column
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ]))
+
+        elements.append(items_table)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # VAT Breakdown
+        vat_header = Paragraph("<b>VAT Breakdown</b>", label_style)
+        elements.append(vat_header)
+        
+        vat_data = [
+            [Paragraph("Vatable Amount (excl VAT)", styles['Normal']), Paragraph(f"£ {total_net:.2f}", styles['Normal'])],
+            [Paragraph("Non Vatable Amount", styles['Normal']), Paragraph(f"£ 0.00", styles['Normal'])],
+            [Paragraph("<b>VAT @ 20.00%</b>", styles['Normal']), Paragraph(f"<b>£ {total_vat:.2f}</b>", styles['Normal'])],
+            [Paragraph("<b>TOTAL BILL</b>", ParagraphStyle('Bold', parent=styles['Normal'], textColor=colors.white, fontName='Helvetica-Bold')), 
+             Paragraph(f"<b>£ {total_amount:.2f}</b>", ParagraphStyle('Bold', parent=styles['Normal'], textColor=colors.white, fontName='Helvetica-Bold'))]
+        ]
+        
+        vat_table = Table(vat_data, colWidths=[12*cm, 3*cm])
+        vat_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ROWBACKGROUNDS', (0, 0), (-1, 2), [colors.white, colors.white, colors.white]),
+            ('BACKGROUND', (0, 3), (-1, 3), colors.HexColor('#003366')),
+            ('TEXTCOLOR', (0, 3), (-1, 3), colors.white),
+            ('PADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(vat_table)
+        elements.append(Spacer(1, 0.5*cm))
+        
+        # Payment Details
+        payment_header = Paragraph("<b>Please pay to St Wulfstan LTD \"Radisson BLU Hotel Bristol\" account</b>", 
+                                 ParagraphStyle('PaymentHeader', parent=styles['Normal'], fontSize=9, spaceAfter=6))
+        elements.append(payment_header)
+        
+        bank_header = Paragraph("<b>Our bank account details for CHAPS and BACS payments are:</b>", 
+                              ParagraphStyle('BankHeader', parent=styles['Normal'], fontSize=9, spaceAfter=6))
+        elements.append(bank_header)
+        
+        bank_data = [
+            [Paragraph("<b>Account name:</b>", styles['Normal']), "St Wulfstan ltd"],
+            [Paragraph("<b>Account number:</b>", styles['Normal']), "36744760", Paragraph("<b>Sort code:</b>", styles['Normal']), "30-65-41"],
+            [Paragraph("<b>IBAN Code:</b>", styles['Normal']), "GB98 LOYD 3065 4136 7447 60"],
+            [Paragraph("<b>BIC Code:</b>", styles['Normal']), "LOYDGB21682"],
+        ]
+        
+        bank_table = Table(bank_data)
+        bank_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('PADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(bank_table)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Company Info
+        company_info = Paragraph(
+            "Company Reg. No: 6824436<br/>VAT Reg. No: 979243179",
+            ParagraphStyle('CompanyInfo', parent=styles['Normal'], fontSize=8)
+        )
+        elements.append(company_info)
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer.getvalue()
+        
+    except ImportError:
+        st.error("⚠️ reportlab not installed. Install with: pip install reportlab")
+        return None
+    except Exception as e:
+        st.error(f"⚠️ Error generating PDF: {str(e)}")
+        return None
+
+# def render_invoice_preview(invoice_no, invoice_date, guest_name, room_no, 
+#                           net_amount, tax_rate, tax_amount, total_amount, 
+#                           service_desc, quantity):
+#     """
+#     Display invoice in Streamlit using styled HTML/CSS
+#     Matches Radisson BLU template format
+#     """
+    
+#     # Radisson BLU styling
+#     html_content = f"""
+#     <div style="background: white; padding: 40px; font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; border: 1px solid #ddd;">
+        
+#         <!-- Header -->
+#         <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #003366; padding-bottom: 20px;">
+#             <h1 style="color: #003366; margin: 0; font-size: 28px;">INVOICE</h1>
+#             <p style="color: #666; margin: 5px 0; font-size: 12px;">Radisson BLU Hotel, Bristol</p>
+#         </div>
+        
+#         <!-- Invoice To Section -->
+#         <div style="margin-bottom: 30px;">
+#             <div style="font-weight: bold; margin-bottom: 5px;">Invoice to:</div>
+#             <div style="margin-left: 20px; line-height: 1.8;">
+#                 <div><strong>{guest_name}</strong></div>
+#                 <div>Room: {room_no}</div>
+#                 <div style="margin-top: 15px; font-size: 12px; color: #666;">
+#                     <div>St Wulfstan ltd</div>
+#                     <div>T/A Radisson BLU Hotel, Bristol</div>
+#                     <div>Broad Quay</div>
+#                     <div>Bristol</div>
+#                     <div>BS1 4BY</div>
+#                 </div>
+#             </div>
+#         </div>
+        
+#         <!-- Invoice Details -->
+#         <div style="display: flex; justify-content: space-between; margin-bottom: 30px; font-size: 14px;">
+#             <div>
+#                 <div style="color: #666;">Invoice number:</div>
+#                 <div style="font-weight: bold; font-size: 16px;">{invoice_no}</div>
+#             </div>
+#             <div>
+#                 <div style="color: #666;">Date:</div>
+#                 <div style="font-weight: bold; font-size: 16px;">{invoice_date.strftime('%d %b %Y')}</div>
+#             </div>
+#         </div>
+        
+#         <!-- Items Table -->
+#         <div style="margin-bottom: 30px;">
+#             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+#                 <thead>
+#                     <tr style="background-color: #f0f0f0; border: 1px solid #ccc;">
+#                         <th style="padding: 10px; text-align: left; border: 1px solid #ccc;">Date</th>
+#                         <th style="padding: 10px; text-align: center; border: 1px solid #ccc;">Qty</th>
+#                         <th style="padding: 10px; text-align: right; border: 1px solid #ccc;">Price per Unit</th>
+#                         <th style="padding: 10px; text-align: left; border: 1px solid #ccc;">Description</th>
+#                         <th style="padding: 10px; text-align: right; border: 1px solid #ccc;">Net Price</th>
+#                         <th style="padding: 10px; text-align: right; border: 1px solid #ccc;">VAT</th>
+#                         <th style="padding: 10px; text-align: right; border: 1px solid #ccc;">Total</th>
+#                     </tr>
+#                 </thead>
+#                 <tbody>
+#                     <tr style="border: 1px solid #ccc;">
+#                         <td style="padding: 10px; border: 1px solid #ccc;">{invoice_date.strftime('%Y-%m-%d')}</td>
+#                         <td style="padding: 10px; text-align: center; border: 1px solid #ccc;">{quantity}</td>
+#                         <td style="padding: 10px; text-align: right; border: 1px solid #ccc;">£{(net_amount/quantity):.2f}</td>
+#                         <td style="padding: 10px; border: 1px solid #ccc;">{service_desc}</td>
+#                         <td style="padding: 10px; text-align: right; border: 1px solid #ccc;">£{net_amount:.2f}</td>
+#                         <td style="padding: 10px; text-align: right; border: 1px solid #ccc;">£{tax_amount:.2f}</td>
+#                         <td style="padding: 10px; text-align: right; border: 1px solid #ccc; font-weight: bold;">£{(net_amount + tax_amount):.2f}</td>
+#                     </tr>
+#                 </tbody>
+#             </table>
+#         </div>
+        
+#         <!-- Totals Section -->
+#         <div style="background-color: #f9f9f9; padding: 20px; border: 1px solid #ccc; margin-bottom: 30px;">
+#             <table style="width: 100%; font-size: 14px;">
+#                 <tr>
+#                     <td style="text-align: right; padding: 8px; width: 50%;">Subtotal (Net):</td>
+#                     <td style="text-align: right; padding: 8px; font-weight: bold;">£{net_amount:.2f}</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="text-align: right; padding: 8px;">VAT @ {tax_rate}%:</td>
+#                     <td style="text-align: right; padding: 8px; font-weight: bold;">£{tax_amount:.2f}</td>
+#                 </tr>
+#                 <tr style="background-color: #003366; color: white; font-size: 16px;">
+#                     <td style="text-align: right; padding: 12px; font-weight: bold;">TOTAL BILL:</td>
+#                     <td style="text-align: right; padding: 12px; font-weight: bold;">£{total_amount:.2f}</td>
+#                 </tr>
+#             </table>
+#         </div>
+        
+#         <!-- VAT Breakdown -->
+#         <div style="background-color: #f0f0f0; padding: 15px; border: 1px solid #ccc; margin-bottom: 20px; font-size: 13px;">
+#             <div style="font-weight: bold; margin-bottom: 10px;">VAT Breakdown</div>
+#             <table style="width: 100%; font-size: 12px;">
+#                 <tr>
+#                     <td style="padding: 5px;">Vatable Amount (excl VAT):</td>
+#                     <td style="text-align: right; padding: 5px;">£{net_amount:.2f}</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="padding: 5px;">Non Vatable Amount:</td>
+#                     <td style="text-align: right; padding: 5px;">£0.00</td>
+#                 </tr>
+#                 <tr style="font-weight: bold;">
+#                     <td style="padding: 5px;">VAT @ {tax_rate}%:</td>
+#                     <td style="text-align: right; padding: 5px;">£{tax_amount:.2f}</td>
+#                 </tr>
+#             </table>
+#         </div>
+        
+#         <!-- Payment Details -->
+#         <div style="font-size: 12px; line-height: 1.6; color: #333;">
+#             <p style="margin: 10px 0; font-weight: bold;">Please pay to St Wulfstan LTD "Radisson BLU Hotel Bristol" account</p>
+            
+#             <p style="margin: 15px 0; font-weight: bold;">Our bank account details for CHAPS and BACS payments are:</p>
+            
+#             <table style="font-size: 12px; width: 100%; margin-bottom: 15px;">
+#                 <tr>
+#                     <td style="padding: 5px; width: 40%; font-weight: bold;">Account name:</td>
+#                     <td style="padding: 5px;">St Wulfstan ltd</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="padding: 5px; font-weight: bold;">Account number:</td>
+#                     <td style="padding: 5px;">36744760</td>
+#                     <td style="padding: 5px; font-weight: bold;">Sort code:</td>
+#                     <td style="padding: 5px;">30-65-41</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="padding: 5px; font-weight: bold;">IBAN Code:</td>
+#                     <td colspan="3" style="padding: 5px;">GB98 LOYD 3065 4136 7447 60</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="padding: 5px; font-weight: bold;">BIC Code:</td>
+#                     <td colspan="3" style="padding: 5px;">LOYDGB21682</td>
+#                 </tr>
+#             </table>
+            
+#             <div style="border-top: 1px solid #ccc; padding-top: 10px; margin-top: 10px;">
+#                 <div>Company Reg. No: 6824436</div>
+#                 <div>VAT Reg. No: 979243179</div>
+#             </div>
+#         </div>
+        
+#     </div>
+#     """
+    
+#     st.markdown(html_content, unsafe_allow_html=True)
+
+
+def generate_invoice_html(invoice_no, invoice_date, guest_name, room_no, 
+                         net_amount, tax_rate, tax_amount, total_amount, 
+                         service_desc, quantity):
+    """
+    Generate complete printable HTML invoice with all styling
+    """
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Invoice {invoice_no}</title>
+        <style>
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            
+            body {{
+                font-family: Arial, sans-serif;
+                background: #f5f5f5;
+                padding: 20px;
+            }}
+            
+            .invoice-container {{
+                background: white;
+                padding: 50px;
+                max-width: 900px;
+                margin: 0 auto;
+                box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            }}
+            
+            .header {{
+                text-align: center;
+                margin-bottom: 40px;
+                border-bottom: 3px solid #003366;
+                padding-bottom: 20px;
+            }}
+            
+            .header h1 {{
+                color: #003366;
+                font-size: 32px;
+                margin-bottom: 5px;
+            }}
+            
+            .header p {{
+                color: #666;
+                font-size: 12px;
+            }}
+            
+            .invoice-to {{
+                margin-bottom: 30px;
+            }}
+            
+            .invoice-to label {{
+                font-weight: bold;
+                display: block;
+                margin-bottom: 8px;
+            }}
+            
+            .invoice-to-content {{
+                margin-left: 20px;
+                line-height: 1.8;
+            }}
+            
+            .invoice-to-content strong {{
+                display: block;
+                font-size: 14px;
+            }}
+            
+            .company-details {{
+                font-size: 11px;
+                color: #666;
+                margin-top: 10px;
+            }}
+            
+            .invoice-meta {{
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 30px;
+                font-size: 13px;
+            }}
+            
+            .invoice-meta div {{
+                color: #666;
+            }}
+            
+            .invoice-meta strong {{
+                display: block;
+                font-size: 16px;
+                color: #333;
+                margin-top: 3px;
+            }}
+            
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+                font-size: 13px;
+            }}
+            
+            thead {{
+                background-color: #f0f0f0;
+            }}
+            
+            th, td {{
+                border: 1px solid #ccc;
+                padding: 12px;
+                text-align: left;
+            }}
+            
+            th {{
+                font-weight: bold;
+                background-color: #f0f0f0;
+            }}
+            
+            td.number {{
+                text-align: right;
+            }}
+            
+            .totals {{
+                background-color: #f9f9f9;
+                padding: 20px;
+                border: 1px solid #ccc;
+                margin-bottom: 20px;
+            }}
+            
+            .totals-table {{
+                width: 100%;
+                font-size: 13px;
+            }}
+            
+            .totals-table tr {{
+                border: none;
+            }}
+            
+            .totals-table td {{
+                border: none;
+                padding: 8px;
+            }}
+            
+            .totals-table td:first-child {{
+                text-align: right;
+                width: 60%;
+            }}
+            
+            .totals-table td:last-child {{
+                text-align: right;
+                font-weight: bold;
+            }}
+            
+            .total-row {{
+                background-color: #003366 !important;
+                color: white !important;
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            
+            .vat-breakdown {{
+                background-color: #f0f0f0;
+                padding: 15px;
+                border: 1px solid #ccc;
+                margin-bottom: 20px;
+                font-size: 12px;
+            }}
+            
+            .vat-breakdown h4 {{
+                font-weight: bold;
+                margin-bottom: 10px;
+                font-size: 13px;
+            }}
+            
+            .payment-details {{
+                font-size: 11px;
+                line-height: 1.6;
+                color: #333;
+            }}
+            
+            .payment-details p {{
+                margin: 10px 0;
+            }}
+            
+            .payment-details strong {{
+                font-weight: bold;
+            }}
+            
+            .bank-details {{
+                font-size: 11px;
+                margin: 15px 0;
+            }}
+            
+            .company-reg {{
+                border-top: 1px solid #ccc;
+                padding-top: 10px;
+                margin-top: 10px;
+                font-size: 11px;
+            }}
+            
+            @media print {{
+                body {{
+                    background: white;
+                    padding: 0;
+                }}
+                .invoice-container {{
+                    box-shadow: none;
+                    max-width: 100%;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="invoice-container">
+            
+            <!-- Header -->
+            <div class="header">
+                <h1>INVOICE</h1>
+                <p>Radisson BLU Hotel, Bristol</p>
+            </div>
+            
+            <!-- Invoice To -->
+            <div class="invoice-to">
+                <label>Invoice to:</label>
+                <div class="invoice-to-content">
+                    <strong>{guest_name}</strong>
+                    <div>Room: {room_no}</div>
+                    <div class="company-details">
+                        <div>St Wulfstan ltd</div>
+                        <div>T/A Radisson BLU Hotel, Bristol</div>
+                        <div>Broad Quay</div>
+                        <div>Bristol</div>
+                        <div>BS1 4BY</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Invoice Meta -->
+            <div class="invoice-meta">
+                <div>
+                    Invoice number:
+                    <strong>{invoice_no}</strong>
+                </div>
+                <div>
+                    Date:
+                    <strong>{invoice_date.strftime('%d %b %Y')}</strong>
+                </div>
+            </div>
+            
+            <!-- Items Table -->
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th style="text-align: center;">Qty</th>
+                        <th style="text-align: right;">Price per Unit</th>
+                        <th>Description</th>
+                        <th style="text-align: right;">Net Price</th>
+                        <th style="text-align: right;">VAT</th>
+                        <th style="text-align: right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{invoice_date.strftime('%Y-%m-%d')}</td>
+                        <td style="text-align: center;">{quantity}</td>
+                        <td class="number">£{(net_amount/quantity):.2f}</td>
+                        <td>{service_desc}</td>
+                        <td class="number">£{net_amount:.2f}</td>
+                        <td class="number">£{tax_amount:.2f}</td>
+                        <td class="number"><strong>£{(net_amount + tax_amount):.2f}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- Totals -->
+            <div class="totals">
+                <table class="totals-table">
+                    <tr>
+                        <td>Subtotal (Net):</td>
+                        <td>£{net_amount:.2f}</td>
+                    </tr>
+                    <tr>
+                        <td>VAT @ {tax_rate}%:</td>
+                        <td>£{tax_amount:.2f}</td>
+                    </tr>
+                    <tr class="total-row">
+                        <td>TOTAL BILL:</td>
+                        <td>£{total_amount:.2f}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <!-- VAT Breakdown -->
+            <div class="vat-breakdown">
+                <h4>VAT Breakdown</h4>
+                <table class="totals-table">
+                    <tr>
+                        <td>Vatable Amount (excl VAT):</td>
+                        <td>£{net_amount:.2f}</td>
+                    </tr>
+                    <tr>
+                        <td>Non Vatable Amount:</td>
+                        <td>£0.00</td>
+                    </tr>
+                    <tr>
+                        <td><strong>VAT @ {tax_rate}%:</strong></td>
+                        <td><strong>£{tax_amount:.2f}</strong></td>
+                    </tr>
+                </table>
+            </div>
+            
+            <!-- Payment Details -->
+            <div class="payment-details">
+                <p><strong>Please pay to St Wulfstan LTD "Radisson BLU Hotel Bristol" account</strong></p>
+                
+                <p><strong>Our bank account details for CHAPS and BACS payments are:</strong></p>
+                
+                <div class="bank-details">
+                    <p><strong>Account name:</strong> St Wulfstan ltd</p>
+                    <p><strong>Account number:</strong> 36744760 <span style="margin-left: 40px;"><strong>Sort code:</strong> 30-65-41</span></p>
+                    <p><strong>IBAN Code:</strong> GB98 LOYD 3065 4136 7447 60</p>
+                    <p><strong>BIC Code:</strong> LOYDGB21682</p>
+                </div>
+                
+                <div class="company-reg">
+                    <p>Company Reg. No: 6824436</p>
+                    <p>VAT Reg. No: 979243179</p>
+                </div>
+            </div>
+            
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html    
 def page_admin_upload():
     st.header("Admin: Upload Database Data")
     
@@ -1995,12 +3653,15 @@ def page_admin_upload():
             except Exception as e:
                 st.error(f"❌ Error creating download: {str(e)}")
                 st.exception(e)
+        st.divider()
+        st.subheader("Database Viewer")
+        page_db_viewer()
 
 
 
 def main():
     st.set_page_config(
-        page_title="Radisson Blu Bristol",
+        page_title="Test it guys!!",
         page_icon="🏨",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -2022,26 +3683,29 @@ def main():
 
     with st.sidebar:
         st.title("YesWeCan! Bristol")
-        mode = "NEW LIVE MODE"
+        mode = "NEW TESTING MODE"
         st.markdown(f"**{mode}**")
         page = st.radio(
-    "Navigate",
-    [
-        "Arrivals",
-        "In-House List",
-        "Check-out List",
-        "Housekeeping Task-List",
-        "Breakfast List",
-        "Search",
-        "Handover",
-        "No Shows",
-        "Room list",
-        "Spare Twin rooms",
-        "Parking",
-        "DB Viewer",
-        "Admin"
-    ],
-)
+            "Navigate",
+            [
+                "Arrivals",
+                "In-House List",
+                "Check-out List",
+                "Housekeeping Task-List",
+                "Breakfast List",
+                "Search",
+                "Handover",
+                "No Shows",
+                "Room list",
+                "Spare Twin rooms",
+                "Parking",
+                "Payments",
+                "Invoices",        # ← ADD THIS
+                "Admin",
+            ],
+        )
+
+
 
 
 
@@ -2062,6 +3726,12 @@ def main():
         page_search()
     elif page == "Handover":
         page_tasks_handover()
+    elif page == "Payments":
+        page_payments()
+    elif page == "Invoices":
+        page_invoices()
+
+
     elif page == "No Shows":
         page_no_shows()
     elif page == "Room list":
@@ -2070,8 +3740,6 @@ def main():
         page_spare_rooms()
     elif page == "Parking":
         page_parking()
-    elif page == "DB Viewer":
-        page_db_viewer()
     elif page == "Admin":
         page_admin_upload()
 
