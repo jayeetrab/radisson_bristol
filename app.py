@@ -139,7 +139,7 @@ class FrontOfficeDB:
                         updated_at TEXT DEFAULT (datetime('now'))
                     )
                 """)
-
+                
                 c.execute("""
                     CREATE TABLE IF NOT EXISTS stays (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -375,6 +375,27 @@ class FrontOfficeDB:
         self.execute(
             "UPDATE reservations SET meal_plan = ?, updated_at = datetime('now') WHERE id = ?",
             (meal_plan, reservation_id),
+        )
+    def get_reservations_for_date(self, d: date):
+        """All reservations whose stay covers date d, regardless of CHECKEDIN/CHECKEDOUT."""
+        return self.fetch_all(
+            """
+            SELECT
+                r.id,
+                r.guest_name      AS guest_name,
+                r.room_number     AS room_number,
+                r.reservation_no  AS reservation_no,
+                r.arrival_date    AS arrival_date,
+                r.depart_date     AS depart_date,
+                r.reservation_status AS reservation_status,
+                r.main_client     AS main_client
+            FROM reservations r
+            WHERE date(r.arrival_date) <= date(?)
+            AND date(r.depart_date)  >= date(?)
+            AND r.reservation_status NOT IN ('CANCELLED', 'NO_SHOW')
+            ORDER BY r.guest_name
+            """,
+            (d.isoformat(), d.isoformat()),
         )
 
     def get_reservation_by_guest_and_date(self, guest_name: str, d: date):
@@ -2553,33 +2574,28 @@ def page_invoices():
         st.write("**Guest Information**")
         
         # Date-based guest selection
-        guests_for_date = db.get_guests_for_date(invoice_date)
-        
-        guest_options = [f"{g['guest_name']} (Room {g['room_number']})" for g in guests_for_date]
-        
-        if not guest_options:
-            st.warning("No guests for this date. Please select another date.")
+        reservations_for_date = db.get_reservations_for_date(invoice_date)
+
+        if not reservations_for_date:
+            st.warning("No reservations for this date.")
             return
-        
-        selected_guest_str = st.selectbox(
-            "Select Guest",
-            guest_options,
-            key="guest_selector"
+
+        labels = [
+            f"{r['guest_name']} (Room {r.get('room_number') or 'N/A'}) [{r['reservation_status']}]"
+            for r in reservations_for_date
+        ]
+
+        idx = st.selectbox(
+            "Select Guest / Reservation",
+            options=range(len(reservations_for_date)),
+            format_func=lambda i: labels[i],
         )
-        
-        # Extract guest name from selection
-        selected_guest_name = selected_guest_str.split(" (Room")[0]
-        
-        # Get full reservation data
-        res_data = db.get_reservation_by_guest_and_date(selected_guest_name, invoice_date)
-        
-        if res_data:
-            guest_name = res_data.get("guest_name", "")
-            room_no = res_data.get("room_number", "")
-            reservation_id = res_data.get("id", "")
-        else:
-            st.error("Could not load guest data.")
-            return
+
+        selected = reservations_for_date[idx]
+        reservation_id = selected["id"]
+        guest_name = selected["guest_name"]
+        room_no = selected.get("room_number") or ""
+
         
         # Display selected guest info
         st.info(f"✓ Selected: {guest_name} | Room: {room_no}")
