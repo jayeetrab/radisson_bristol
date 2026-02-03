@@ -2596,9 +2596,15 @@ def page_invoices():
         guest_name = selected["guest_name"]
         room_no = selected.get("room_number") or ""
 
-        
-        # Display selected guest info
-        st.info(f"✓ Selected: {guest_name} | Room: {room_no}")
+        display_name = st.text_input(
+        "Invoice name (leave blank to use guest name)",
+        value=guest_name,
+        key="invoice_display_name",
+    )
+        if not display_name.strip():
+            display_name = guest_name
+        st.subheader(f"Invoice for {display_name} (Room {room_no})")
+
         
         st.divider()
         st.write("**Billing Information**")
@@ -2684,7 +2690,7 @@ def page_invoices():
                 pdf_bytes = generate_invoice_pdf(
                     invoice_no=invoice_no,
                     invoice_date=invoice_date,
-                    guest_name=guest_name,
+                    guest_name=display_name,
                     room_no=room_no,
                     items=st.session_state.invoice_items,
                     total_net=total_net,
