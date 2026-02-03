@@ -264,6 +264,35 @@ class FrontOfficeDB:
         UNIQUE(task_date, room_number, task_type)
     )
 """)
+    def get_full_breakfast_for_date(self, targetdate: date):
+        return self.fetch_all(
+            """
+            SELECT
+                r.room_number  AS room_number,
+                r.guest_name   AS guest_name,
+                r.adults      AS adults,
+                r.children    AS children,
+                r.total_guests AS total_guests,
+                r.meal_plan    AS meal_plan,
+                r.arrival_date AS arrival_date,
+                r.depart_date  AS depart_date,
+                r.reservation_status AS reservation_status
+            FROM reservations r
+            WHERE date(r.arrival_date) <= date(?)
+            AND date(r.depart_date)  >= date(?)
+            AND r.meal_plan IS NOT NULL
+            AND r.meal_plan != ''
+            AND (
+                r.meal_plan = 'BB'
+                OR r.meal_plan LIKE '%BB%'
+                OR lower(r.meal_plan) LIKE '%breakfast%'
+            )
+            AND r.reservation_status NOT IN ('CANCELLED', 'NO_SHOW')
+            ORDER BY CAST(r.room_number AS INTEGER)
+            """,
+            (targetdate.isoformat(), targetdate.isoformat()),
+        )
+            
     def cancel_noshow(self, noshow_id: int):
         """Cancel a no-show record and restore the reservation."""
         # 1. Find the no-show row
@@ -1569,81 +1598,49 @@ def page_payments():
 
 def page_breakfast():
     st.header("Breakfast List")
+
     today = st.date_input("Date", value=date.today(), key="breakfast_date")
-    
-    breakfast_rows = db.get_breakfast_list_for_date(today)
-    
+
+    # Use new, wider query
+    breakfast_rows = db.get_full_breakfast_for_date(today)
+
     if not breakfast_rows:
         st.info("No guests with breakfast for this date.")
         return
-    
-    df_breakfast = pd.DataFrame([dict(r) for r in breakfast_rows])
-    
-    # Calculate totals
-    total_rooms = len(df_breakfast)
-    total_adults = df_breakfast["adults"].sum()
-    total_children = df_breakfast["children"].sum()
+
+    dfbreakfast = pd.DataFrame(
+        {
+            "room_number": r.get("room_number"),
+            "guest_name": r.get("guest_name"),
+            "adults": r.get("adults") or 0,
+            "children": r.get("children") or 0,
+            "total_guests": r.get("total_guests") or 0,
+            "meal_plan": r.get("meal_plan"),
+            "status": r.get("reservation_status"),
+        }
+        for r in breakfast_rows
+    )
+
+    total_rooms = len(dfbreakfast["room_number"].dropna().unique())
+    total_adults = dfbreakfast["adults"].sum()
+    total_children = dfbreakfast["children"].sum()
     total_guests = total_adults + total_children
-    
-    # Summary at top
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Rooms", total_rooms)
     col2.metric("Adults", int(total_adults))
     col3.metric("Children", int(total_children))
     col4.metric("Total Guests", int(total_guests))
-    
-    st.subheader(f"Breakfast for {today}")
-    
-    # Prepare display
-    df_display = df_breakfast[
-        ["room_number", "guest_name", "adults", "children", "total_guests", "meal_plan"]
-    ].copy()
-    df_display = clean_numeric_columns(
-        df_display, ["room_number", "adults", "children", "total_guests"]
-    )
-    df_display.columns = ["Room", "Guest Name", "Adults", "Children", "Total", "Meal Plan"]
-    df_display.insert(0, "#", range(1, len(df_display) + 1))
-    df_display = clean_numeric_columns(df_display, ["Room"])
 
-    edited = st.data_editor(
-        df_display,
-        use_container_width=True,
-        hide_index=True,
-        disabled=["#", "Guest Name"],
-        column_config={
-            "Adults": st.column_config.NumberColumn(min_value=0, step=1),
-            "Children": st.column_config.NumberColumn(min_value=0, step=1),
-            "Meal Plan": st.column_config.TextColumn(),
-        },
-    )
+    dfdisplay = dfbreakfast[["room_number", "guest_name", "adults", "children", "total_guests", "meal_plan", "status"]].copy()
+    dfdisplay = clean_numeric_columns(dfdisplay, ["room_number", "adults", "children", "total_guests"])
+    dfdisplay.columns = ["Room", "Guest Name", "Adults", "Children", "Total", "Meal Plan", "Status"]
+    dfdisplay.insert(0, "#", range(1, len(dfdisplay) + 1))
+    dfdisplay = clean_numeric_columns(dfdisplay, ["Room"])
 
-    if st.button("Save breakfast adjustments", type="primary", use_container_width=True):
-        # optional: write back to reservations table by room + date
-        for _, row in edited.iterrows():
-            room = str(row["Room"]).strip()
-            adults = int(row["Adults"])
-            children = int(row["Children"])
-            meal_plan = row["Meal Plan"]
-
-            db.execute(
-                """
-                UPDATE reservations
-                SET adults = ?, total_guests = ?, meal_plan = ?
-                WHERE room_number = ?
-                  AND date(arrival_date) <= date(?)
-                  AND date(depart_date) >= date(?)
-                """,
-                (
-                    adults,
-                    adults + children,
-                    meal_plan,
-                    room,
-                    today.isoformat(),
-                    today.isoformat(),
-                ),
-            )
-        st.success("Breakfast data updated.")
-        st.rerun()
+    st.subheader(f"Breakfast for {today.strftime('%d %B %Y')}")
+    st.dataframe(dfdisplay, use_container_width=True, hide_index=True)
+    st.caption("Print this list for the kitchen.")
 
 def page_housekeeping():
     st.header("Housekeeping Task List")
