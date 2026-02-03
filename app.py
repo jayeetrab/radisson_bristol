@@ -1249,7 +1249,7 @@ class FrontOfficeDB:
             ON r.id = s.reservation_id
             WHERE s.status = 'CHECKED_IN'
             AND date(s.checkin_planned) <= date(?)
-            AND date(s.check_out_planned) > date(?)
+            AND date(s.check_out_planned) >= date(?)
             AND (
                 s.parking_space IS NOT NULL
                 OR s.parking_plate IS NOT NULL
