@@ -51,7 +51,7 @@ def clean_numeric_columns(df: pd.DataFrame, cols: list):
 
 
 # PostgreSQL configuration
-TEST_MODE = False  # set False for Test system
+TEST_MODE = False  # set False for live system
 
 if TEST_MODE:
     DBPATH = "hotelfoTEST.db"
@@ -139,7 +139,7 @@ class FrontOfficeDB:
                         updated_at TEXT DEFAULT (datetime('now'))
                     )
                 """)
-
+                
                 c.execute("""
                     CREATE TABLE IF NOT EXISTS stays (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -264,6 +264,35 @@ class FrontOfficeDB:
         UNIQUE(task_date, room_number, task_type)
     )
 """)
+    def get_full_breakfast_for_date(self, targetdate: date):
+        return self.fetch_all(
+            """
+            SELECT
+                r.room_number  AS room_number,
+                r.guest_name   AS guest_name,
+                r.adults      AS adults,
+                r.children    AS children,
+                r.total_guests AS total_guests,
+                r.meal_plan    AS meal_plan,
+                r.arrival_date AS arrival_date,
+                r.depart_date  AS depart_date,
+                r.reservation_status AS reservation_status
+            FROM reservations r
+            WHERE date(r.arrival_date) <= date(?)
+            AND date(r.depart_date)  >= date(?)
+            AND r.meal_plan IS NOT NULL
+            AND r.meal_plan != ''
+            AND (
+                r.meal_plan = 'BB'
+                OR r.meal_plan LIKE '%BB%'
+                OR lower(r.meal_plan) LIKE '%breakfast%'
+            )
+            AND r.reservation_status NOT IN ('CANCELLED', 'NO_SHOW')
+            ORDER BY CAST(r.room_number AS INTEGER)
+            """,
+            (targetdate.isoformat(), targetdate.isoformat()),
+        )
+            
     def cancel_noshow(self, noshow_id: int):
         """Cancel a no-show record and restore the reservation."""
         # 1. Find the no-show row
@@ -375,6 +404,27 @@ class FrontOfficeDB:
         self.execute(
             "UPDATE reservations SET meal_plan = ?, updated_at = datetime('now') WHERE id = ?",
             (meal_plan, reservation_id),
+        )
+    def get_reservations_for_date(self, d: date):
+        """All reservations whose stay covers date d, regardless of CHECKEDIN/CHECKEDOUT."""
+        return self.fetch_all(
+            """
+            SELECT
+                r.id,
+                r.guest_name      AS guest_name,
+                r.room_number     AS room_number,
+                r.reservation_no  AS reservation_no,
+                r.arrival_date    AS arrival_date,
+                r.depart_date     AS depart_date,
+                r.reservation_status AS reservation_status,
+                r.main_client     AS main_client
+            FROM reservations r
+            WHERE date(r.arrival_date) <= date(?)
+            AND date(r.depart_date)  >= date(?)
+            AND r.reservation_status NOT IN ('CANCELLED', 'NO_SHOW')
+            ORDER BY r.guest_name
+            """,
+            (d.isoformat(), d.isoformat()),
         )
 
     def get_reservation_by_guest_and_date(self, guest_name: str, d: date):
@@ -1249,7 +1299,7 @@ class FrontOfficeDB:
             ON r.id = s.reservation_id
             WHERE s.status = 'CHECKED_IN'
             AND date(s.checkin_planned) <= date(?)
-            AND date(s.check_out_planned) > date(?)
+            AND date(s.check_out_planned) >= date(?)
             AND (
                 s.parking_space IS NOT NULL
                 OR s.parking_plate IS NOT NULL
@@ -1548,81 +1598,49 @@ def page_payments():
 
 def page_breakfast():
     st.header("Breakfast List")
+
     today = st.date_input("Date", value=date.today(), key="breakfast_date")
-    
-    breakfast_rows = db.get_breakfast_list_for_date(today)
-    
+
+    # Use new, wider query
+    breakfast_rows = db.get_full_breakfast_for_date(today)
+
     if not breakfast_rows:
         st.info("No guests with breakfast for this date.")
         return
-    
-    df_breakfast = pd.DataFrame([dict(r) for r in breakfast_rows])
-    
-    # Calculate totals
-    total_rooms = len(df_breakfast)
-    total_adults = df_breakfast["adults"].sum()
-    total_children = df_breakfast["children"].sum()
+
+    dfbreakfast = pd.DataFrame(
+        {
+            "room_number": r.get("room_number"),
+            "guest_name": r.get("guest_name"),
+            "adults": r.get("adults") or 0,
+            "children": r.get("children") or 0,
+            "total_guests": r.get("total_guests") or 0,
+            "meal_plan": r.get("meal_plan"),
+            "status": r.get("reservation_status"),
+        }
+        for r in breakfast_rows
+    )
+
+    total_rooms = len(dfbreakfast["room_number"].dropna().unique())
+    total_adults = dfbreakfast["adults"].sum()
+    total_children = dfbreakfast["children"].sum()
     total_guests = total_adults + total_children
-    
-    # Summary at top
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Rooms", total_rooms)
     col2.metric("Adults", int(total_adults))
     col3.metric("Children", int(total_children))
     col4.metric("Total Guests", int(total_guests))
-    
-    st.subheader(f"Breakfast for {today}")
-    
-    # Prepare display
-    df_display = df_breakfast[
-        ["room_number", "guest_name", "adults", "children", "total_guests", "meal_plan"]
-    ].copy()
-    df_display = clean_numeric_columns(
-        df_display, ["room_number", "adults", "children", "total_guests"]
-    )
-    df_display.columns = ["Room", "Guest Name", "Adults", "Children", "Total", "Meal Plan"]
-    df_display.insert(0, "#", range(1, len(df_display) + 1))
-    df_display = clean_numeric_columns(df_display, ["Room"])
 
-    edited = st.data_editor(
-        df_display,
-        use_container_width=True,
-        hide_index=True,
-        disabled=["#", "Guest Name"],
-        column_config={
-            "Adults": st.column_config.NumberColumn(min_value=0, step=1),
-            "Children": st.column_config.NumberColumn(min_value=0, step=1),
-            "Meal Plan": st.column_config.TextColumn(),
-        },
-    )
+    dfdisplay = dfbreakfast[["room_number", "guest_name", "adults", "children", "total_guests", "meal_plan", "status"]].copy()
+    dfdisplay = clean_numeric_columns(dfdisplay, ["room_number", "adults", "children", "total_guests"])
+    dfdisplay.columns = ["Room", "Guest Name", "Adults", "Children", "Total", "Meal Plan", "Status"]
+    dfdisplay.insert(0, "#", range(1, len(dfdisplay) + 1))
+    dfdisplay = clean_numeric_columns(dfdisplay, ["Room"])
 
-    if st.button("Save breakfast adjustments", type="primary", use_container_width=True):
-        # optional: write back to reservations table by room + date
-        for _, row in edited.iterrows():
-            room = str(row["Room"]).strip()
-            adults = int(row["Adults"])
-            children = int(row["Children"])
-            meal_plan = row["Meal Plan"]
-
-            db.execute(
-                """
-                UPDATE reservations
-                SET adults = ?, total_guests = ?, meal_plan = ?
-                WHERE room_number = ?
-                  AND date(arrival_date) <= date(?)
-                  AND date(depart_date) >= date(?)
-                """,
-                (
-                    adults,
-                    adults + children,
-                    meal_plan,
-                    room,
-                    today.isoformat(),
-                    today.isoformat(),
-                ),
-            )
-        st.success("Breakfast data updated.")
-        st.rerun()
+    st.subheader(f"Breakfast for {today.strftime('%d %B %Y')}")
+    st.dataframe(dfdisplay, use_container_width=True, hide_index=True)
+    st.caption("Print this list for the kitchen.")
 
 def page_housekeeping():
     st.header("Housekeeping Task List")
@@ -2510,7 +2528,7 @@ def page_db_viewer():
             backup_data = f.read()
         
         st.download_button(
-            "⬇ DOWNLOAD Test DATABASE NOW",
+            "⬇ DOWNLOAD LIVE DATABASE NOW",
             data=backup_data,
             file_name=f"hotel_PRODUCTION_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
             mime="application/octet-stream",
@@ -2553,36 +2571,37 @@ def page_invoices():
         st.write("**Guest Information**")
         
         # Date-based guest selection
-        guests_for_date = db.get_guests_for_date(invoice_date)
-        
-        guest_options = [f"{g['guest_name']} (Room {g['room_number']})" for g in guests_for_date]
-        
-        if not guest_options:
-            st.warning("No guests for this date. Please select another date.")
+        reservations_for_date = db.get_reservations_for_date(invoice_date)
+
+        if not reservations_for_date:
+            st.warning("No reservations for this date.")
             return
-        
-        selected_guest_str = st.selectbox(
-            "Select Guest",
-            guest_options,
-            key="guest_selector"
+
+        labels = [
+            f"{r['guest_name']} (Room {r.get('room_number') or 'N/A'}) [{r['reservation_status']}]"
+            for r in reservations_for_date
+        ]
+
+        idx = st.selectbox(
+            "Select Guest / Reservation",
+            options=range(len(reservations_for_date)),
+            format_func=lambda i: labels[i],
         )
-        
-        # Extract guest name from selection
-        selected_guest_name = selected_guest_str.split(" (Room")[0]
-        
-        # Get full reservation data
-        res_data = db.get_reservation_by_guest_and_date(selected_guest_name, invoice_date)
-        
-        if res_data:
-            guest_name = res_data.get("guest_name", "")
-            room_no = res_data.get("room_number", "")
-            reservation_id = res_data.get("id", "")
-        else:
-            st.error("Could not load guest data.")
-            return
-        
-        # Display selected guest info
-        st.info(f"✓ Selected: {guest_name} | Room: {room_no}")
+
+        selected = reservations_for_date[idx]
+        reservation_id = selected["id"]
+        guest_name = selected["guest_name"]
+        room_no = selected.get("room_number") or ""
+
+        display_name = st.text_input(
+        "Invoice name (leave blank to use guest name)",
+        value=guest_name,
+        key="invoice_display_name",
+    )
+        if not display_name.strip():
+            display_name = guest_name
+        st.subheader(f"Invoice for {display_name} (Room {room_no})")
+
         
         st.divider()
         st.write("**Billing Information**")
@@ -2668,7 +2687,7 @@ def page_invoices():
                 pdf_bytes = generate_invoice_pdf(
                     invoice_no=invoice_no,
                     invoice_date=invoice_date,
-                    guest_name=guest_name,
+                    guest_name=display_name,
                     room_no=room_no,
                     items=st.session_state.invoice_items,
                     total_net=total_net,
@@ -3694,7 +3713,7 @@ def page_admin_upload():
                     st.error(f"❌ Error importing: {str(e)}")
                     st.exception(e)
     with tab3:
-        st.subheader("Download Test Database")
+        st.subheader("Download Live Database")
         st.info("Downloads a ZIP file containing the database file and CSV exports of all tables")
         
         if st.button("Generate Download Package", type="primary"):
@@ -3755,7 +3774,7 @@ def page_admin_upload():
 
 def main():
     st.set_page_config(
-        page_title="Test guys!!!",
+        page_title="Test it guys!!",
         page_icon="🏨",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -3777,7 +3796,7 @@ def main():
 
     with st.sidebar:
         st.title("YesWeCan! Bristol")
-        mode = "NEW Test MODE"
+        mode = "NEW TESTING MODE"
         st.markdown(f"**{mode}**")
         page = st.radio(
             "Navigate",
