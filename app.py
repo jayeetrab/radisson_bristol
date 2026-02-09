@@ -292,6 +292,49 @@ class FrontOfficeDB:
             """,
             (targetdate.isoformat(), targetdate.isoformat()),
         )
+    def add_reservation(
+        self,
+        arrival: date,
+        depart: date,
+        guest_name: str,
+        room_number: str = "",
+        main_client: str = "",
+        channel: str = "",
+        meal_plan: str = "",
+        adults: int = 2,
+        children: int = 0,
+    ):
+        total_guests = adults + children
+        nights = (depart - arrival).days
+        if nights <= 0:
+            nights = 1
+
+        c = self.execute(
+            """
+            INSERT INTO reservations (
+                arrival_date, depart_date, room_number,
+                guest_name, main_client, channel, meal_plan,
+                adults, children, total_guests, nights,
+                reservation_status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', datetime('now'), datetime('now'))
+            """,
+            (
+                arrival.isoformat(),
+                depart.isoformat(),
+                room_number or None,
+                guest_name,
+                main_client or None,
+                channel or None,
+                meal_plan or None,
+                adults,
+                children,
+                total_guests,
+                nights,
+            ),
+        )
+        return c.lastrowid
+
             
     def cancel_noshow(self, noshow_id: int):
         """Cancel a no-show record and restore the reservation."""
@@ -317,7 +360,7 @@ class FrontOfficeDB:
             (ns["guest_name"], ns["arrival_date"]),
         )
         if not res:
-            return False, "Matching reservation not found or not marked as NOSHOW."
+            return False, "Matching reservation not found or not marked as NO_SHOW."
 
         resid = res["id"]
         room = res.get("room_number")
@@ -473,6 +516,26 @@ class FrontOfficeDB:
             """,
             (limit,),
         )
+    def update_reservation_name(self, reservation_id: int, guest_name: str = None, main_client: str = None):
+        fields = []
+        params = []
+        if guest_name is not None:
+            fields.append("guest_name = ?")
+            params.append(guest_name)
+        if main_client is not None:
+            fields.append("main_client = ?")
+            params.append(main_client)
+
+        if not fields:
+            return False, "Nothing to update"
+
+        params.append(reservation_id)
+        self.execute(
+            f"UPDATE reservations SET {', '.join(fields)}, updated_at = datetime('now') WHERE id = ?",
+            tuple(params),
+        )
+        return True, "Reservation updated"
+
 
     def __init__(self, dbpath: str):
         self.dbpath = dbpath
@@ -1442,6 +1505,18 @@ class FrontOfficeDB:
             """,
             (like_pattern, like_pattern, like_pattern, like_pattern, like_pattern),
         )
+    
+    def cancel_reservation(self, reservation_id: int):
+        self.execute(
+            """
+            UPDATE reservations
+            SET reservation_status = 'CANCELLED',
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (reservation_id,),
+        )
+        return True, "Reservation marked as CANCELLED (cannot be checked-in)"
 
     
     def read_table(self, name: str):
@@ -1492,10 +1567,121 @@ class FrontOfficeDB:
 # =========================
 # Streamlit UI
 # =========================
+def inject_base_css():
+    st.markdown(
+        """
+        <style>
+        .stApp {
+    background:
+        radial-gradient(circle at 0% 100%, rgba(184, 11, 11, 0.10) 0, transparent 45%),
+        radial-gradient(circle at 100% 0%, rgba(184, 11, 11, 0.06) 0, transparent 40%),
+        linear-gradient(to bottom, #ffffff 0, #f9fafb 55%, #f3f4f6 100%);
+    background-attachment: fixed;
+}
+/* Sidebar background */
+section[data-testid="stSidebar"] {
+    background:
+        radial-gradient(circle at 0% 0%, rgba(184, 11, 11, 0.10) 0, transparent 45%),
+        radial-gradient(circle at 100% 100%, rgba(184, 11, 11, 0.05) 0, transparent 40%),
+        linear-gradient(to bottom, #f9fafb 0, #f3f4f6 100%);
+    background-attachment: fixed;
+    border-right: 1px solid rgba(209, 213, 219, 0.9);
+}
+
+
+        .main > div {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* Reservation cards */
+        [data-testid="stExpander"] {
+            border-radius: 14px !important;
+            border: 0px solid rgba(209, 213, 219, 0.9);
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+            backdrop-filter: blur(10px);
+            margin-bottom: 0.6rem;
+        }
+        [data-testid="stExpander"] summary {
+            font-weight: 400;
+            letter-spacing: 0.0em;
+        }
+
+        /* Primary buttons – TwoTable red */
+        .stButton > button[kind="primary"] {
+            background: linear-gradient(135deg, #b80b0b, #e11d48);
+            color: white;
+            border-radius: 999px;
+            border: none;
+            box-shadow: 0 8px 18px rgba(184, 11, 11, 0.35);
+            transition: transform 0.08s ease-out, box-shadow 0.08s ease-out;
+        }
+        .stButton > button[kind="primary"]:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 26px rgba(184, 11, 11, 0.45);
+        }
+
+        /* Secondary buttons */
+        .stButton > button[kind="secondary"] {
+            border-radius: 999px;
+        }
+
+        /* Inputs rounded */
+        .stTextInput > div > div > input {
+            border-radius: 999px;
+        }
+
+        h1, h2, h3 {
+            letter-spacing: 0.04em;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 db = None  # Will be initialized in main()
  # Use cached connection
 from datetime import date  # make sure this is imported at top of file
+def page_add_reservation():
+    st.header("Add Reservation Manually")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        arrival = st.date_input("Arrival date", value=date.today(), key="addres_arrival")
+    with col2:
+        depart = st.date_input("Departure date", value=date.today(), key="addres_depart")
+
+    guest_name = st.text_input("Guest name")
+    main_client = st.text_input("Main client (optional)")
+    room_number = st.text_input("Room number (optional)")
+    channel = st.text_input("Channel (e.g. Direct, OTA)")
+    meal_plan = st.text_input("Meal plan (e.g. BB, RO)")
+
+    col3, col4 = st.columns(2)
+    with col3:
+        adults = st.number_input("Adults", min_value=1, value=2, step=1)
+    with col4:
+        children = st.number_input("Children", min_value=0, value=0, step=1)
+
+    if st.button("Add reservation", type="primary", use_container_width=True):
+        if not guest_name.strip():
+            st.error("Guest name is required.")
+        elif depart < arrival:
+            st.error("Departure cannot be before arrival.")
+        else:
+            reservation_id = db.add_reservation(
+                arrival=arrival,
+                depart=depart,
+                guest_name=guest_name.strip(),
+                room_number=room_number.strip(),
+                main_client=main_client.strip(),
+                channel=channel.strip(),
+                meal_plan=meal_plan.strip(),
+                adults=int(adults),
+                children=int(children),
+            )
+            st.success(f"Reservation #{reservation_id} added.")
 
 def page_payments():
     st.header("Payments / Refunds")
@@ -1745,109 +1931,190 @@ def page_housekeeping():
 
 def page_arrivals():
     st.header("Arrivals")
-    d = st.date_input("Arrival date", value=date.today(), key="arrivals_date")
-    
-    rows = db.get_arrivals_for_date(d)
+
+    if "open_arrival_id" not in st.session_state:
+        st.session_state.open_arrival_id = None
+
+    arrival_date = st.date_input("Arrival date", value=date.today(), key="arrivals_date")
+    rows = db.get_arrivals_for_date(arrival_date)
     if not rows:
         st.info("No arrivals for this date.")
         return
-    
-    st.subheader(f"Arrivals list ({len(rows)} reservations)")
-    
-    for idx, r in enumerate(rows, 1):
-        res_no = int(float(r['reservation_no'])) if r.get('reservation_no') and str(r['reservation_no']) not in ['None', ''] else r.get('reservation_no', '')
-        with st.expander(f"{idx} - {r['guest_name']} |  Reservation No.: {res_no}", expanded=True):
-            # Add check-in/checkout dates at top
+
+    # --- Filter panel as its own expander ---
+    with st.expander("Filters for this date", expanded=True):
+        col_filter_status, col_filter_search = st.columns([2, 2])
+
+        with col_filter_status:
+            st.caption("Filter by status")
+            show_confirmed = st.checkbox("Confirmed", value=True, key="arrivals_show_confirmed")
+            show_cancelled = st.checkbox("Cancelled", value=True, key="arrivals_show_cancelled")
+            show_noshow = st.checkbox("No-show", value=True, key="arrivals_show_noshow")
+
+        with col_filter_search:
+            search_term = st.text_input(
+                "Search in today's arrivals",
+                placeholder="Search",
+                key="arrivals_inline_search",
+            ).strip().lower()
+
+    # --- Apply filters using the values from inside expander ---
+    filtered_rows = []
+    for r in rows:
+        status = (r.get("reservation_status") or "CONFIRMED").upper()
+
+        if status == "CONFIRMED" and not show_confirmed:
+            continue
+        if status == "CANCELLED" and not show_cancelled:
+            continue
+        if status == "NO_SHOW" and not show_noshow:
+            continue
+
+        if search_term:
+            haystack = " ".join(
+                str(r.get(field) or "")
+                for field in ("guest_name", "room_number", "reservation_no", "main_client", "channel")
+            ).lower()
+            if search_term not in haystack:
+                continue
+
+        filtered_rows.append(r)
+
+    st.subheader(f"Arrivals list – {len(filtered_rows)} reservations" if filtered_rows else "Arrivals list")
+
+    if not filtered_rows:
+        st.warning("No arrivals matching current filters/search.")
+        return
+
+    # --- List arrivals ---
+    for idx, r in enumerate(filtered_rows, 1):
+        reservation_id = r["id"]
+        room_number = r.get("room_number") or "Not assigned"
+        guest_name = r.get("guest_name") or "No name"
+        reservation_no = r.get("reservation_no") or reservation_id
+        status = (r.get("reservation_status") or "CONFIRMED").upper()
+
+        is_cancelled = status == "CANCELLED"
+        is_noshow = status == "NO_SHOW"
+
+        header_label = f"{idx}. {guest_name} – Room {room_number} (Res {reservation_no})"
+        if is_cancelled:
+            header_label = f"❌ {header_label} [CANCELLED]"
+        elif is_noshow:
+            header_label = f"⚠️ {header_label} [NO-SHOW]"
+
+        expanded = st.session_state.open_arrival_id == reservation_id
+
+        with st.expander(header_label, expanded=expanded):
+            st.caption(f"Status: {status}")
+
+            # Top details
             col1, col2, col3, col4 = st.columns(4)
             col1.write(f"Arrival: {format_date(r['arrival_date'])}")
             col2.write(f"Departure: {format_date(r['depart_date'])}")
+            col3.write(f"Nights: {r.get('nights')}")
+            col4.write(f"Guests: {r.get('total_guests')}")
 
-            col3.write(f"**Nights:** {r.get('nights', '')}")
-            col4.write(f"**Guests:** {r.get('total_guests', '')}")
-            
-            col1, col2, col3 = st.columns(3)
-            col1.write(f"**Room type:** {r['room_type_code']}")
-            col2.write(f"**Channel:** {r['channel']}")
-            col3.write(f"**Meal Plan:** {r.get('meal_plan', 'RO')}")
+            col5, col6, col7 = st.columns(3)
+            col5.write(f"Room type: {r.get('room_type_code')}")
+            col6.write(f"Channel: {r.get('channel')}")
+            col7.write(f"Meal plan: {r.get('meal_plan') or 'RO'}")
 
-            # Front Office notes (editable)
-            main_note = st.text_area(
-                "Front Office Note",
-                value=r.get("main_remark") or "",
-                key=f"fo_main_{r['id']}",
-                height=80,
-            )
-            # extra_note = st.text_area(
-            #     "Extra Notes (optional)",
-            #     value=r.get("total_remarks") or "",
-            #     key=f"fo_extra_{r['id']}",
-            #     height=80,
-            # )
+            if r.get("main_remark"):
+                st.info(r["main_remark"])
+            if r.get("total_remarks"):
+                st.caption(r["total_remarks"])
 
-            if st.button("Save Notes", key=f"save_notes_{r['id']}", use_container_width=True):
-                db.update_reservation_notes(r["id"], main_note)
-                st.success("Notes saved.")
-                st.rerun()
+            st.markdown("---")
 
-            current_room = r["room_number"] or ""
-            room = st.text_input(
-                "Room Number",
-                value=current_room,
-                key=f"room_{r['id']}", 
-                placeholder="Enter room number",
-            )
-            
-            colbtn1, colbtn2, colbtn3 = st.columns(3)
+            # Single row: Room input + 3 actions
+            col_room = st.columns(1)[0]
 
-            with colbtn1:
+            # Room input
+            with col_room:
+                disabled_room_edit = is_cancelled or is_noshow
+                room_label = "Room number (blocked)" if disabled_room_edit else "Room number"
+                new_room = st.text_input(
+                    room_label,
+                    value=r.get("room_number") or "",
+                    key=f"room_{reservation_id}",
+                    placeholder="Enter room number",
+                    disabled=disabled_room_edit,
+                )
+            col_save_room, col_checkin, col_noshow = st.columns(3)
+            # Save room
+            with col_save_room:
+                save_disabled = disabled_room_edit
+                save_label = "Save room (blocked)" if save_disabled else "Save room"
                 if st.button(
-                    "Save Room",
-                    key=f"save_{r['id']}",
+                    save_label,
+                    key=f"save_room_{reservation_id}",
                     type="primary",
                     use_container_width=True,
+                    disabled=save_disabled,
                 ):
-                    if room and room.strip():
-                        success, msg = db.update_reservation_room(r['id'], room)
+                    if not save_disabled and new_room and new_room.strip():
+                        success, msg = db.update_reservation_room(reservation_id, new_room.strip())
                         if success:
+                            st.session_state.open_arrival_id = reservation_id
                             st.success(msg)
+                            # no st.rerun() here, avoid jump
                         else:
                             st.error(msg)
-                    else:
+                    elif not save_disabled:
                         st.warning("Please enter a room number.")
 
-            with colbtn2:
+            # Check-in
+            with col_checkin:
+                disabled_checkin = is_cancelled or is_noshow
+                checkin_label = "Check-in (blocked)" if disabled_checkin else "Check-in"
                 if st.button(
-                    "Check-in",
-                    key=f"checkin_{r['id']}",
+                    checkin_label,
+                    key=f"checkin_{reservation_id}",
                     type="secondary",
                     use_container_width=True,
+                    disabled=disabled_checkin,
                 ):
-                    success, msg = db.checkin_reservation(r['id'])
-                    if success:
-                        st.success(msg)
-                        st.rerun()
-                    else:
-                        st.error(msg)
+                    if not disabled_checkin:
+                        success, msg = db.checkin_reservation(reservation_id)
+                        if success:
+                            st.session_state.open_arrival_id = reservation_id
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
 
-            with colbtn3:
+            # No-show
+            with col_noshow:
+                disabled_noshow = is_cancelled
+                noshow_label = "No-Show (blocked)" if disabled_noshow else "No-Show"
                 if st.button(
-                    "Add No-show",
-                    key=f"noshow_{r['id']}",
+                    noshow_label,
+                    key=f"noshow_{reservation_id}",
                     type="secondary",
                     use_container_width=True,
+                    disabled=disabled_noshow,
                 ):
-                    db.mark_reservation_as_no_show(
-                        reservation_id=r['id'],
-                        arrival_date=datetime.fromisoformat(r["arrival_date"]).date(),
-                        guest_name=r["guest_name"],
-                        main_client=r.get("main_client") or "",
-                        charged=False,
-                        amount_charged=0.0,
-                        amount_pending=0.0,
-                        comment=main_note or r.get("main_remark") or "",
-                    )
-                    st.success("Marked as no-show and removed from arrivals.")
-                    st.rerun()
+                    if not disabled_noshow:
+                        success, msg = db.mark_reservation_as_no_show(
+                            reservation_id=reservation_id,
+                            arrival_date=datetime.fromisoformat(r["arrival_date"]).date(),
+                            guest_name=guest_name,
+                            main_client=r.get("main_client") or "",
+                            charged=False,
+                            amount_charged=0.0,
+                            amount_pending=0.0,
+                            comment=r.get("main_remark") or "",
+                        )
+                        if success:
+                            st.session_state.open_arrival_id = reservation_id
+                            st.success("Marked as no-show and removed from arrivals.")
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+
+
 
 
 def page_inhouse_list():
@@ -2257,6 +2524,56 @@ def page_search():
         return
     
     st.success(f"Found {len(rows)} reservation(s)")
+    for r in rows:
+        reservation_id = r["id"]
+        resno = r.get("reservation_no") or reservation_id
+        title = f"Res {resno} – {r.get('guest_name') or 'No name'}"
+
+        with st.expander(title):
+            col1, col2 = st.columns(2)
+            with col1:
+                new_guest_name = st.text_input(
+                    "Guest name",
+                    value=r.get("guest_name") or "",
+                    key=f"edit_guest_{reservation_id}",
+                )
+            with col2:
+                new_main_client = st.text_input(
+                    "Main client",
+                    value=r.get("main_client") or "",
+                    key=f"edit_client_{reservation_id}",
+                )
+
+            c1, c2, c3 = st.columns([1, 1, 2])
+
+            with c1:
+                if st.button("Save names", key=f"save_names_{reservation_id}", use_container_width=True):
+                    ok, msg = db.update_reservation_name(
+                        reservation_id,
+                        guest_name=new_guest_name.strip() or None,
+                        main_client=new_main_client.strip() or None,
+                    )
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            with c2:
+                is_cancelled = r.get("reservation_status") == "CANCELLED"
+                label = "Cancel reservation" if not is_cancelled else "Already cancelled"
+                disabled = is_cancelled
+                if st.button(label, key=f"cancel_res_{reservation_id}", use_container_width=True, disabled=disabled):
+                    ok, msg = db.cancel_reservation(reservation_id)
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            with c3:
+                st.text(f"Status: {r.get('reservation_status') or 'CONFIRMED'}")
+
     
     # Create display DataFrame
     df = pd.DataFrame([dict(r) for r in rows])
@@ -3774,7 +4091,7 @@ def page_admin_upload():
 
 def main():
     st.set_page_config(
-        page_title="Test it guys!!",
+        page_title="Not-Radisson",
         page_icon="🏨",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -3796,7 +4113,7 @@ def main():
 
     with st.sidebar:
         st.title("YesWeCan! Bristol")
-        mode = "NEW TESTING MODE"
+        mode = "NEW LIVE MODE"
         st.markdown(f"**{mode}**")
         page = st.radio(
             "Navigate",
@@ -3804,6 +4121,7 @@ def main():
                 "Arrivals",
                 "In-House List",
                 "Check-out List",
+                "Add Reservation",
                 "Housekeeping Task-List",
                 "Breakfast List",
                 "Search",
@@ -3838,6 +4156,8 @@ def main():
         page_breakfast()
     elif page == "Search":
         page_search()
+    elif page == "Add Reservation":
+        page_add_reservation()
     elif page == "Handover":
         page_tasks_handover()
     elif page == "Payments":
@@ -3859,4 +4179,6 @@ def main():
 
 
 if __name__ == "__main__":
+    inject_base_css()
+
     main()
