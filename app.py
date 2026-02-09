@@ -13,6 +13,8 @@ import time
 db = None
 
 
+
+
 def format_date(date_str):
     """Format date string, removing time portion"""
     if not date_str:
@@ -264,6 +266,17 @@ class FrontOfficeDB:
         UNIQUE(task_date, room_number, task_type)
     )
 """)
+    def update_arrival_comment(reservation_id: str, comment: str):
+        # example – adjust to your schema/table
+        try:
+            db.execute(
+                "UPDATE reservations SET arrival_comment = %s WHERE id = %s",
+                (comment, reservation_id),
+            )
+            return True, "Updated comment."
+        except Exception as e:
+            return False, f"Could not update comment: {e}"
+
     def get_full_breakfast_for_date(self, targetdate: date):
         return self.fetch_all(
             """
@@ -2020,10 +2033,31 @@ def page_arrivals():
             col6.write(f"Channel: {r.get('channel')}")
             col7.write(f"Meal plan: {r.get('meal_plan') or 'RO'}")
 
-            if r.get("main_remark"):
-                st.info(r["main_remark"])
             if r.get("total_remarks"):
                 st.caption(r["total_remarks"])
+
+            st.markdown("---")
+
+            # 🔹 Comments block
+            # Front Office notes (editable)
+            main_note = st.text_area(
+                "Front Office Note",
+                value=r.get("main_remark") or "",
+                key=f"fo_main_{r['id']}",
+                height=80,
+            )
+            # extra_note = st.text_area(
+            #     "Extra Notes (optional)",
+            #     value=r.get("total_remarks") or "",
+            #     key=f"fo_extra_{r['id']}",
+            #     height=80,
+            # )
+
+            if st.button("Save Notes", key=f"save_notes_{r['id']}", use_container_width=True):
+                db.update_reservation_notes(r["id"], main_note)
+                st.success("Notes saved.")
+                st.rerun()
+
 
             st.markdown("---")
 
