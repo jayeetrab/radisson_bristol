@@ -1,0 +1,20 @@
+[theme]
+base = "light"
+
+# TwoTable brand accent
+primaryColor = "#b80b0b"
+
+# Main area
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f9fafb"
+textColor = "#111827"
+font = "sans serif"
+
+# Optional: show nice card-ish widgets
+showWidgetBorder = true
+baseRadius = "0.6rem"
+
+[theme.sidebar]
+backgroundColor = "#f3f4f6"          # subtle grey panel
+secondaryBackgroundColor = "#ffffff" # cards/boxes inside sidebar
+textColor = "#111827"
