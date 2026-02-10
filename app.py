@@ -1049,7 +1049,7 @@ class FrontOfficeDB:
             SELECT r.*
             FROM reservations AS r
             WHERE date(r.arrival_date) = date(?)
-            AND r.reservation_status NOT IN ('CHECKED_IN', 'CHECKED_OUT', 'NO_SHOW')
+            AND r.reservation_status NOT IN ('CHECKED_IN', 'CHECKED_OUT')
             AND NOT EXISTS (
                 SELECT 1
                 FROM stays AS s
@@ -2130,7 +2130,7 @@ def page_arrivals():
                     disabled=disabled_noshow,
                 ):
                     if not disabled_noshow:
-                        success, msg = db.mark_reservation_as_no_show(
+                        db.mark_reservation_as_no_show(
                             reservation_id=reservation_id,
                             arrival_date=datetime.fromisoformat(r["arrival_date"]).date(),
                             guest_name=guest_name,
@@ -2140,12 +2140,10 @@ def page_arrivals():
                             amount_pending=0.0,
                             comment=r.get("main_remark") or "",
                         )
-                        if success:
-                            st.session_state.open_arrival_id = reservation_id
-                            st.success("Marked as no-show and removed from arrivals.")
-                            st.rerun()
-                        else:
-                            st.error(msg)
+                        st.session_state.open_arrival_id = reservation_id
+                        st.success("Marked as no-show and removed from arrivals.")
+                        st.rerun()
+
 
 
 
