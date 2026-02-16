@@ -637,41 +637,32 @@ class FrontOfficeDB:
         amount_charged = amount_charged or 0.0
         amount_pending = amount_pending or 0.0
 
-        # 1) Upsert into no_shows
+        # 1) Insert no-show record
         self.execute(
-            """
-            INSERT INTO no_shows (
-                arrival_date,
-                guest_name,
-                main_client,
-                charged,
-                amount_charged,
-                amount_pending,
-                comment
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                arrival_date.isoformat(),
-                guest_name,
-                main_client,
-                charged_int,
-                amount_charged,
-                amount_pending,
-                comment,
-            ),
+            "INSERT INTO no_shows (arrival_date, guest_name, main_client, charged, amount_charged, amount_pending, comment) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (arrival_date.isoformat(), guest_name, main_client, charged_int, amount_charged, amount_pending, comment),
         )
 
-        # 2) Mark reservation as NO_SHOW so it is excluded from arrivals
-        self.execute(
-            """
-            UPDATE reservations
-            SET reservation_status = 'NO_SHOW',
-                updated_at = datetime('now')
-            WHERE id = ?
-            """,
+        # 2) Get assigned room for this reservation
+        res = self.fetch_one(
+            "SELECT room_number FROM reservations WHERE id = ?",
             (reservation_id,),
         )
+        room = res.get("room_number") if res else None
+
+        # 3) Mark reservation as NOSHOW
+        self.execute(
+            "UPDATE reservations SET reservation_status = 'NO_SHOW', updated_at = datetime('now') WHERE id = ?",
+            (reservation_id,),
+        )
+
+        # 4) If there is a room, free it
+        if room:
+            self.execute(
+                "UPDATE rooms SET status = 'VACANT' WHERE room_number = ?",
+                (room.strip(),),
+            )
 
     def update_hsk_task_status(self, task_date: date, room_number: str, task_type: str, status: str, notes: str = ""):
         self.execute(
@@ -2071,7 +2062,7 @@ def page_arrivals():
                 new_room = st.text_input(
                     room_label,
                     value=r.get("room_number") or "",
-                    key=f"room_{reservation_id}",
+                    key=f"room_{r['id']}",
                     placeholder="Enter room number",
                     disabled=disabled_room_edit,
                 )
@@ -2082,15 +2073,15 @@ def page_arrivals():
                 save_label = "Save room (blocked)" if save_disabled else "Save room"
                 if st.button(
                     save_label,
-                    key=f"save_room_{reservation_id}",
+                    key=f"save_room_{r['id']}",
                     type="primary",
                     use_container_width=True,
                     disabled=save_disabled,
                 ):
                     if not save_disabled and new_room and new_room.strip():
-                        success, msg = db.update_reservation_room(reservation_id, new_room.strip())
+                        success, msg = db.update_reservation_room(r['id'], new_room)
                         if success:
-                            st.session_state.open_arrival_id = reservation_id
+                            st.session_state.open_arrival_id = r['id']
                             st.success(msg)
                             # no st.rerun() here, avoid jump
                         else:
@@ -2104,15 +2095,15 @@ def page_arrivals():
                 checkin_label = "Check-in (blocked)" if disabled_checkin else "Check-in"
                 if st.button(
                     checkin_label,
-                    key=f"checkin_{reservation_id}",
+                    key=f"checkin_{r['id']}",
                     type="secondary",
                     use_container_width=True,
                     disabled=disabled_checkin,
                 ):
                     if not disabled_checkin:
-                        success, msg = db.checkin_reservation(reservation_id)
+                        success, msg = db.checkin_reservation(r['id'])
                         if success:
-                            st.session_state.open_arrival_id = reservation_id
+                            st.session_state.open_arrival_id = r['id']
                             st.success(msg)
                             st.rerun()
                         else:
@@ -2124,14 +2115,14 @@ def page_arrivals():
                 noshow_label = "No-Show (blocked)" if disabled_noshow else "No-Show"
                 if st.button(
                     noshow_label,
-                    key=f"noshow_{reservation_id}",
+                    key=f"noshow_{r['id']}",
                     type="secondary",
                     use_container_width=True,
                     disabled=disabled_noshow,
                 ):
                     if not disabled_noshow:
                         db.mark_reservation_as_no_show(
-                            reservation_id=reservation_id,
+                            reservation_id=r['id'],
                             arrival_date=datetime.fromisoformat(r["arrival_date"]).date(),
                             guest_name=guest_name,
                             main_client=r.get("main_client") or "",
@@ -2140,7 +2131,7 @@ def page_arrivals():
                             amount_pending=0.0,
                             comment=r.get("main_remark") or "",
                         )
-                        st.session_state.open_arrival_id = reservation_id
+                        st.session_state.open_arrival_id = r['id']
                         st.success("Marked as no-show and removed from arrivals.")
                         st.rerun()
 
@@ -2162,59 +2153,95 @@ def page_inhouse_list():
 
     # Build DataFrame with reservation_id for updating mealplan
     df_inhouse = pd.DataFrame([
-        {
-            "reservation_id": r["id"],          # r.reservationid AS id in get_inhouse [file:1]
-            "Room": r["room_number"],
-            "Guest Name": r["guest_name"],
-            "Status": r["status"],
-            "Arrival": r["checkin_planned"],
-            "Departure": r["checkout_planned"],
-            "Meal Plan": r.get("meal_plan") or r.get("breakfast_code") or "",
-            "Parking": r["parking_space"] if r["parking_space"] else "",
-            "Notes": " | ".join(
-                part
-                for part in [
-                    r.get("main_remark") or "",
-                    r.get("total_remarks") or "",
-                    r.get("comment") or "",
-                ]
-                if part
-            ),
-        }
-        for r in inhouse_rows
-    ])
+    {
+        "reservation_id": r["id"],
+        "stay_id": r["stay_id"],
+        "Room": r["room_number"],
+        "Guest Name": r["guest_name"],
+        "Status": r["status"],
+        "Arrival": r["checkin_planned"],
+        "Departure": r["checkout_planned"],
+        "Meal Plan": r.get("meal_plan") or r.get("breakfast_code") or "",
+        "Parking": r.get("parking_space") or "",
+        "Notes": " | ".join(
+            part
+            for part in [
+                r.get("main_remark") or "",
+                r.get("total_remarks") or "",
+            ]
+            if part
+        ),
+        "Comment": r.get("comment") or "",
+    }
+    for r in inhouse_rows
+])
 
-    df_inhouse = clean_numeric_columns(df_inhouse, ["reservation_id", "Room"])
+    df_inhouse["reservation_id"] = pd.to_numeric(df_inhouse["reservation_id"], errors="coerce").astype("Int64")
+    df_inhouse["stay_id"] = pd.to_numeric(df_inhouse["stay_id"], errors="coerce").astype("Int64")
+
+
+
+
+    df_inhouse = clean_numeric_columns(df_inhouse, ["reservation_id", "stay_id", "Room"])
 
     st.caption(f"{len(df_inhouse)} guests in-house")
 
     edited_df = st.data_editor(
-        df_inhouse,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "reservation_id": st.column_config.NumberColumn("reservation_id", disabled=True),
-            "Room": st.column_config.TextColumn("Room", disabled=True),
-            "Guest Name": st.column_config.TextColumn("Guest Name", disabled=True),
-            "Status": st.column_config.TextColumn("Status", disabled=True),
-            "Arrival": st.column_config.TextColumn("Arrival", disabled=True),
-            "Departure": st.column_config.TextColumn("Departure", disabled=True),
-            "Meal Plan": st.column_config.TextColumn(
-                "Meal Plan",
-                help="Change to BB / HB / RO+BB etc. to control breakfast eligibility",
-            ),
-            "Parking": st.column_config.TextColumn("Parking", disabled=True),
-            "Notes": st.column_config.TextColumn("Notes", disabled=True),
-        },
-    )
+    df_inhouse,
+    width="stretch",
+    hide_index=True,
+    column_config={
+        "reservation_id": st.column_config.NumberColumn("reservation_id", disabled=True),
+        "stay_id": st.column_config.NumberColumn("stay_id", disabled=True),
+        "Room": st.column_config.TextColumn("Room", disabled=True),
+        "Guest Name": st.column_config.TextColumn("Guest Name", disabled=True),
+        "Status": st.column_config.TextColumn("Status", disabled=True),
+        "Arrival": st.column_config.TextColumn("Arrival", disabled=True),
+        "Departure": st.column_config.TextColumn("Departure", disabled=True),
+        "Meal Plan": st.column_config.TextColumn(
+            "Meal Plan",
+            help="Change to BB / HB / RO+BB etc. to control breakfast eligibility",
+        ),
+        "Parking": st.column_config.TextColumn("Parking", disabled=True),
+        "Notes": st.column_config.TextColumn("Notes", disabled=True),
+        "Comment": st.column_config.TextColumn(
+            "Comment",
+            help="Front Office comment for in-house stay; editable even after check-in",
+        ),
+    },
+    key="inhouse_editor",
+)
 
-    if st.button("Save meal plans", type="primary", use_container_width=True):
-        for _, row in edited_df.iterrows():
-            reservation_id = int(row["reservation_id"])
-            mealplan = row["Meal Plan"] or ""
-            db.update_reservation_mealplan(reservation_id, mealplan)
-        st.success("Meal plans updated.")
+# cache the latest edited data for the next rerun
+    st.session_state["inhouse_edited_df"] = edited_df.copy()
+
+
+
+
+
+    if st.button("Save changes", type="primary", width="stretch"):
+        df_to_save = st.session_state.get("inhouse_edited_df", edited_df)
+
+        for _, row in df_to_save.iterrows():
+            if not pd.isna(row["reservation_id"]):
+                reservation_id = int(row["reservation_id"])
+                mealplan = row.get("Meal Plan") or ""
+                print(f"MEAL PLAN: {mealplan}")
+                db.update_reservation_mealplan(reservation_id, mealplan)
+
+            if not pd.isna(row["stay_id"]):
+                stay_id = int(row["stay_id"])
+                comment = row.get("Comment") or ""
+                print(f"COMMENT UPDATE for stay {stay_id}: {comment}")
+                db.update_stay_comment(stay_id, comment)
+
+        st.success("In-house data updated.")
         st.rerun()
+
+    # st.write(edited_df[["reservation_id", "stay_id", "Comment"]])
+
+
+
 
     # Cancel check-in section (unchanged)
     checked_in_guests = [dict(r) for r in inhouse_rows if r["status"] == "CHECKED_IN"]
