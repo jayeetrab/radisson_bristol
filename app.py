@@ -2254,7 +2254,7 @@ def page_arrivals():
                 noshow_label = "No-Show blocked" if disabled_noshow else "No-Show"
                 if st.button(noshow_label, key=f"noshow_{r['id']}", type="secondary", use_container_width=True, disabled=disabled_noshow):
                     if not disabled_noshow:
-                        db.mark_reservation_as_noshow(
+                        db.mark_reservation_as_no_show(
                             reservation_id=r['id'],
                             arrival_date=datetime.fromisoformat(r["arrival_date"]).date(),
                             guest_name=guest_name,
