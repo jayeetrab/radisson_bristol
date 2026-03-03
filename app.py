@@ -83,6 +83,53 @@ ROOM_BLOCKS = [
     (1600, 1609),
     (1700, 1705),
 ]
+ROOM_TYPE_MAP = {
+    "BSTD-1D": [
+        "101","300","400","500","600","700","800",
+        "104","302","403","502","602","702","802",
+        "105","303","404","503","603","703","803",
+        "106","304","405","504","604","704",
+        "107","305","407","505","605","705",
+        "108","313","413","513","708","808",
+        "111","709","809","112","113","114","115",
+    ],
+    "BSTD-2T": [
+        "100","301","312","411","510","609","806",
+        "102","306","401","412","511","610","807",
+        "103","307","402","501","512","611",
+        "109","308","406","506","601","701",
+        "110","309","408","507","606","706",
+        "113","310","409","508","607","707",
+        "114","311","410","509","608","801",
+    ],
+    "PSUPVC-1D": [
+        "1008","1009","1106","1107","1108","1109",
+        "908","909","1206","1207",
+    ],
+    "PSUPVH-1D": [
+        "1000","1002","1100","1003","1101","1102","1103",
+        "900","902","903","1200","1202","1203",
+    ],
+    "PSUPVC-2T": ["906","907","1006","1007","1208"],
+    "PSUPVH-2T": ["901","1001","1201"],
+    "PPREVH-1D": [
+        "1400","1500","1402","1502","1403","1503","1404","1504",
+        "1204","1304","804","904","1004","1104",
+        "1600","1602","1603","1604","1704",
+    ],
+    "PPREVC-1D": [
+        "1405","1505","1409","1509","1005","1205","1105","1305",
+        "1310","805","905","1605","1609",
+    ],
+    "PPREVH-2T": ["1300","1301","1302","1303","1401","1501","1601"],
+    "PPREVC-2T": [
+        "1406","1407","1506","1507","1408","1508",
+        "1606","1306","1307","1308","1309","1607","1608",
+    ],
+    "SS1BVHTR": ["1700","1701","1702","1703"],
+    "UPRSVP": ["1705"],
+}
+
 
 
 def clean_numeric_columns(df: pd.DataFrame, cols: list):
@@ -294,6 +341,7 @@ class FrontOfficeDB:
             WHERE date(r.arrival_date) <= date(?)
             AND date(r.depart_date)  >= date(?)
             AND r.meal_plan IS NOT NULL
+            AND r.room_number IS NOT NULL
             AND r.meal_plan != ''
             AND (
                 r.meal_plan = 'BB'
@@ -425,11 +473,20 @@ class FrontOfficeDB:
         return row["status"] != "DIRTY"
 
     def get_next_invoice_number(self) -> int:
-        """Get next auto-incremented invoice number starting from 254000"""
-        result = self.fetch_one("SELECT MAX(id) as max_id FROM invoices")
-        if result and result['max_id']:
-            return 254000 + result['max_id']
+        """Get next auto-incremented invoice number starting from 254000, guaranteed unique."""
+        result = self.fetch_one("SELECT MAX(invoice_no) as max_inv FROM invoices")
+        if result and result.get("max_inv"):
+            return int(result["max_inv"]) + 1
         return 254000
+
+    def save_invoice_number(self, reservation_id: int, invoice_no: int):
+        """Persist the invoice number against a reservation so it never duplicates."""
+        self.execute(
+            "INSERT OR REPLACE INTO invoices (reservation_id, invoice_no, created_at) "
+            "VALUES (?, ?, datetime('now'))",
+            (reservation_id, invoice_no),
+        )
+
     
     def get_guests_for_date(self, d: date):
         """Guests actually in-house or staying on date d, from stays."""
@@ -620,6 +677,20 @@ class FrontOfficeDB:
             """,
             (main_remark, total_remarks, reservation_id),
         )
+    def add_payment(self, reservation_id: int, guest_name: str, amount: float, pay_type: str, method: str, reference: str, note: str):
+        self.execute(
+            "INSERT INTO payments (reservation_id, guest_name, amount, type, method, reference, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (reservation_id, guest_name, amount, pay_type, method, reference, note),
+        )
+
+    def update_payment(self, payment_id: int, amount: float, pay_type: str, method: str, reference: str, note: str):
+        self.execute(
+            "UPDATE payments SET amount=?, type=?, method=?, reference=?, note=? WHERE id=?",
+            (amount, pay_type, method, reference, note, payment_id),
+        )
+
+    def delete_payment(self, payment_id: int):
+        self.execute("DELETE FROM payments WHERE id=?", (payment_id,))
 
 
     def mark_reservation_as_no_show(
@@ -755,7 +826,7 @@ class FrontOfficeDB:
             JOIN reservations AS r
             ON r.id = s.reservation_id
             WHERE s.status = 'CHECKED_IN'
-            AND date(s.checkin_planned) <= date(?)
+            AND date(s.checkin_planned) < date(?)
             AND date(s.checkout_planned) >= date(?)
             AND r.room_number IS NOT NULL
             AND r.room_number != ''
@@ -1480,7 +1551,51 @@ class FrontOfficeDB:
     def get_all_rooms(self):
         rows = self.fetch_all("SELECT room_number FROM rooms ORDER BY CAST(room_number AS INTEGER)")
         return [r["room_number"] for r in rows]
-    
+    def get_suggested_rooms_for_type(self, room_type_code: str, target_date: date, exclude_reservation_id: int = None) -> list:
+        """Return rooms mapped to room_type_code that have no CHECKEDIN stay on target_date."""
+        mapped = ROOM_TYPE_MAP.get(room_type_code.strip().upper() if room_type_code else "", [])
+        if not mapped:
+            return []
+        # Rooms occupied by a CHECKEDIN stay that covers target_date
+        occupied_rows = self.fetch_all(
+            """
+            SELECT DISTINCT s.room_number
+            FROM stays s
+            WHERE s.status = 'CHECKEDIN'
+              AND date(s.checkin_planned) <= date(?)
+              AND date(s.checkout_planned) > date(?)
+            """,
+            (target_date.isoformat(), target_date.isoformat()),
+        )
+        occupied = {row["room_number"] for row in occupied_rows}
+
+        # Also exclude rooms reserved (not yet checked in) that overlap target_date
+        reserved_rows = self.fetch_all(
+            """
+            SELECT DISTINCT r.room_number
+            FROM reservations r
+            WHERE r.reservation_status NOT IN ('CANCELLED','NOSHOW')
+              AND r.room_number IS NOT NULL AND r.room_number != ''
+              AND date(r.arrival_date) <= date(?)
+              AND date(r.depart_date) > date(?)
+              AND (? IS NULL OR r.id != ?)
+            """,
+            (target_date.isoformat(), target_date.isoformat(),
+             exclude_reservation_id, exclude_reservation_id),
+        )
+        occupied |= {row["room_number"] for row in reserved_rows}
+
+        suggested = []
+        for rn in mapped:
+            if rn in occupied:
+                continue
+            room_row = self.fetch_one("SELECT status FROM rooms WHERE room_number = ?", (rn,))
+            status = room_row.get("status", "VACANT") if room_row else "VACANT"
+            suggested.append({"room_number": rn, "status": status})
+        return suggested
+
+
+
     def set_spare_rooms_for_date(self, target_date: date, rooms: list):
         self.execute("DELETE FROM spare_rooms WHERE target_date = :date", {"date": target_date})
         for rn in rooms:
@@ -1755,34 +1870,56 @@ def page_payments():
             )
             st.success("Payment/refund recorded.")
 
-    st.divider()
-    st.subheader("Recent payments / refunds")
-
+        st.divider()
+    st.subheader("Recent payments & refunds")
     rows = db.get_all_payments()
     if not rows:
         st.info("No payments recorded yet.")
     else:
-        df = pd.DataFrame(rows)
-        df = clean_numeric_columns(df, ["reservation_id"])
-        st.dataframe(
-            df[
-                [
-                    "created_at",
-                    "reservation_id",
-                    "guest_name",
-                    "amount",
-                    "type",
-                    "method",
-                    "reference",
-                    "note",
-                    "room_number",
-                    "arrival_date",
-                    "depart_date",
-                ]
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
+        for row in rows:
+            pid        = row["id"]
+            _label     = f"{'💳' if row.get('type') == 'PAYMENT' else '↩'} {row.get('guest_name','')}"
+            _sublabel  = f"£{row.get('amount', 0):.2f} · {row.get('method','')} · {row.get('type','')} · {row.get('created_at','')[:10]}"
+            with st.expander(f"{_label} — {_sublabel}", expanded=False):
+                ec1, ec2, ec3 = st.columns(3)
+                e_amount    = ec1.number_input("Amount £", value=float(row.get("amount") or 0), step=0.01, format="%.2f", key=f"ep_amt_{pid}")
+                e_type      = ec2.selectbox("Type", ["PAYMENT", "REFUND"],
+                                index=0 if row.get("type") == "PAYMENT" else 1,
+                                key=f"ep_type_{pid}")
+                e_method    = ec3.selectbox("Method", ["CARD", "CASH", "BANK", "OTHER"],
+                                index=["CARD","CASH","BANK","OTHER"].index(row.get("method","CARD"))
+                                      if row.get("method","CARD") in ["CARD","CASH","BANK","OTHER"] else 0,
+                                key=f"ep_meth_{pid}")
+                e_reference = st.text_input("Reference", value=row.get("reference") or "", key=f"ep_ref_{pid}")
+                e_note      = st.text_area("Note", value=row.get("note") or "", height=60, key=f"ep_note_{pid}")
+                col_save, col_del = st.columns(2)
+                with col_save:
+                    if st.button("💾 Save changes", key=f"ep_save_{pid}", type="primary", use_container_width=True):
+                        db.update_payment(pid, e_amount, e_type, e_method, e_reference, e_note)
+                        st.success("Payment updated.")
+                        st.rerun()
+                with col_del:
+                    _del_key = f"ep_del_confirm_{pid}"
+                    if _del_key not in st.session_state:
+                        st.session_state[_del_key] = False
+                    if not st.session_state[_del_key]:
+                        if st.button("🗑 Delete", key=f"ep_del_{pid}", use_container_width=True):
+                            st.session_state[_del_key] = True
+                            st.rerun()
+                    else:
+                        st.warning("Delete this entry?")
+                        cy, cn = st.columns(2)
+                        with cy:
+                            if st.button("✅ Yes, delete", key=f"ep_del_yes_{pid}", use_container_width=True):
+                                db.delete_payment(pid)
+                                st.session_state[_del_key] = False
+                                st.success("Deleted.")
+                                st.rerun()
+                        with cn:
+                            if st.button("↩ Cancel", key=f"ep_del_no_{pid}", use_container_width=True):
+                                st.session_state[_del_key] = False
+                                st.rerun()
+
 
 
 
@@ -1801,9 +1938,11 @@ def page_breakfast():
     dfbreakfast = pd.DataFrame(
         {
             "room_number": r.get("room_number"),
+            "arrival_date": r.get("arrival_date") or 0,
             "guest_name": r.get("guest_name"),
             "adults": r.get("adults") or 0,
             "children": r.get("children") or 0,
+            "departure_date": r.get("depart_date") or 0,
             "total_guests": r.get("total_guests") or 0,
             "meal_plan": r.get("meal_plan"),
             "status": r.get("reservation_status"),
@@ -2112,28 +2251,125 @@ def page_arrivals():
             # No-show
             with col_noshow:
                 disabled_noshow = is_cancelled
-                noshow_label = "No-Show (blocked)" if disabled_noshow else "No-Show"
-                if st.button(
-                    noshow_label,
-                    key=f"noshow_{r['id']}",
-                    type="secondary",
-                    use_container_width=True,
-                    disabled=disabled_noshow,
-                ):
+                noshow_label = "No-Show blocked" if disabled_noshow else "No-Show"
+                if st.button(noshow_label, key=f"noshow_{r['id']}", type="secondary", use_container_width=True, disabled=disabled_noshow):
                     if not disabled_noshow:
-                        db.mark_reservation_as_no_show(
+                        db.mark_reservation_as_noshow(
                             reservation_id=r['id'],
                             arrival_date=datetime.fromisoformat(r["arrival_date"]).date(),
                             guest_name=guest_name,
                             main_client=r.get("main_client") or "",
-                            charged=False,
-                            amount_charged=0.0,
-                            amount_pending=0.0,
+                            charged=False, amount_charged=0.0, amount_pending=0.0,
                             comment=r.get("main_remark") or "",
                         )
                         st.session_state.open_arrival_id = r['id']
                         st.success("Marked as no-show and removed from arrivals.")
                         st.rerun()
+
+            # ── Suggested Rooms (outside modify) ───────────────────────
+            room_type_code = r.get("room_type_code") or ""
+            arr_d = datetime.fromisoformat(r["arrival_date"]).date()
+            dep_d = datetime.fromisoformat(r["depart_date"]).date()
+            if room_type_code:
+                # Determine the "family" prefix to show sibling types too
+                _rt_upper = room_type_code.strip().upper()
+                _prefix_map = {
+                    "BSTD":   ["BSTD-1D", "BSTD-2T"],
+                    "PSUPVC": ["PSUPVC-1D", "PSUPVC-2T"],
+                    "PSUPVH": ["PSUPVH-1D", "PSUPVH-2T"],
+                    "PPREVC": ["PPREVC-1D", "PPREVC-2T"],
+                    "PPREVH": ["PPREVH-1D", "PPREVH-2T"],
+                    "SS1BVHTR": ["SS1BVHTR"],
+                    "UPRSVP":   ["UPRSVP"],
+                }
+                types_to_show = []
+                for prefix, type_list in _prefix_map.items():
+                    if _rt_upper.startswith(prefix):
+                        types_to_show = type_list
+                        break
+                if not types_to_show:
+                    types_to_show = [room_type_code]
+
+                st.markdown(f"**🛏 Suggested Rooms** — booked type: `{room_type_code}`")
+                any_shown = False
+                for rt in types_to_show:
+                    avail = db.get_suggested_rooms_for_type(rt, arr_d, r['id'])
+                    room_nums = [s["room_number"] for s in avail]
+                    label = f"{rt}: {', '.join(room_nums)}" if room_nums else f"{rt}: —"
+                    highlight = "**" if rt == _rt_upper else ""
+                    st.markdown(
+                        f"<span style='font-size:12px;color:#555'>{highlight}{label}{highlight}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    if room_nums:
+                        any_shown = True
+                if not any_shown:
+                    st.caption("No available rooms found for this type on these dates.")
+                st.caption("Enter a room number manually above, or type one from the suggestions.")
+
+            # ── Modify Reservation ──────────────────────────────────────
+            with st.expander("Modify Reservation", expanded=False):
+                _all_room_types = list(ROOM_TYPE_MAP.keys())
+                _current_rt = r.get("room_type_code") or ""
+                _rt_idx = _all_room_types.index(_current_rt) if _current_rt in _all_room_types else 0
+
+                mod_col1, mod_col2 = st.columns(2)
+                with mod_col1:
+                    mod_name    = st.text_input("Guest Name",    value=r.get("guest_name") or "",  key=f"mod_name_{r['id']}")
+                    mod_arrival = st.date_input("Arrival Date",  value=arr_d,                       key=f"mod_arr_{r['id']}")
+                    mod_room_type = st.selectbox(
+                        "Room Type",
+                        options=_all_room_types,
+                        index=_rt_idx,
+                        key=f"mod_rt_{r['id']}",
+                    )
+                with mod_col2:
+                    mod_client = st.text_input("Main Client",    value=r.get("main_client") or "", key=f"mod_client_{r['id']}")
+                    mod_depart = st.date_input("Departure Date", value=dep_d,                      key=f"mod_dep_{r['id']}")
+                    mod_meal   = st.selectbox(
+                        "Breakfast",
+                        options=["RO", "BB"],
+                        index=0 if (r.get("meal_plan") or "RO").upper().startswith("RO") else 1,
+                        key=f"mod_meal_{r['id']}",
+                    )
+
+                st.markdown("---")
+                if st.button("Save Modifications", key=f"mod_save_{r['id']}", type="primary", use_container_width=True):
+                    db.execute(
+                        "UPDATE reservations SET guest_name=?, main_client=?, arrival_date=?, depart_date=?, "
+                        "room_type_code=?, meal_plan=?, updated_at=datetime('now') WHERE id=?",
+                        (mod_name.strip(), mod_client.strip(),
+                            mod_arrival.isoformat(), mod_depart.isoformat(),
+                            mod_room_type, mod_meal, r['id'])
+                    )
+                    st.success("Reservation updated.")
+                    st.rerun()
+
+                st.markdown("---")
+                # ── Cancel Reservation (inside modify, with confirmation) ──
+                if not is_cancelled and not is_noshow:
+                    _confirm_key = f"confirm_cancel_{r['id']}"
+                    if _confirm_key not in st.session_state:
+                        st.session_state[_confirm_key] = False
+                    if not st.session_state[_confirm_key]:
+                        if st.button("Cancel Reservation", key=f"cancel_res_btn_{r['id']}", use_container_width=True):
+                            st.session_state[_confirm_key] = True
+                            st.rerun()
+                    else:
+                        st.warning("Are you sure you want to cancel this reservation? This cannot be undone.")
+                        col_yes, col_no = st.columns(2)
+                        with col_yes:
+                            if st.button("I agree, cancel it", key=f"cancel_yes_{r['id']}", type="primary", use_container_width=True):
+                                ok, msg = db.cancel_reservation(r['id'])
+                                st.session_state[_confirm_key] = False
+                                st.success(msg) if ok else st.error(msg)
+                                st.rerun()
+                        with col_no:
+                            if st.button("↩ Go back", key=f"cancel_no_{r['id']}", use_container_width=True):
+                                st.session_state[_confirm_key] = False
+                                st.rerun()
+
+
 
 
 
@@ -2185,6 +2421,7 @@ def page_inhouse_list():
     df_inhouse = clean_numeric_columns(df_inhouse, ["reservation_id", "stay_id", "Room"])
 
     st.caption(f"{len(df_inhouse)} guests in-house")
+    st.caption("You can edit breakfast plan and also add comments, and then ENTER SAVE TWICE to save it.")
 
     edited_df = st.data_editor(
     df_inhouse,
@@ -2264,21 +2501,51 @@ def page_inhouse_list():
         st.subheader("Change room for checked-in guests")
         for idx, guest in enumerate(checked_in_guests, 1):
             with st.expander(f"{idx}. Room {guest['room_number']} - {guest['guest_name']}", expanded=False):
-                new_room = st.text_input(
-                    "New Room Number",
-                    key=f"move_room_{guest['stay_id']}",
-                    placeholder="Enter new room",
-                )
+                new_room = st.text_input("New Room Number", key=f"move_room_{guest['stay_id']}", placeholder="Enter new room")
                 if st.button("Move", key=f"move_btn_{guest['stay_id']}", use_container_width=True):
                     if not new_room.strip():
                         st.warning("Enter a room number.")
                     else:
-                        success, msg = db.move_checked_in_guest(guest["stay_id"], new_room)
+                        success, msg = db.move_checked_in_guest(guest['stay_id'], new_room)
                         if success:
                             st.success(msg)
                             st.rerun()
                         else:
                             st.error(msg)
+
+        st.divider()
+        st.subheader("Modify Reservations")
+        for idx, guest in enumerate(checked_in_guests, 1):
+            res_id = guest.get("id") or guest.get("reservationid") or guest.get("reservation_id")
+            with st.expander(f"{idx}. Room {guest['room_number']} - {guest['guest_name']}", expanded=False):
+                full_res = db.fetch_one("SELECT * FROM reservations WHERE id = ?", (res_id,))
+                if full_res:
+                    mod_col1, mod_col2 = st.columns(2)
+                    with mod_col1:
+                        inh_name   = st.text_input("Guest Name",   value=full_res.get("guest_name") or "", key=f"inh_name_{res_id}")
+                        inh_arr    = st.date_input("Arrival Date",  value=datetime.fromisoformat(full_res["arrival_date"]).date(), key=f"inh_arr_{res_id}")
+                        inh_rt     = st.text_input("Room Type",     value=full_res.get("room_type_code") or "", key=f"inh_rt_{res_id}")
+                    with mod_col2:
+                        inh_client = st.text_input("Main Client",   value=full_res.get("main_client") or "", key=f"inh_client_{res_id}")
+                        inh_dep    = st.date_input("Departure Date",value=datetime.fromisoformat(full_res["depart_date"]).date(), key=f"inh_dep_{res_id}")
+                        inh_meal   = st.text_input("Meal Plan",     value=full_res.get("meal_plan") or "", key=f"inh_meal_{res_id}")
+                    
+                    if st.button("Save Changes", key=f"inh_save_{res_id}", type="primary", use_container_width=True):
+                        db.execute(
+                            "UPDATE reservations SET guest_name=?, main_client=?, arrival_date=?, depart_date=?, "
+                            "room_type_code=?, meal_plan=?, updated_at=datetime('now') WHERE id=?",
+                            (inh_name.strip(), inh_client.strip(),
+                                inh_arr.isoformat(), inh_dep.isoformat(),
+                                inh_rt.strip(), inh_meal.strip(), res_id)
+                        )
+                        st.success("Reservation updated.")
+                        st.rerun()
+                    # with col_cancel:
+                    #     if st.button("🚫 Cancel Reservation", key=f"inh_cancel_{res_id}", use_container_width=True):
+                    #         ok, msg = db.cancel_reservation(res_id)
+                    #         st.success(msg) if ok else st.error(msg)
+                    #         st.rerun()
+
 
 
 
@@ -2691,32 +2958,39 @@ def page_search():
 
 def page_room_list():
     st.header("Room List")
-    st.caption("Manage room inventory and room status (CLEAN / DIRTY / VACANT / OCCUPIED)")
+    st.caption("Manage room inventory and room status: CLEAN / DIRTY / VACANT / OCCUPIED")
+
+    # ── Room-Type Map reference panel ──────────────────────────────────────
+    with st.expander("🗂 Room Type → Room Number Mapping", expanded=False):
+        for rt, rooms in ROOM_TYPE_MAP.items():
+            st.markdown(f"**{rt}** — {', '.join(rooms)}")
 
     df = db.read_table("rooms")
     if df.empty:
-        st.info("No rooms yet (should have been seeded).")
+        st.info("No rooms yet – should have been seeded.")
         return
 
-    df_display = df[["room_number", "status"]].copy()
-    df_display = df_display.sort_values(
-        by="room_number", key=lambda s: pd.to_numeric(s, errors="coerce")
-    )
-    df_display.columns = ["Room", "Status"]
+    # Merge room_type into display
+    def _room_type(rn):
+        rn = str(rn).strip()
+        for rt, rooms in ROOM_TYPE_MAP.items():
+            if rn in rooms:
+                return rt
+        return ""
 
+    df_display = df[["room_number", "status"]].copy()
+    df_display = df_display.sort_values(by="room_number", key=lambda s: pd.to_numeric(s, errors="coerce"))
+    df_display["room_type"] = df_display["room_number"].apply(_room_type)
+    df_display.columns = ["Room", "Status", "Room Type"]
     st.subheader("Rooms")
 
-    edited = st.data_editor(
-        df_display,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Status": st.column_config.SelectboxColumn(
-                "Status",
-                options=["VACANT", "OCCUPIED", "CLEAN", "DIRTY"],
-            )
-        },
-    )
+
+    edited = st.data_editor(df_display, use_container_width=True, hide_index=True,
+                        column_config={
+                            "Status": st.column_config.SelectboxColumn("Status", options=["VACANT", "OCCUPIED", "CLEAN", "DIRTY"]),
+                            "Room Type": st.column_config.TextColumn("Room Type", disabled=True),
+                        })
+
 
     if st.button("Save room statuses", type="primary", use_container_width=True):
         for _, row in edited.iterrows():
@@ -2924,21 +3198,17 @@ def page_invoices():
     st.header("📋 Invoice Generation")
     
     # Get next invoice number
+        # Check if this reservation already has a saved invoice number
+    existing_inv_row = db.fetch_one(
+        "SELECT invoice_no FROM invoices WHERE reservation_id = ? ORDER BY id DESC LIMIT 1",
+        (0,)  # placeholder; updated below after guest selection
+    )
     next_inv = db.get_next_invoice_number()
-    
     col1, col2 = st.columns([3, .5], gap="large")
-    
     with col1:
         st.subheader("Invoice Details")
-        
-        # Invoice Number (auto-increment)
-        invoice_no = st.number_input(
-            "Invoice Number",
-            value=next_inv,
-            step=1,
-            min_value=254000,
-            format="%d"
-        )
+        invoice_no = st.number_input(" Invoice Number", value=next_inv, step=1, min_value=254000, format="%d")
+
         
         # Invoice Date
         invoice_date = st.date_input("Invoice Date")
@@ -3019,17 +3289,13 @@ def page_invoices():
         with col_add:
             if st.button("+ Add Item", use_container_width=True):
                 # use selected VAT rate
-                net_price = line_price / tax_factor
-                vat = line_price - net_price
+                net_price = line_price / 1.2
+                vat = line_price / 5
                 st.session_state.invoice_items.append({
-                    "date": line_date,
-                    "qty": line_qty,
-                    "price_per_unit": line_price,
-                    "description": line_desc,
-                    "net_price": net_price,
-                    "vat": vat,
-                    "total": line_price
+                    "date": line_date, "qty": line_qty, "price_per_unit": line_price,
+                    "description": line_desc, "net_price": net_price, "vat": vat, "total": line_price
                 })
+
                 st.rerun()
         
         with col_clear:
@@ -3044,7 +3310,7 @@ def page_invoices():
             for idx, item in enumerate(st.session_state.invoice_items):
                 col_remove, col_info = st.columns([0.5, 3])
                 with col_remove:
-                    if st.button("❌", key=f"remove_{idx}", use_container_width=True):
+                    if st.button("Remove", key=f"remove_{idx}", use_container_width=True):
                         st.session_state.invoice_items.pop(idx)
                         st.rerun()
                 with col_info:
@@ -3070,7 +3336,7 @@ def page_invoices():
                     total_vat=total_vat,
                     total_amount=total_amount
                 )
-                
+                db.save_invoice_number(reservation_id, invoice_no)
                 st.download_button(
                     "⬇️ Click to Download PDF",
                     data=pdf_bytes,
