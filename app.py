@@ -3241,7 +3241,7 @@ def page_invoices():
 
         display_name = st.text_input(
         "Invoice name (leave blank to use guest name)",
-        value=guest_name,
+        value="",
         key="invoice_display_name",
     )
         if not display_name.strip():
