@@ -3240,9 +3240,9 @@ def page_invoices():
         room_no = selected.get("room_number") or ""
 
         display_name = st.text_input(
-        "Invoice name (leave blank to use guest name)",
-        value="",
-        key="invoice_display_name",
+        "Invoice name (leave blank to use guest name)"
+        # value="",
+        # key="invoice_display_name",
     )
         if not display_name.strip():
             display_name = guest_name
