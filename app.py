@@ -910,102 +910,87 @@ class FrontOfficeDB:
     def generate_hsk_tasks_for_date(self, target_date: date):
         """Auto-generate housekeeping tasks for the day"""
         tasks = []
-        
+        d = target_date.isoformat()
+
         conn = self.get_conn()
         c = conn.cursor()
-        
+
         try:
-            # Use LIKE to match the date portion of timestamp
-            target_str = target_date.isoformat()  # e.g., "2026-08-16"
-            
-            # 1. Checkouts
-            # 1. Checkouts - ALL guests departing today (checked in OR checked out)
+            # 1. CHECKOUTS – checked-in guests whose planned checkout is today
             c.execute("""
                 SELECT s.room_number, r.guest_name, r.main_remark, r.total_remarks, s.status
                 FROM stays s
                 JOIN reservations r ON r.id = s.reservation_id
-                WHERE s.checkout_planned LIKE ?
+                WHERE s.status = 'CHECKED_IN'
+                AND date(s.checkout_planned) = date(?)
                 AND s.room_number IS NOT NULL AND s.room_number != ''
-                ORDER BY 
-                    CASE WHEN s.status = 'CHECKED_OUT' THEN 0 ELSE 1 END,
-                    CAST(s.room_number AS INTEGER)
-            """, (f"{target_date.isoformat()}%",))
+                ORDER BY CAST(s.room_number AS INTEGER)
+            """, (d,))
 
-            checkouts = c.fetchall()
+            for co in c.fetchall():
+                co = dict(co)
+                room = co["room_number"]
+                guest = co["guest_name"]
+                remarks = f"{co.get('main_remark') or ''} {co.get('total_remarks') or ''}".lower()
 
-            for co in checkouts:
-                co_dict = dict(co)
-                room = co_dict["room_number"]
-                guest = co_dict["guest_name"]
-                
-                # Mark already checked-out rooms as URGENT
-                if co_dict.get("status") == "CHECKED_OUT":
-                    priority = "URGENT"
-                else:
-                    priority = "HIGH"
-                
                 task = {
                     "room": room,
                     "tasktype": "CHECKOUT",
-                    "priority": priority,
+                    "priority": "HIGH",
                     "description": f"Clean room {room} - {guest} checkout",
                     "notes": []
                 }
-                
-                remarks = f"{co_dict.get('main_remark') or ''} {co_dict.get('total_remarks') or ''}".lower()
-                if '2t' in remarks:
-                    task["notes"].append("2 TWIN BEDS")
                 if 'vip' in remarks or 'birthday' in remarks:
                     task["priority"] = "URGENT"
                     task["notes"].append("VIP/SPECIAL")
-                
-                # Add note if already checked out
-                if co_dict.get("status") == "CHECKED_OUT":
-                    task["notes"].append("✓ CHECKED OUT - CLEAN NOW")
-                
+                if '2t' in remarks:
+                    task["notes"].append("2 TWIN BEDS")
+
                 tasks.append(task)
 
-            
-            # 2. Stayovers
+            # 2. STAYOVERS – checked-in guests whose stay COVERS today but do NOT depart today
             c.execute("""
                 SELECT DISTINCT s.room_number, r.guest_name
                 FROM stays s
                 JOIN reservations r ON r.id = s.reservation_id
                 WHERE s.status = 'CHECKED_IN'
-                AND s.checkin_planned LIKE ?
-                AND s.checkout_planned LIKE ?
+                AND date(s.checkin_planned) <= date(?)
+                AND date(s.checkout_planned) > date(?)
+                AND s.room_number IS NOT NULL AND s.room_number != ''
                 ORDER BY CAST(s.room_number AS INTEGER)
-            """, (f"%{target_str.split('-')[0]}-{target_str.split('-')[1]}%", 
-                f"%{target_str.split('-')[0]}-{target_str.split('-')[1]}%"))
-            
-            stayovers = c.fetchall()
-            
-            for so in stayovers:
-                so_dict = dict(so)
+            """, (d, d))
+
+            for so in c.fetchall():
+                so = dict(so)
                 tasks.append({
-                    "room": so_dict["room_number"],
+                    "room": so["room_number"],
                     "tasktype": "STAYOVER",
                     "priority": "MEDIUM",
-                    "description": f"Refresh room {so_dict['room_number']} - {so_dict['guest_name']} stayover",
+                    "description": f"Refresh room {so['room_number']} - {so['guest_name']} stayover",
                     "notes": []
                 })
-            
-            # 3. Arrivals
+
+            # 3. ARRIVALS – reservations arriving today, room assigned,
+            #    not cancelled/noshow, and NOT yet checked in
             c.execute("""
                 SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
                 FROM reservations r
-                WHERE r.arrival_date LIKE ?
+                LEFT JOIN stays s
+                ON s.reservation_id = r.id
+                AND s.status = 'CHECKED_IN'
+                WHERE date(r.arrival_date) = date(?)
                 AND r.room_number IS NOT NULL AND r.room_number != ''
+                AND r.reservation_status NOT IN ('CANCELLED', 'NO_SHOW')
+                AND s.id IS NULL
                 ORDER BY CAST(r.room_number AS INTEGER)
-            """, (f"{target_str}%",))
-            
-            arrivals = c.fetchall()
-            
-            for arr in arrivals:
-                arr_dict = dict(arr)
-                room = arr_dict["room_number"]
-                guest = arr_dict["guest_name"]
-                
+            """, (d,))
+
+            for arr in c.fetchall():
+                arr = dict(arr)
+                room = arr["room_number"]
+                guest = arr["guest_name"]
+                remarks = f"{arr.get('main_remark') or ''} {arr.get('total_remarks') or ''}".lower()
+
                 task = {
                     "room": room,
                     "tasktype": "ARRIVAL",
@@ -1013,19 +998,19 @@ class FrontOfficeDB:
                     "description": f"Prepare room {room} for {guest} arrival",
                     "notes": []
                 }
-                
-                remarks = f"{arr_dict.get('main_remark') or ''} {arr_dict.get('total_remarks') or ''}".lower()
                 if '2t' in remarks:
                     task["notes"].append("2 TWIN BEDS")
                 if 'accessible' in remarks or 'disabled' in remarks:
                     task["notes"].append("ACCESSIBLE ROOM")
-                
+
                 tasks.append(task)
-        
+
         finally:
             conn.close()
-        
+
         return tasks
+
+
 
 
     def cancel_checkin(self, stay_id: int):
