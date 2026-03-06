@@ -313,6 +313,55 @@ class FrontOfficeDB:
         UNIQUE(task_date, room_number, task_type)
     )
 """)
+    def get_invoice_by_reservation(self, reservation_id: int):
+        return self.fetch_one(
+            "SELECT * FROM invoices WHERE reservation_id = ?",
+            (reservation_id,),
+        )
+
+    def ensure_invoice_for_reservation(self, reservation_id: int, guest_name: str = "", room_number: str | None = None):
+        inv = self.get_invoice_by_reservation(reservation_id)
+        if inv:
+            return inv["invoice_no"]
+
+        invoice_no = self.get_next_invoice_number()
+        self.execute(
+            """
+            INSERT INTO invoices (invoice_no, reservation_id, guest_name, room_number,
+                                  total_net, total_vat, total_amount, invoice_date)
+            VALUES (?, ?, ?, ?, 0.0, 0.0, 0.0, date('now'))
+            """,
+            (invoice_no, reservation_id, guest_name or None, room_number or None),
+        )
+        return invoice_no
+
+    def apply_payment_to_invoice(self, reservation_id: int, amount: float, pay_type: str):
+        """
+        Update invoice total_amount in real-time when a payment is recorded.
+        Convention:
+          - PAYMENT reduces the guest balance (negative on invoice total).
+          - REFUND increases the balance (positive).
+        """
+        if reservation_id is None:
+            return  # external/manual payment, not linked to an invoice
+
+        signed = -amount if pay_type == "PAYMENT" else amount
+
+        inv = self.get_invoice_by_reservation(reservation_id)
+        if not inv:
+            # create a shell invoice first
+            self.ensure_invoice_for_reservation(reservation_id)
+            inv = self.get_invoice_by_reservation(reservation_id)
+
+        current_total = inv.get("total_amount") or 0.0
+        new_total = current_total + signed
+
+        # IMPORTANT: your invoices table has `created_at`, not `updated_at`
+        self.execute(
+            "UPDATE invoices SET total_amount = ? WHERE id = ?",
+            (new_total, inv["id"]),
+        )
+
     def update_arrival_comment(reservation_id: str, comment: str):
         # example – adjust to your schema/table
         try:
@@ -451,8 +500,21 @@ class FrontOfficeDB:
             (comment, stay_id),
         )
 
+    # def add_payment(self, reservation_id: int, guest_name: str, amount: float,
+    #                 pay_type: str, method: str, reference: str, note: str):
+    #     self.execute(
+    #         """
+    #         INSERT INTO payments (reservation_id, guest_name, amount, type, method, reference, note)
+    #         VALUES (?, ?, ?, ?, ?, ?, ?)
+    #         """,
+    #         (reservation_id, guest_name, amount, pay_type, method, reference, note),
+    #     )
     def add_payment(self, reservation_id: int, guest_name: str, amount: float,
                     pay_type: str, method: str, reference: str, note: str):
+        """
+        Record a payment/refund and automatically reflect it in the linked invoice
+        (if reservation_id is provided).
+        """
         self.execute(
             """
             INSERT INTO payments (reservation_id, guest_name, amount, type, method, reference, note)
@@ -460,6 +522,9 @@ class FrontOfficeDB:
             """,
             (reservation_id, guest_name, amount, pay_type, method, reference, note),
         )
+
+        # Real-time invoice linkage
+        self.apply_payment_to_invoice(reservation_id, amount, pay_type)
 
     def is_room_clean(self, room_number: str) -> bool:
         """Return True if room exists and status is not DIRTY."""
@@ -677,11 +742,11 @@ class FrontOfficeDB:
             """,
             (main_remark, total_remarks, reservation_id),
         )
-    def add_payment(self, reservation_id: int, guest_name: str, amount: float, pay_type: str, method: str, reference: str, note: str):
-        self.execute(
-            "INSERT INTO payments (reservation_id, guest_name, amount, type, method, reference, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (reservation_id, guest_name, amount, pay_type, method, reference, note),
-        )
+    # def add_payment(self, reservation_id: int, guest_name: str, amount: float, pay_type: str, method: str, reference: str, note: str):
+    #     self.execute(
+    #         "INSERT INTO payments (reservation_id, guest_name, amount, type, method, reference, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    #         (reservation_id, guest_name, amount, pay_type, method, reference, note),
+    #     )
 
     def update_payment(self, payment_id: int, amount: float, pay_type: str, method: str, reference: str, note: str):
         self.execute(
@@ -1417,7 +1482,7 @@ class FrontOfficeDB:
     # ---- parking helpers ----
 
     def get_parking_overview_for_date(self, target_date: date):
-        return self.fetchall(
+        return self.fetch_all(
             """
             SELECT
                 s.id,
@@ -1425,30 +1490,23 @@ class FrontOfficeDB:
                 s.room_number,
                 s.status,
                 s.checkin_planned,
-                s.check_out_planned,
-                s.check_in_actual,
-                s.check_out_actual,
+                s.checkout_planned,
+                s.checkin_actual,
+                s.checkout_actual,
                 s.parking_space,
                 s.parking_plate,
                 s.parking_notes,
                 r.guest_name
             FROM stays AS s
-            JOIN reservations AS r
-            ON r.id = s.reservation_id
+            JOIN reservations AS r ON r.id = s.reservation_id
             WHERE s.status = 'CHECKED_IN'
             AND date(s.checkin_planned) <= date(?)
-            AND date(s.check_out_planned) >= date(?)
-            AND (
-                s.parking_space IS NOT NULL
-                OR s.parking_plate IS NOT NULL
-            )
-            ORDER BY
-                s.parking_space,
-                CAST(s.room_number AS INTEGER)
+            AND date(s.checkout_planned) >= date(?)
+            AND (s.parking_space IS NOT NULL OR s.parking_plate IS NOT NULL)
+            ORDER BY s.parking_space, CAST(s.room_number AS INTEGER)
             """,
-            (target_date.isoformat(),),
+            (target_date.isoformat(), target_date.isoformat()),
         )
-
 
 
 
@@ -1805,44 +1863,56 @@ def page_add_reservation():
 def page_payments():
     st.header("Payments / Refunds")
 
-    # --- NEW: date + guest dropdown (like invoice tab) ---
+    # --- Date selection ---
     col1, col2 = st.columns(2)
     with col1:
         pay_date = st.date_input("Payment Date", value=date.today(), key="payment_date")
     with col2:
         st.write("")  # spacer
 
-    guests_for_date = db.get_guests_for_date(pay_date)
-    guest_options = [
-        f"{g['guest_name']} (Room {g['room_number']})"
-        for g in guests_for_date
-    ]
+    # --- Build guest / reservation dropdown ---
+    # Use all reservations whose stay covers this date
+    res_list = db.get_reservations_for_date(pay_date)
+    options = []
+    for r in res_list:
+        label = f"{r['guest_name']} (Room {r.get('room_number') or '—'}) · Res {r.get('reservation_no') or r['id']}"
+        options.append((label, r["id"]))
 
-    if not guest_options:
-        st.warning("No guests for this date. Please select another date.")
-        return
+    options_labels = [lbl for (lbl, _id) in options] + ["➕ Add manual guest / external payment"]
 
-    selected_guest_str = st.selectbox(
-        "Select Guest",
-        guest_options,
-        key="payment_guest_selector",
-    )
+    if not options_labels:
+        st.warning("No reservations for this date. You can still add a manual payment below.")
+        selected = "➕ Add manual guest / external payment"
+    else:
+        selected = st.selectbox(
+            "Select Guest / Reservation",
+            options_labels,
+            key="payment_guest_selector",
+        )
 
-    selected_guest_name = selected_guest_str.split(" (Room")[0]
+    # --- Resolve selection / manual mode ---
+    manual_mode = (selected == "➕ Add manual guest / external payment")
 
-    # get reservation for that guest/date
-    res_data = db.get_reservation_by_guest_and_date(selected_guest_name, pay_date)
-    if not res_data:
-        st.error("Could not load reservation data for this guest/date.")
-        return
+    if manual_mode:
+        reservation_id = None
+        guest_name = st.text_input("Guest name (manual)", key="pay_manual_guest")
+        room_no = st.text_input("Room (optional)", key="pay_manual_room")
+        st.info("This payment will not be linked to a specific reservation unless you update it later.")
+    else:
+        idx = options_labels.index(selected)
+        reservation_id = options[idx][1]
+        res_data = db.fetch_one(
+            "SELECT id, guest_name, room_number FROM reservations WHERE id = ?",
+            (reservation_id,),
+        )
+        if not res_data:
+            st.error("Could not load reservation data for this selection.")
+            return
+        guest_name = res_data.get("guest_name", "")
+        room_no = res_data.get("room_number", "")
+        st.info(f"✓ Selected: {guest_name} | Room: {room_no or '—'} | Res ID: {reservation_id}")
 
-    reservation_id = res_data.get("id", None)
-    guest_name = res_data.get("guest_name", "")
-    room_no = res_data.get("room_number", "")
-
-    st.info(f"✓ Selected: {guest_name} | Room: {room_no} | Res ID: {reservation_id}")
-
-    # --- OLD amount/type/method block stays the same ---
+    # --- Payment details ---
     col3, col4, col5 = st.columns(3)
     with col3:
         amount = st.number_input("Amount (£)", min_value=0.0, step=0.01, format="%.2f")
@@ -1854,70 +1924,97 @@ def page_payments():
     reference = st.text_input("Reference (folio, POS ref, etc.)")
     note = st.text_area("Note")
 
-    # --- UPDATED: no manual res_id / guest_name, use selected ones ---
     if st.button("Add entry", type="primary", use_container_width=True):
         if amount <= 0:
             st.error("Amount must be greater than 0.")
+        elif not guest_name.strip():
+            st.error("Guest name is required.")
         else:
             db.add_payment(
                 int(reservation_id) if reservation_id is not None else None,
-                guest_name,
+                guest_name.strip(),
                 amount,
                 pay_type,
                 method,
-                reference,
-                note,
+                reference.strip(),
+                note.strip(),
             )
             st.success("Payment/refund recorded.")
+            st.rerun()
 
-        st.divider()
-    st.subheader("Recent payments & refunds")
+    st.divider()
+    st.subheader("Recent payments / refunds")
+
     rows = db.get_all_payments()
     if not rows:
         st.info("No payments recorded yet.")
     else:
         for row in rows:
-            pid        = row["id"]
-            _label     = f"{'💳' if row.get('type') == 'PAYMENT' else '↩'} {row.get('guest_name','')}"
-            _sublabel  = f"£{row.get('amount', 0):.2f} · {row.get('method','')} · {row.get('type','')} · {row.get('created_at','')[:10]}"
-            with st.expander(f"{_label} — {_sublabel}", expanded=False):
+            pid = row["id"]
+            label = f"{row.get('guest_name')} ({row.get('type')})"
+            sublabel = f"{row.get('amount', 0):.2f} · {row.get('method')} · {row.get('created_at', '')[:10]}"
+
+            with st.expander(f"{label} — {sublabel}", expanded=False):
                 ec1, ec2, ec3 = st.columns(3)
-                e_amount    = ec1.number_input("Amount £", value=float(row.get("amount") or 0), step=0.01, format="%.2f", key=f"ep_amt_{pid}")
-                e_type      = ec2.selectbox("Type", ["PAYMENT", "REFUND"],
-                                index=0 if row.get("type") == "PAYMENT" else 1,
-                                key=f"ep_type_{pid}")
-                e_method    = ec3.selectbox("Method", ["CARD", "CASH", "BANK", "OTHER"],
-                                index=["CARD","CASH","BANK","OTHER"].index(row.get("method","CARD"))
-                                      if row.get("method","CARD") in ["CARD","CASH","BANK","OTHER"] else 0,
-                                key=f"ep_meth_{pid}")
-                e_reference = st.text_input("Reference", value=row.get("reference") or "", key=f"ep_ref_{pid}")
-                e_note      = st.text_area("Note", value=row.get("note") or "", height=60, key=f"ep_note_{pid}")
-                col_save, col_del = st.columns(2)
-                with col_save:
-                    if st.button("💾 Save changes", key=f"ep_save_{pid}", type="primary", use_container_width=True):
-                        db.update_payment(pid, e_amount, e_type, e_method, e_reference, e_note)
+                eamount = ec1.number_input(
+                    "Amount",
+                    value=float(row.get("amount") or 0),
+                    step=0.01,
+                    format="%.2f",
+                    key=f"ep_amt_{pid}",
+                )
+                etype = ec2.selectbox(
+                    "Type",
+                    ["PAYMENT", "REFUND"],
+                    index=0 if row.get("type") == "PAYMENT" else 1,
+                    key=f"ep_type_{pid}",
+                )
+                emethod = ec3.selectbox(
+                    "Method",
+                    ["CARD", "CASH", "BANK", "OTHER"],
+                    index=(["CARD", "CASH", "BANK", "OTHER"].index(row.get("method", "CARD"))
+                           if row.get("method", "CARD") in ["CARD", "CASH", "BANK", "OTHER"] else 0),
+                    key=f"ep_method_{pid}",
+                )
+                ereference = st.text_input(
+                    "Reference",
+                    value=row.get("reference") or "",
+                    key=f"ep_ref_{pid}",
+                )
+                enote = st.text_area(
+                    "Note",
+                    value=row.get("note") or "",
+                    height=60,
+                    key=f"ep_note_{pid}",
+                )
+
+                colsave, coldel = st.columns(2)
+                with colsave:
+                    if st.button("Save changes", key=f"ep_save_{pid}", type="primary", use_container_width=True):
+                        db.update_payment(pid, eamount, etype, emethod, ereference, enote)
                         st.success("Payment updated.")
                         st.rerun()
-                with col_del:
-                    _del_key = f"ep_del_confirm_{pid}"
-                    if _del_key not in st.session_state:
-                        st.session_state[_del_key] = False
-                    if not st.session_state[_del_key]:
-                        if st.button("🗑 Delete", key=f"ep_del_{pid}", use_container_width=True):
-                            st.session_state[_del_key] = True
+                with coldel:
+                    del_key = f"ep_del_confirm_{pid}"
+                    if del_key not in st.session_state:
+                        st.session_state[del_key] = False
+
+                    if not st.session_state[del_key]:
+                        if st.button("Delete", key=f"ep_del_{pid}", use_container_width=True):
+                            st.session_state[del_key] = True
                             st.rerun()
                     else:
                         st.warning("Delete this entry?")
                         cy, cn = st.columns(2)
                         with cy:
-                            if st.button("✅ Yes, delete", key=f"ep_del_yes_{pid}", use_container_width=True):
+                            if st.button("Yes, delete", key=f"ep_del_yes_{pid}", use_container_width=True):
                                 db.delete_payment(pid)
-                                st.session_state[_del_key] = False
+                                st.session_state[del_key] = False
                                 st.success("Deleted.")
                                 st.rerun()
                         with cn:
-                            if st.button("↩ Cancel", key=f"ep_del_no_{pid}", use_container_width=True):
-                                st.session_state[_del_key] = False
+                            if st.button("Cancel", key=f"ep_del_no_{pid}", use_container_width=True):
+                                st.session_state[del_key] = False
                                 st.rerun()
 
 
@@ -2140,7 +2237,9 @@ def page_arrivals():
         is_cancelled = status == "CANCELLED"
         is_noshow = status == "NO_SHOW"
 
-        header_label = f"{idx}. {guest_name} – Room {room_number} (Res {reservation_no})"
+        main_comment = (r.get("main_remark") or "").strip()
+        comment_snippet = f" ·  {main_comment[:40]}{'…' if len(main_comment) > 40 else ''}" if main_comment else ""
+        header_label = f"{idx}. {guest_name} – Room {room_number} (Res {reservation_no}){comment_snippet}"
         if is_cancelled:
             header_label = f"❌ {header_label} [CANCELLED]"
         elif is_noshow:
@@ -2254,7 +2353,7 @@ def page_arrivals():
                 noshow_label = "No-Show blocked" if disabled_noshow else "No-Show"
                 if st.button(noshow_label, key=f"noshow_{r['id']}", type="secondary", use_container_width=True, disabled=disabled_noshow):
                     if not disabled_noshow:
-                        db.mark_reservation_as_no_show(
+                        db.mark_reservation_as_noshow(
                             reservation_id=r['id'],
                             arrival_date=datetime.fromisoformat(r["arrival_date"]).date(),
                             guest_name=guest_name,
@@ -3241,7 +3340,7 @@ def page_invoices():
 
         display_name = st.text_input(
         "Invoice name (leave blank to use guest name)"
-        # value="",
+        # value=guest_name,
         # key="invoice_display_name",
     )
         if not display_name.strip():
