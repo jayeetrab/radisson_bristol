@@ -1401,13 +1401,20 @@ class FrontOfficeDB:
                     # 6 Payment method
                     worksheet.write(row, 6, pay_method, fmt)
 
-                    # 7 Daily Acc = paid amount for this reservation
-                    if paid_amount:
-                        worksheet.write_number(row, 7, float(paid_amount), fmt)
-                    else:
-                        worksheet.write(row, 7, 0.0, fmt)
+                    try:
+                        nights_val = float(nights) if nights is not None else 0.0
+                    except Exception:
+                        nights_val = 0.0
 
-                    # 8 Paid amount (room) – same value shown again
+                    if paid_amount and nights_val > 0:
+                        daily_acc = float(paid_amount) / nights_val
+                    else:
+                        daily_acc = 0.0
+
+                    # 7 Daily Acc = paid amount / nights
+                    worksheet.write_number(row, 7, daily_acc, fmt)
+
+                    # 8 Paid amount (room) = total amount guest has paid for full stay
                     if paid_amount:
                         worksheet.write_number(row, 8, float(paid_amount), fmt)
                         total_paid += float(paid_amount)
