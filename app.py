@@ -584,7 +584,7 @@ class FrontOfficeDB:
             (meal_plan, reservation_id),
         )
     def get_reservations_for_date(self, d: date):
-        """All reservations whose stay covers date d, regardless of CHECKED_IN/CHECKEDOUT."""
+        """All reservations whose stay covers date d, regardless of CHECKEDIN/CHECKEDOUT."""
         return self.fetch_all(
             """
             SELECT
@@ -905,36 +905,6 @@ class FrontOfficeDB:
             (target_date.isoformat(), target_date.isoformat()),
         )
 
-    def get_daily_revenue_data(self, target_date: date):
-        """
-        Data needed to build columns:
-        Room No, ARRIVALS, DEPARTURE, Occupancy:, MEAL PLAN, Name:,
-        Daily Acc, Remarks (+ reservation_id for joining payments).
-        """
-        return self.fetch_all(
-            """
-            SELECT 
-                s.room_number,          -- Room No
-                r.id AS reservation_id, -- link to payments
-                r.arrival_date,         -- ARRIVALS
-                r.depart_date,          -- DEPARTURE
-                r.nights,               -- Occupancy:
-                r.meal_plan,            -- MEAL PLAN
-                r.guest_name,           -- Name:
-                r.amount_pending,       -- Daily Acc (base)
-                s.checkout_planned,     -- DEPARTURE fallback / stay window
-                s.comment               -- Remarks
-            FROM stays s
-            JOIN reservations r ON r.id = s.reservation_id
-            WHERE s.status = 'CHECKED_IN'
-            AND date(s.checkin_planned) <= date(?)
-            AND date(s.checkout_planned) > date(?)
-            ORDER BY CAST(s.room_number AS INTEGER)
-            """,
-            (target_date.isoformat(), target_date.isoformat()),
-        )
-
-
 
 
     def generate_hsk_tasks_for_date(self, target_date: date):
@@ -1160,531 +1130,6 @@ class FrontOfficeDB:
            df_clean = df_clean.where(pd.notna(df_clean), None)
            
            return df_clean
-    def get_stays_covering_range(self, start_date: date, end_date: date):
-        """
-        Return all reservations whose stay overlaps [start_date, end_date),
-        i.e. arrival_date <= end_date-1 and depart_date > start_date.
-        """
-        return self.fetch_all(
-            """
-            SELECT
-                r.id AS reservation_id,
-                r.room_number,
-                r.arrival_date,
-                r.depart_date,
-                r.nights,
-                r.meal_plan,
-                r.guest_name,
-                r.amount_pending,
-                r.main_remark AS comment,
-                r.reservation_status
-            FROM reservations r
-            WHERE r.room_number IS NOT NULL
-            AND r.room_number != ''
-            AND r.reservation_status NOT IN ('CANCELLED','NOSHOW')
-            AND date(r.arrival_date) <= date(?)
-            AND date(r.depart_date) > date(?)
-            ORDER BY CAST(r.room_number AS INTEGER)
-            """,
-            (end_date.isoformat(), start_date.isoformat()),
-        )
-    def export_revenue_multi_excel(
-    self,
-    start_date: date,
-    end_date: date,
-    ro_rate: float = 0.0,
-    bb_rate: float = 0.0,
-):
-        """
-        Generate a workbook with one sheet per day in [start_date, end_date],
-        coloured by:
-        - Green row on arrival date
-        - Yellow row on subsequent days
-        Columns:
-        Room No, ARRIVALS, DEPARTURE, Occupancy:, MEAL PLAN, Name:,
-        Payment method, Daily Acc, Paid amount, 4 digits,
-        Paid amount, 4 digits, Remarks.
-        """
-        from io import BytesIO
-        import pandas as pd
-        from datetime import datetime, timedelta
-
-        if end_date < start_date:
-            return None
-
-        # 1) Fetch all stays that overlap the range (once)
-        all_stays = self.get_stays_covering_range(start_date, end_date)
-
-        if not all_stays:
-            return None
-
-        # 2) Fetch all payments up to end_date
-        payments = self.fetch_all(
-            """
-            SELECT
-                reservation_id,
-                amount,
-                method,
-                reference,
-                created_at,
-                type
-            FROM payments
-            WHERE date(created_at) <= date(?)
-            ORDER BY created_at DESC
-            """,
-            (end_date.isoformat(),),
-        )
-
-        # Group payments by reservation_id
-        payments_by_res = {}
-        for p in payments:
-            rid = p.get("reservation_id")
-            if not rid:
-                continue
-            payments_by_res.setdefault(rid, []).append(p)
-
-        out = BytesIO()
-
-        with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
-            workbook = writer.book
-
-            header_fmt = workbook.add_format({
-                "bold": True,
-                "font_size": 11,
-                "align": "center",
-                "valign": "vcenter",
-                "border": 1,
-            })
-            arrival_fmt = workbook.add_format({
-                "bg_color": "#C6EFCE",  # green
-                "border": 1,
-            })
-            stay_fmt = workbook.add_format({
-                "bg_color": "#FFD580",  # yellow/orange
-                "border": 1,
-            })
-            white_fmt = workbook.add_format({"border": 1})
-
-            # Helper to compute payments (room only) for a reservation
-            def get_room_payment(res_id: int):
-                """
-                Returns (pay_method, paid_amount, last4_digits) for room revenue.
-                paid_amount will be used both as Daily Acc and Paid amount.
-                """
-                pay_method = ""
-                paid_amount = 0.0
-                last4 = ""
-
-                res_pays = payments_by_res.get(res_id) or []
-                room_pays = [
-                    p for p in res_pays
-                    if (p.get("type") or "").upper() == "PAYMENT"
-                ]
-                if not room_pays:
-                    return pay_method, paid_amount, last4
-
-                paid_amount = sum(p.get("amount") or 0.0 for p in room_pays)
-                last_p = sorted(
-                    room_pays,
-                    key=lambda p: p.get("created_at") or "",
-                    reverse=True,
-                )[0]
-                pay_method = last_p.get("method") or ""
-                ref = (last_p.get("reference") or "").strip()
-                digits = "".join(ch for ch in ref if ch.isdigit())
-                if len(digits) >= 4:
-                    last4 = digits[-4:]
-                return pay_method, paid_amount, last4
-
-
-            # 3) One sheet per day
-            current = start_date
-            while current <= end_date:
-                sheet_name = current.strftime("%d-%b")  # e.g. "06-Mar"
-                worksheet = workbook.add_worksheet(sheet_name)
-
-                # Top header (row 0)
-                worksheet.write(0, 0, current.strftime("%d.%m.%Y"), header_fmt)
-                worksheet.write(0, 3, "Daily Rates", header_fmt)
-                worksheet.write(0, 10, "Parking", header_fmt)
-
-                # Rates rows (1–2)
-                worksheet.write(1, 3, "RO")
-                worksheet.write(1, 4, ro_rate)
-                worksheet.write(2, 3, "BB")
-                worksheet.write(2, 4, bb_rate)
-
-                # Header row (3)
-                headers = [
-                    "Room No",        # 0
-                    "ARRIVALS",       # 1
-                    "DEPARTURE",      # 2
-                    "Occupancy:",     # 3
-                    "MEAL PLAN",      # 4
-                    "Name:",          # 5
-                    "Payment method", # 6
-                    "Daily Acc",      # 7
-                    "Paid amount",    # 8
-                    "4 digits",       # 9
-                    "Paid amount",    # 10 (parking)
-                    "4 digits",       # 11 (parking)
-                    "Remarks",        # 12
-                ]
-                for col, h in enumerate(headers):
-                    worksheet.write(3, col, h, header_fmt)
-
-                # Example row (4)
-                worksheet.write(4, 0, "Example", white_fmt)
-
-                row = 5
-
-                total_paid = 0.0
-
-                for s in all_stays:
-                    res_id = s.get("reservation_id")
-                    room = s.get("room_number") or ""
-                    arrival = s.get("arrival_date")
-                    depart = s.get("depart_date")
-                    nights = s.get("nights") or ""
-                    meal_plan = s.get("meal_plan") or "RO"
-                    guest_name = s.get("guest_name") or ""
-                    daily_acc = s.get("amount_pending") or 0.0
-                    comment = s.get("comment") or ""
-
-                    # Convert arrival/depart to dates
-                    try:
-                        arr_d = datetime.fromisoformat(str(arrival)).date()
-                    except Exception:
-                        arr_d = None
-                    try:
-                        dep_d = datetime.fromisoformat(str(depart)).date()
-                    except Exception:
-                        dep_d = None
-
-                    if not arr_d or not dep_d:
-                        continue
-
-                    # Does this stay cover 'current' date?
-                    if not (arr_d <= current < dep_d):
-                        continue
-
-                    # Green if arrival day, yellow otherwise
-                    fmt = arrival_fmt if current == arr_d else stay_fmt
-
-                    # Compute payments (room revenue)
-                    pay_method, paid_amount, last4 = get_room_payment(res_id)
-
-                    # 0 Room No
-                    worksheet.write(row, 0, room, fmt)
-
-                    # 1 ARRIVALS (always show actual arrival date)
-                    try:
-                        worksheet.write(row, 1, arr_d.strftime("%d.%m.%Y"), fmt)
-                    except Exception:
-                        worksheet.write(row, 1, str(arrival), fmt)
-
-                    # 2 DEPARTURE
-                    try:
-                        worksheet.write(row, 2, dep_d.strftime("%d.%m.%Y"), fmt)
-                    except Exception:
-                        worksheet.write(row, 2, str(depart), fmt)
-
-                    # 3 Occupancy:
-                    worksheet.write(row, 3, nights, fmt)
-
-                    # 4 MEAL PLAN
-                    worksheet.write(row, 4, meal_plan, fmt)
-
-                    # 5 Name:
-                    worksheet.write(row, 5, guest_name, fmt)
-
-                    # 6 Payment method
-                    worksheet.write(row, 6, pay_method, fmt)
-
-                    # 7 Daily Acc = paid amount for this reservation
-                    if paid_amount:
-                        worksheet.write_number(row, 7, float(paid_amount), fmt)
-                    else:
-                        worksheet.write(row, 7, 0.0, fmt)
-
-                    # 8 Paid amount (room) – same value shown again
-                    if paid_amount:
-                        worksheet.write_number(row, 8, float(paid_amount), fmt)
-                        total_paid += float(paid_amount)
-                    else:
-                        worksheet.write(row, 8, "", fmt)
-
-
-                    # 9 4 digits
-                    worksheet.write(row, 9, last4, fmt)
-
-                    # 10–11 parking paid & digits (not used yet)
-                    worksheet.write(row, 10, "", fmt)
-                    worksheet.write(row, 11, "", fmt)
-
-                    # 12 Remarks
-                    worksheet.write(row, 12, comment, fmt)
-
-                    row += 1
-
-                # Summary & legend
-                row += 1
-                worksheet.write(row, 0, "Total Paid")
-                worksheet.write_number(row, 1, total_paid)
-
-                row += 2
-                worksheet.write(row, 0, "Key Note", header_fmt)
-                row += 1
-                worksheet.write(row, 0, "Green for Arrivals", arrival_fmt)
-                row += 1
-                worksheet.write(row, 0, "Orange for overnight", stay_fmt)
-                row += 1
-                worksheet.write(row, 0, "White No Shows", white_fmt)
-
-                # Column widths
-                worksheet.set_column(0, 0, 10)   # Room No
-                worksheet.set_column(1, 2, 12)   # Dates
-                worksheet.set_column(3, 4, 12)   # Occupancy, Meal
-                worksheet.set_column(5, 5, 20)   # Name
-                worksheet.set_column(6, 6, 15)   # Payment method
-                worksheet.set_column(7, 9, 12)   # Daily Acc, Paid, 4 digits
-                worksheet.set_column(10, 12, 12) # Parking, Remarks
-
-                current += timedelta(days=1)
-
-        out.seek(0)
-        return out
-
-
-    def export_daily_revenue_excel(self, target_date: date, ro_rate: float = 0, bb_rate: float = 0):
-        """
-        Generate daily revenue Excel with columns:
-        Room No, ARRIVALS, DEPARTURE, Occupancy:, MEAL PLAN, Name:,
-        Payment method, Daily Acc, Paid amount, 4 digits,
-        Paid amount, 4 digits, Remarks.
-        """
-        from io import BytesIO
-        import pandas as pd
-        from datetime import datetime
-
-        guests = self.get_daily_revenue_data(target_date)
-        if not guests:
-            return None
-
-        # All PAYMENT rows up to this date (room revenue)
-        payments = self.fetch_all(
-            """
-            SELECT 
-                p.reservation_id,
-                p.amount,
-                p.method,
-                p.reference,
-                p.created_at,
-                p.type
-            FROM payments p
-            WHERE date(p.created_at) <= date(?)
-            ORDER BY p.created_at DESC
-            """,
-            (target_date.isoformat(),),
-        )
-
-        # Group by reservation_id
-        payments_by_res = {}
-        for p in payments:
-            rid = p.get("reservation_id")
-            if not rid:
-                continue
-            payments_by_res.setdefault(rid, []).append(p)
-
-        output = BytesIO()
-
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            workbook = writer.book
-            worksheet = workbook.add_worksheet("Daily Revenue")
-
-            header_format = workbook.add_format({
-                "bold": True,
-                "font_size": 12,
-                "align": "center",
-                "valign": "vcenter",
-                "border": 1,
-            })
-            arrival_format = workbook.add_format({
-                "bg_color": "#C6EFCE",  # arrivals
-                "border": 1,
-            })
-            stayover_format = workbook.add_format({
-                "bg_color": "#FFD580",  # overnight
-                "border": 1,
-            })
-            white_format = workbook.add_format({"border": 1})
-
-            # Row 0 – date and section titles
-            worksheet.write(0, 0, target_date.strftime("%d.%m.%Y"), header_format)
-            worksheet.write(0, 3, "Daily Rates", header_format)
-            worksheet.write(0, 10, "Parking", header_format)
-
-            # Rates rows 1–2
-            worksheet.write(1, 3, "RO")
-            worksheet.write(1, 4, ro_rate)
-            worksheet.write(2, 3, "BB")
-            worksheet.write(2, 4, bb_rate)
-
-            # Header row 3 – EXACT 13 columns
-            headers = [
-                "Room No",        # 0
-                "ARRIVALS",       # 1
-                "DEPARTURE",      # 2
-                "Occupancy:",     # 3
-                "MEAL PLAN",      # 4
-                "Name:",          # 5
-                "Payment method", # 6
-                "Daily Acc",      # 7
-                "Paid amount",    # 8
-                "4 digits",       # 9
-                "Paid amount",    # 10 (parking)
-                "4 digits",       # 11 (parking)
-                "Remarks",        # 12
-            ]
-            for col, h in enumerate(headers):
-                worksheet.write(3, col, h, header_format)
-
-            # Example row (row 4)
-            worksheet.write(4, 0, "Example", white_format)
-
-            row = 5
-            total_paid = 0.0
-
-            for g in guests:
-                room = g.get("room_number") or ""
-                res_id = g.get("reservation_id")
-                arrival = g.get("arrival_date")
-                departure = g.get("depart_date") or g.get("checkout_planned")
-                nights = g.get("nights") or ""
-                meal_plan = g.get("meal_plan") or "RO"
-                guest_name = g.get("guest_name") or ""
-                daily_acc = g.get("amount_pending") or 0.0
-                comment = g.get("comment") or ""
-
-                # Is this an arrival day?
-                is_arrival = False
-                if arrival:
-                    try:
-                        arr_dt = datetime.fromisoformat(str(arrival)).date()
-                        is_arrival = (arr_dt == target_date)
-                    except Exception:
-                        pass
-                row_fmt = arrival_format if is_arrival else stayover_format
-
-                # Payments for this reservation
-                pay_method = ""
-                paid_amount = 0.0
-                card_digits = ""
-
-                if res_id and res_id in payments_by_res:
-                    res_pays = payments_by_res[res_id]
-                    # Filter to room payments (type == 'PAYMENT'); ignore REFUND in total
-                    room_pays = [p for p in res_pays if (p.get("type") or "").upper() == "PAYMENT"]
-                    if room_pays:
-                        paid_amount = sum(p.get("amount") or 0.0 for p in room_pays)
-                        # latest payment by created_at
-                        last_p = sorted(
-                            room_pays,
-                            key=lambda p: p.get("created_at") or "",
-                            reverse=True,
-                        )[0]
-                        pay_method = last_p.get("method") or ""
-                        ref = (last_p.get("reference") or "").strip()
-                        digits = "".join(ch for ch in ref if ch.isdigit())
-                        if len(digits) >= 4:
-                            card_digits = digits[-4:]
-
-                # 0 Room No
-                worksheet.write(row, 0, room, row_fmt)
-
-                # 1 ARRIVALS
-                if arrival:
-                    try:
-                        dt = datetime.fromisoformat(str(arrival))
-                        worksheet.write(row, 1, dt.strftime("%d.%m.%Y"), row_fmt)
-                    except Exception:
-                        worksheet.write(row, 1, str(arrival), row_fmt)
-                else:
-                    worksheet.write(row, 1, "", row_fmt)
-
-                # 2 DEPARTURE
-                if departure:
-                    try:
-                        dt = datetime.fromisoformat(str(departure))
-                        worksheet.write(row, 2, dt.strftime("%d.%m.%Y"), row_fmt)
-                    except Exception:
-                        worksheet.write(row, 2, str(departure), row_fmt)
-                else:
-                    worksheet.write(row, 2, "", row_fmt)
-
-                # 3 Occupancy:
-                worksheet.write(row, 3, nights, row_fmt)
-
-                # 4 MEAL PLAN
-                worksheet.write(row, 4, meal_plan, row_fmt)
-
-                # 5 Name:
-                worksheet.write(row, 5, guest_name, row_fmt)
-
-                # 6 Payment method
-                worksheet.write(row, 6, pay_method, row_fmt)
-
-                # 7 Daily Acc (you can change formula later if needed)
-                worksheet.write_number(row, 7, float(daily_acc) if daily_acc else 0.0, row_fmt)
-
-                # 8 Paid amount (room)
-                if paid_amount:
-                    worksheet.write_number(row, 8, float(paid_amount), row_fmt)
-                    total_paid += float(paid_amount)
-                else:
-                    worksheet.write(row, 8, "", row_fmt)
-
-                # 9 4 digits (room card)
-                worksheet.write(row, 9, card_digits, row_fmt)
-
-                # 10 Paid amount (parking) – currently blank
-                worksheet.write(row, 10, "", row_fmt)
-
-                # 11 4 digits (parking) – currently blank
-                worksheet.write(row, 11, "", row_fmt)
-
-                # 12 Remarks
-                worksheet.write(row, 12, comment, row_fmt)
-
-                row += 1
-
-            # Simple summary and legend
-            row += 1
-            worksheet.write(row, 0, "Total Paid")
-            worksheet.write_number(row, 1, total_paid)
-
-            row += 2
-            worksheet.write(row, 0, "Key Note", header_format)
-            row += 1
-            worksheet.write(row, 0, "Green for Arrivals", arrival_format)
-            row += 1
-            worksheet.write(row, 0, "Orange for overnight", stayover_format)
-            row += 1
-            worksheet.write(row, 0, "White No Shows", white_format)
-
-            # Column widths
-            worksheet.set_column(0, 0, 10)   # Room No
-            worksheet.set_column(1, 2, 12)   # Dates
-            worksheet.set_column(3, 4, 12)   # Occupancy, Meal
-            worksheet.set_column(5, 5, 20)   # Name
-            worksheet.set_column(6, 6, 15)   # Payment method
-            worksheet.set_column(7, 9, 12)   # Daily Acc, Paid, 4 digits
-            worksheet.set_column(10, 12, 12) # Parking paid, digits, Remarks
-
-        output.seek(0)
-        return output
-
-
 
 
 
@@ -1699,34 +1144,6 @@ class FrontOfficeDB:
         except Exception as e:
             st.error(f"Import error: {e}")
             return 0
-
-    def get_daily_revenue_data(self, target_date: date):
-        """Guests in-house on target_date (for revenue report)."""
-        return self.fetch_all(
-            """
-            SELECT 
-                s.room_number,
-                r.id AS reservation_id,
-                r.arrival_date,
-                r.depart_date,
-                r.nights,
-                r.meal_plan,
-                r.guest_name,
-                r.amount_pending,
-                s.checkin_actual,
-                s.checkout_planned,
-                s.parking_space,
-                s.parking_plate,
-                s.comment
-            FROM stays s
-            JOIN reservations r ON r.id = s.reservation_id
-            WHERE s.status = 'CHECKED_IN'
-            AND date(s.checkin_planned) <= date(?)
-            AND date(s.checkout_planned) > date(?)
-            ORDER BY CAST(s.room_number AS INTEGER)
-            """,
-            (target_date.isoformat(), target_date.isoformat()),
-        )
 
 
 
@@ -2178,16 +1595,16 @@ class FrontOfficeDB:
         rows = self.fetch_all("SELECT room_number FROM rooms ORDER BY CAST(room_number AS INTEGER)")
         return [r["room_number"] for r in rows]
     def get_suggested_rooms_for_type(self, room_type_code: str, target_date: date, exclude_reservation_id: int = None) -> list:
-        """Return rooms mapped to room_type_code that have no CHECKED_IN stay on target_date."""
+        """Return rooms mapped to room_type_code that have no CHECKEDIN stay on target_date."""
         mapped = ROOM_TYPE_MAP.get(room_type_code.strip().upper() if room_type_code else "", [])
         if not mapped:
             return []
-        # Rooms occupied by a CHECKED_IN stay that covers target_date
+        # Rooms occupied by a CHECKEDIN stay that covers target_date
         occupied_rows = self.fetch_all(
             """
             SELECT DISTINCT s.room_number
             FROM stays s
-            WHERE s.status = 'CHECKED_IN'
+            WHERE s.status = 'CHECKEDIN'
               AND date(s.checkin_planned) <= date(?)
               AND date(s.checkout_planned) > date(?)
             """,
@@ -2200,7 +1617,7 @@ class FrontOfficeDB:
             """
             SELECT DISTINCT r.room_number
             FROM reservations r
-            WHERE r.reservation_status NOT IN ('CANCELLED','NO_SHOW')
+            WHERE r.reservation_status NOT IN ('CANCELLED','NOSHOW')
               AND r.room_number IS NOT NULL AND r.room_number != ''
               AND date(r.arrival_date) <= date(?)
               AND date(r.depart_date) > date(?)
@@ -2388,181 +1805,6 @@ section[data-testid="stSidebar"] {
 db = None  # Will be initialized in main()
  # Use cached connection
 from datetime import date  # make sure this is imported at top of file
-def page_daily_revenue():
-    st.header("Daily Revenue Report")
-
-    target_date = st.date_input("Report Date", value=date.today(), key="revenue_date")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        ro_rate = st.number_input(
-            "RO Daily Rate (£)",
-            min_value=0.0,
-            value=0.0,
-            step=10.0,
-            format="%.2f",
-        )
-    with col2:
-        bb_rate = st.number_input(
-            "BB Daily Rate (£)",
-            min_value=0.0,
-            value=0.0,
-            step=10.0,
-            format="%.2f",
-        )
-
-    guests = db.get_daily_revenue_data(target_date)
-
-    if not guests:
-        st.info("No guests in-house for this date.")
-        return
-
-    # Fetch payments for preview (same logic as Excel)
-    payments = db.fetch_all(
-        """
-        SELECT 
-            reservation_id,
-            amount,
-            method,
-            reference,
-            created_at,
-            type
-        FROM payments
-        WHERE date(created_at) <= date(?)
-        ORDER BY created_at DESC
-        """,
-        (target_date.isoformat(),),
-    )
-
-    payments_by_res = {}
-    for p in payments:
-        rid = p.get("reservation_id")
-        if not rid:
-            continue
-        payments_by_res.setdefault(rid, []).append(p)
-
-    st.subheader(f"Revenue Summary for {target_date.strftime('%d %B %Y')}")
-
-    total_nights = sum((g.get("nights") or 0) for g in guests)
-    col1, col2 = st.columns(2)
-    col1.metric("Rooms Occupied", len(guests))
-    col2.metric("Total Room Nights", total_nights)
-
-    rows = []
-    for g in guests:
-        res_id = g.get("reservation_id")
-        pay_method = ""
-        paid_amount = 0.0
-        last4 = ""
-
-        if res_id and res_id in payments_by_res:
-            res_pays = payments_by_res[res_id]
-            room_pays = [p for p in res_pays if (p.get("type") or "").upper() == "PAYMENT"]
-            if room_pays:
-                paid_amount = sum(p.get("amount") or 0.0 for p in room_pays)
-                last_p = sorted(
-                    room_pays,
-                    key=lambda p: p.get("created_at") or "",
-                    reverse=True,
-                )[0]
-                pay_method = last_p.get("method") or ""
-                ref = (last_p.get("reference") or "").strip()
-                digits = "".join(ch for ch in ref if ch.isdigit())
-                if len(digits) >= 4:
-                    last4 = digits[-4:]
-
-        rows.append(
-            {
-                "Room No": g.get("room_number"),
-                "ARRIVALS": format_date(g.get("arrival_date")),
-                "DEPARTURE": format_date(g.get("checkout_planned") or g.get("depart_date")),
-                "Occupancy:": g.get("nights"),
-                "MEAL PLAN": g.get("meal_plan") or "RO",
-                "Name:": g.get("guest_name"),
-                "Payment method": pay_method,
-                "Daily Acc": f"£{(g.get('amount_pending') or 0):.2f}",
-                "Paid amount": f"£{paid_amount:.2f}" if paid_amount else "",
-                "4 digits": last4,
-                "Remarks": g.get("comment") or "",
-            }
-        )
-
-    df_preview = pd.DataFrame(rows)
-    df_preview = clean_numeric_columns(df_preview, ["Room No", "Occupancy:"])
-    st.dataframe(df_preview, use_container_width=True, hide_index=True)
-
-    if st.button("Generate Daily Revenue Excel", type="primary", use_container_width=True):
-        excel_data = db.export_daily_revenue_excel(target_date, ro_rate, bb_rate)
-        if excel_data:
-            st.download_button(
-                label="📥 Download Revenue Report",
-                data=excel_data,
-                file_name=f"Daily_Revenue_{target_date.strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
-        else:
-            st.error("Failed to generate report.")
-
-def page_revenue_multi():
-    st.header("Multi‑Day Revenue Report")
-
-    col_dates = st.columns(2)
-    with col_dates[0]:
-        start_d = st.date_input(
-            "Start date",
-            value=date.today(),
-            key="rev_multi_start",
-        )
-    with col_dates[1]:
-        end_d = st.date_input(
-            "End date",
-            value=start_d,
-            key="rev_multi_end",
-        )
-
-    col_rates = st.columns(2)
-    with col_rates[0]:
-        ro_rate = st.number_input(
-            "RO Daily Rate (£)",
-            min_value=0.0,
-            value=0.0,
-            step=10.0,
-            format="%.2f",
-        )
-    with col_rates[1]:
-        bb_rate = st.number_input(
-            "BB Daily Rate (£)",
-            min_value=0.0,
-            value=0.0,
-            step=10.0,
-            format="%.2f",
-        )
-
-    if end_d < start_d:
-        st.error("End date must be on or after start date.")
-        return
-
-    st.caption(
-        "Workbook will have one sheet per day in the range. "
-        "Green = arrival day, orange = following days of the stay."
-    )
-
-    if st.button("Generate Revenue Report", type="primary", use_container_width=True):
-        data = db.export_revenue_multi_excel(start_d, end_d, ro_rate, bb_rate)
-        if not data:
-            st.error("No reservations found covering this date range.")
-            return
-
-        file_name = f"Revenue_{start_d.strftime('%Y%m%d')}_{end_d.strftime('%Y%m%d')}.xlsx"
-        st.download_button(
-            label="📥 Download Revenue Report",
-            data=data,
-            file_name=file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-
 def page_add_reservation():
     st.header("Add Reservation Manually")
 
@@ -2662,9 +1904,9 @@ def page_payments():
     with col4:
         pay_type = st.selectbox("Type", ["PAYMENT", "REFUND"])
     with col5:
-        method = st.selectbox("Method", ["VISA", "MASTER", "AMEX", "OTHER"])
+        method = st.selectbox("Method", ["CARD", "CASH", "BANK", "OTHER"])
 
-    reference = st.text_input("Last 4 digits of the card")
+    reference = st.text_input("Reference (folio, POS ref, etc.)")
     note = st.text_area("Note")
 
     if st.button("Add entry", type="primary", use_container_width=True):
@@ -5298,8 +4540,7 @@ def main():
                 "Spare Twin rooms",
                 "Parking",
                 "Payments",
-                "Invoices", 
-                "Revenue Report",       # ← ADD THIS
+                "Invoices",        # ← ADD THIS
                 "Admin",
             ],
         )
@@ -5310,7 +4551,7 @@ def main():
 
         st.markdown("---")
         st.caption("Sponsored by **TwoTable.**")
-        st.caption("www.twotable.co.uk and www.jayeetra-bhattacharjee.co.uk")
+        st.caption("www.twotable.co.uk")
 
     if page == "Arrivals":
         page_arrivals()
@@ -5332,10 +4573,6 @@ def main():
         page_payments()
     elif page == "Invoices":
         page_invoices()
-    elif page == "Daily Revenue":
-        page_daily_revenue()
-    elif page == "Revenue Report":
-        page_revenue_multi()
 
 
     elif page == "No Shows":
