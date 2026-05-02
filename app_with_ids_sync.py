@@ -5144,10 +5144,24 @@ def ids_build_payload(r):
     arrival_str = arrival_dt.strftime("%Y-%m-%d 15:00")
     depart_str  = depart_dt.strftime("%Y-%m-%d 12:00")
 
-    nett = round(rate_per_night / (1 + IDS_TAX_RATE), 8)
-    tax  = round(rate_per_night - nett, 8)
-    total_nett   = round(nett * nights, 8)
-    total_tax    = round(tax  * nights, 8)
+    is_bb = meal_plan.upper() == "BB"
+    meal_gross_pn = 7.5 * adults if is_bb else 0.0
+    room_gross_pn = max(0.0, rate_per_night - meal_gross_pn)
+
+    meal_nett_pn = round(meal_gross_pn / (1 + IDS_TAX_RATE), 8)
+    meal_tax_pn  = round(meal_gross_pn - meal_nett_pn, 8)
+    
+    room_nett_pn = round(room_gross_pn / (1 + IDS_TAX_RATE), 8)
+    room_tax_pn  = round(room_gross_pn - room_nett_pn, 8)
+    
+    total_meal_nett = round(meal_nett_pn * nights, 8)
+    total_meal_tax  = round(meal_tax_pn * nights, 8)
+    
+    total_room_nett = round(room_nett_pn * nights, 8)
+    total_room_tax  = round(room_tax_pn * nights, 8)
+    
+    total_nett = total_room_nett + total_meal_nett
+    total_tax  = total_room_tax + total_meal_tax
     total_amount = round(rate_per_night * nights, 2)
 
     rate_details = []
@@ -5157,7 +5171,7 @@ def ids_build_payload(r):
             "RateCode": rate_code, "TaxStructureCode": "1001", "CurrencyCode": "GBP",
             "ExchangeRate": 1, "RoomTypeCode": room_type, "DiscountUpsellOn": "Occupancy",
             "OperationTYpe": "Create", "RoomReferenceNumber": 1,
-            "TaxAmount": tax, "ForeignExchangeRate": 1, "LocalTaxAmount": tax,
+            "TaxAmount": room_tax_pn, "ForeignExchangeRate": 1, "LocalTaxAmount": room_tax_pn,
             "AuthorizedBy": "", "ReasonCode": "", "Remarks": "", "DiscountUpsellType": "None",
             "Person1Rate": str(rate_per_night), "Person1DiscountRate": 0,
             "Person1DiscountType": "None", "Person1DiscountValue": str(rate_per_night),
@@ -5177,6 +5191,71 @@ def ids_build_payload(r):
             "ExtraChild1Rate": 0, "ExtraChild1DiscountRate": 0,
             "ExtraChild1DiscountType": "None", "ExtraChild1DiscountValue": 0,
         })
+
+    addon_details = []
+    if not is_bb:
+        addon_details.append({
+            "RoomReferenceNumber": 1, "RevenueCode": "104", "Type": "MealPlan",
+            "AdultCount": adults, "CalculationType": "", "ChildCount": 0,
+            "DiscountType": "None", "ExtraAdultCount": 0, "ExtraChildCount": 0,
+            "AdultDiscountRate": 0, "AdultDiscountType": "None", "AdultTotal": 0,
+            "AdultValueAfterDiscount": 0, "ChildDiscountRate": 0,
+            "ChildDiscountType": "None", "ChildTotal": 0, "ChildValueAfterDiscount": 0,
+            "ExtraChildDiscRate": 0, "ExtraChildDiscountType": "None", "ExtraChildRate": 0,
+            "ExtraChildDiscountValue": 0, "ExtraAdultDiscountRate": 0,
+            "ExtraAdultDiscountType": "None", "ExtraAdultRate": 0, "ExtraAdultDiscountValue": 0,
+            "FlatDiscountRate": 0, "FlatDiscountType": "None", "FlatTotal": 0,
+            "FlatValueAfterDiscount": 0, "AddOnCode": "104", "PostingMethod": "",
+            "PostingRythm": "PostEveryNight", "PostEveryNightCount": 0,
+            "StartOnNightCount": 0, "CustomPostingDays": 0, "ApplicableDay": 0,
+            "DiscountUpsellType": "None", "DiscountUpsellOn": "",
+            "TaxStructureCode": "", "IsTaxInclusive": False,
+            "OperationTYpe": "Create", "AddOnAmount": 0, "AddOntaxAmount": 0,
+            "AddOnDiscountAmount": 0, "AddOnDate": arrival_dt.strftime("%Y-%m-%d"),
+            "Description": "",
+            "Person1Rate": 0, "Person1DiscountRate": 0,
+            "Person1DiscountType": "None", "Person1DiscountValue": 0,
+            "Person2Rate": 0, "Person2DiscountRate": 0,
+            "Person2DiscountType": "None", "Person2DiscountValue": 0,
+            "Person3Rate": 0, "Person3DiscountRate": 0,
+            "Person3DiscountType": "None", "Person3DiscountValue": 0,
+            "Person4Rate": 0, "Person4DiscountRate": 0,
+            "Person4DiscountType": "None", "Person4DiscountValue": 0,
+            "IsBreakfast": False, "IsLunch": False, "IsDinner": False
+        })
+    else:
+        for n in range(nights + 1):
+            d_date = (arrival_dt + _td(days=n))
+            is_brk = (n > 0)
+            addon_details.append({
+                "RoomReferenceNumber": 1, "RevenueCode": "105", "Type": "MealPlan",
+                "AdultCount": adults, "CalculationType": "", "ChildCount": 0,
+                "DiscountType": "None", "ExtraAdultCount": 0, "ExtraChildCount": 0,
+                "AdultDiscountRate": 0, "AdultDiscountType": "None", "AdultTotal": meal_gross_pn,
+                "AdultValueAfterDiscount": meal_gross_pn, "ChildDiscountRate": 0,
+                "ChildDiscountType": "None", "ChildTotal": 0, "ChildValueAfterDiscount": 0,
+                "ExtraChildDiscRate": 0, "ExtraChildDiscountType": "None", "ExtraChildRate": 0,
+                "ExtraChildDiscountValue": 0, "ExtraAdultDiscountRate": 0,
+                "ExtraAdultDiscountType": "None", "ExtraAdultRate": meal_gross_pn, "ExtraAdultDiscountValue": meal_gross_pn,
+                "FlatDiscountRate": 0, "FlatDiscountType": "None", "FlatTotal": 0,
+                "FlatValueAfterDiscount": 0, "AddOnCode": "BB", "PostingMethod": "AdultChildRate",
+                "PostingRythm": "PostEveryNight", "PostEveryNightCount": 0,
+                "StartOnNightCount": 0, "CustomPostingDays": 0, "ApplicableDay": 0,
+                "DiscountUpsellType": "None", "DiscountUpsellOn": "",
+                "TaxStructureCode": "1003", "IsTaxInclusive": False,
+                "OperationTYpe": "Create", "AddOnAmount": meal_gross_pn, "AddOntaxAmount": meal_tax_pn,
+                "AddOnDiscountAmount": 0, "AddOnDate": d_date.strftime("%Y-%m-%d"),
+                "Description": "",
+                "Person1Rate": 0, "Person1DiscountRate": meal_gross_pn,
+                "Person1DiscountType": "Increase", "Person1DiscountValue": meal_gross_pn,
+                "Person2Rate": 0, "Person2DiscountRate": 0,
+                "Person2DiscountType": "None", "Person2DiscountValue": 0,
+                "Person3Rate": 0, "Person3DiscountRate": 0,
+                "Person3DiscountType": "None", "Person3DiscountValue": 0,
+                "Person4Rate": 0, "Person4DiscountRate": 0,
+                "Person4DiscountType": "None", "Person4DiscountValue": 0,
+                "IsBreakfast": is_brk, "IsLunch": False, "IsDinner": False
+            })
 
     # IDS SQL column is limited (~100 chars) — strict caps to avoid FCEX001 truncation error
     instruction_parts = []
@@ -5272,36 +5351,7 @@ def ids_build_payload(r):
             "IsPlanAmountInclusiveOfTaxes": True, "IsRateInclusive": True,
             "IsRateTaxesInclusive": True
         }],
-        "BulkReservationAddOnDetail": [{
-            "RoomReferenceNumber": 1, "RevenueCode": "104", "Type": "MealPlan",
-            "AdultCount": adults, "CalculationType": "", "ChildCount": 0,
-            "DiscountType": "None", "ExtraAdultCount": 0, "ExtraChildCount": 0,
-            "AdultDiscountRate": 0, "AdultDiscountType": "None", "AdultTotal": 0,
-            "AdultValueAfterDiscount": 0, "ChildDiscountRate": 0,
-            "ChildDiscountType": "None", "ChildTotal": 0, "ChildValueAfterDiscount": 0,
-            "ExtraChildDiscRate": 0, "ExtraChildDiscountType": "None", "ExtraChildRate": 0,
-            "ExtraChildDiscountValue": 0, "ExtraAdultDiscountRate": 0,
-            "ExtraAdultDiscountType": "None", "ExtraAdultRate": 0, "ExtraAdultDiscountValue": 0,
-            "FlatDiscountRate": 0, "FlatDiscountType": "None", "FlatTotal": 0,
-            "FlatValueAfterDiscount": 0, "AddOnCode": "104", "PostingMethod": "",
-            "PostingRythm": "PostEveryNight", "PostEveryNightCount": 0,
-            "StartOnNightCount": 0, "CustomPostingDays": 0, "ApplicableDay": 0,
-            "DiscountUpsellType": "None", "DiscountUpsellOn": "",
-            "TaxStructureCode": "", "IsTaxInclusive": False,
-            "OperationTYpe": "Create", "AddOnAmount": 0, "AddOntaxAmount": 0,
-            "AddOnDiscountAmount": 0, "AddOnDate": arrival_dt.strftime("%Y-%m-%d"),
-            "Description": "",
-            "Person1Rate": 0, "Person1DiscountRate": 0,
-            "Person1DiscountType": "None", "Person1DiscountValue": 0,
-            "Person2Rate": 0, "Person2DiscountRate": 0,
-            "Person2DiscountType": "None", "Person2DiscountValue": 0,
-            "Person3Rate": 0, "Person3DiscountRate": 0,
-            "Person3DiscountType": "None", "Person3DiscountValue": 0,
-            "Person4Rate": 0, "Person4DiscountRate": 0,
-            "Person4DiscountType": "None", "Person4DiscountValue": 0,
-            "IsBreakfast": meal_plan.upper() == "BB",
-            "IsLunch": False, "IsDinner": False
-        }],
+        "BulkReservationAddOnDetail": addon_details,
         "BulkReservationInstructionDetail": instructions,
         "BulkReservationPickupDropDetail": [], "BulkReservationDocumentDetail": [],
         "BulkGuestPickupDropDetail": [], "BulkReservationGuestTraceDetail": [],
@@ -5311,7 +5361,7 @@ def ids_build_payload(r):
         "SecondarySourceCode": "", "SecondarySourceName": "",
         "PartnerCompanyProfileId": "", "PartnerTravelAgentProfileId": "",
         "Instruction": "", "DHReservationNumber": "", "PrintRateonVoucher": True,
-        "BulkCalculatedRate": total_nett, "BulkCalculatedMealPlan": 0,
+        "BulkCalculatedRate": total_room_nett, "BulkCalculatedMealPlan": total_meal_nett,
         "BulkCalculatedAddon": 0, "BulkCalculatedTax": total_tax,
         "BulkCalculatedTotal": total_amount,
         "IsCancel": False, "AuthorizedBy": "", "ReasonCode": "",
@@ -5333,8 +5383,9 @@ def ids_build_payload(r):
         "ReservationPurposeofVisit": "",
         "BulkGuestInstructionDetail": [], "IsCreateReservation": True,
         "BulkReservationRoomFeatureDetail": [],
-        "RoomRateAmount": total_nett, "RoomRateTax": total_tax,
-        "MealPlanAmount": 0, "MealPlanTax": 0, "AddOnAmount": 0, "AddOnTax": 0,
+        "RoomRateAmount": total_room_nett, "RoomRateTax": total_room_tax,
+        "MealPlanAmount": total_meal_nett, "MealPlanTax": total_meal_tax,
+        "AddOnAmount": 0, "AddOnTax": 0,
         "NettAmount": total_nett, "NettTax": total_tax, "TotalAmount": total_amount,
         "ForeignRoomRateAmount": total_nett, "ForeignRoomRateTax": total_tax,
         "ForeignMealPlanAmount": 0, "ForeignMealPlanTax": 0,
