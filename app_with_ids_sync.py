@@ -1,0 +1,6218 @@
+import os
+from glob import glob
+from datetime import date, datetime, timedelta
+from io import BytesIO
+import pandas as pd
+import streamlit as st
+import sqlite3
+from contextlib import closing
+import time
+
+
+# Initialize database AFTER set_page_config in main()
+db = None
+
+
+
+
+def format_date(date_str):
+    """Format date string, removing time portion"""
+    if not date_str:
+        return ''
+    try:
+        # Parse the datetime string
+        dt = datetime.fromisoformat(str(date_str))
+        # Return formatted date (e.g., "15 January 2026")
+        return dt.strftime("%d %B %Y")
+    except (ValueError, TypeError):
+        # Fallback: just remove time if simple string
+        return str(date_str).split()[0] if ' ' in str(date_str) else str(date_str)
+    
+    
+def format_room_number(room_number):
+    """Format room number, removing .0 decimals"""
+    if not room_number:
+        return ''
+    try:
+        num = float(room_number)
+        if num.is_integer():
+            return str(int(num))
+        return str(num)
+    except (ValueError, TypeError):
+        return str(room_number)
+
+
+def clean_numeric_columns(df: pd.DataFrame, cols: list):
+    """Convert numeric columns to whole numbers for display"""
+    for col in cols:
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda x: int(float(x)) if pd.notna(x) and str(x) not in ['', 'None', 'nan'] else x
+            )
+    return df
+
+
+# PostgreSQL configuration
+TEST_MODE = False  # set False for live system
+
+if TEST_MODE:
+    DBPATH = "hotelfoTEST.db"
+    ARRIVALS_ROOT = "data/arrivals-test"
+else:
+    DBPATH = "hotelfo.db"
+    ARRIVALS_ROOT = "data/arrivals"
+
+       
+
+# Fixed room inventory blocks: inclusive ranges (whole numbers)
+ROOM_BLOCKS = [
+    (100, 115),
+    (300, 313),
+    (400, 413),
+    (500, 513),
+    (600, 613),
+    (700, 709),
+    (800, 809),
+    (900, 909),
+    (1000, 1009),
+    (1100, 1109),
+    (1200, 1209),
+    (1300, 1309),
+    (1400, 1409),
+    (1500, 1509),
+    (1600, 1609),
+    (1700, 1705),
+]
+ROOM_TYPE_MAP = {
+    "BSTD-1D": [
+        "101","300","400","500","600","700","800",
+        "104","302","403","502","602","702","802",
+        "105","303","404","503","603","703","803",
+        "106","304","405","504","604","704",
+        "107","305","407","505","605","705",
+        "108","313","413","513","708","808",
+        "111","709","809","112","113","114","115",
+    ],
+    "BSTD-2T": [
+        "100","301","312","411","510","609","806",
+        "102","306","401","412","511","610","807",
+        "103","307","402","501","512","611",
+        "109","308","406","506","601","701",
+        "110","309","408","507","606","706",
+        "113","310","409","508","607","707",
+        "114","311","410","509","608","801",
+    ],
+    "PSUPVC-1D": [
+        "1008","1009","1106","1107","1108","1109",
+        "908","909","1206","1207",
+    ],
+    "PSUPVH-1D": [
+        "1000","1002","1100","1003","1101","1102","1103",
+        "900","902","903","1200","1202","1203",
+    ],
+    "PSUPVC-2T": ["906","907","1006","1007","1208"],
+    "PSUPVH-2T": ["901","1001","1201"],
+    "PPREVH-1D": [
+        "1400","1500","1402","1502","1403","1503","1404","1504",
+        "1204","1304","804","904","1004","1104",
+        "1600","1602","1603","1604","1704",
+    ],
+    "PPREVC-1D": [
+        "1405","1505","1409","1509","1005","1205","1105","1305",
+        "1310","805","905","1605","1609",
+    ],
+    "PPREVH-2T": ["1300","1301","1302","1303","1401","1501","1601"],
+    "PPREVC-2T": [
+        "1406","1407","1506","1507","1408","1508",
+        "1606","1306","1307","1308","1309","1607","1608",
+    ],
+    "SS1BVHTR": ["1700","1701","1702","1703"],
+    "UPRSVP": ["1705"],
+}
+
+
+
+def clean_numeric_columns(df: pd.DataFrame, cols: list):
+    """Convert numeric columns to whole numbers for display"""
+    for col in cols:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: int(float(x)) if pd.notna(x) and str(x).strip() not in ['', 'None'] else x)
+    return df
+
+class FrontOfficeDB:
+    def init_db(self):
+            with closing(self.get_conn()) as conn, conn:
+                c = conn.cursor()
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS reservations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        amount_pending REAL,
+                        arrival_date TEXT,
+                        depart_date TEXT,
+                        room_number TEXT,
+                        room_type_code TEXT,
+                        adults INTEGER,
+                        children INTEGER,
+                        total_guests INTEGER,
+                        reservation_no TEXT,
+                        front_office_notes TEXT,
+                        voucher TEXT,
+                        related_reservation TEXT,
+                        crs_code TEXT,
+                        crs_name TEXT,
+                        guest_id_raw TEXT,
+                        guest_name TEXT,
+                        vip_flag TEXT,
+                        client_id TEXT,
+                        main_client TEXT,
+                        nights INTEGER,
+                        meal_plan TEXT,
+                        rate_code TEXT,
+                        channel TEXT,
+                        cancellation_policy TEXT,
+                        main_remark TEXT,
+                        contact_name TEXT,
+                        contact_phone TEXT,
+                        contact_email TEXT,
+                        total_remarks TEXT,
+                        source_of_business TEXT,
+                        stay_option_desc TEXT,
+                        remarks_by_chain TEXT,
+                        reservation_group_id TEXT,
+                        reservation_group_name TEXT,
+                        company_name TEXT,
+                        company_id_raw TEXT,
+                        country TEXT,
+                        reservation_status TEXT DEFAULT 'CONFIRMED',
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS stays (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reservation_id INTEGER,
+                        room_number TEXT,
+                        status TEXT DEFAULT 'EXPECTED',
+                        checkin_planned TEXT,
+                        checkout_planned TEXT,
+                        checkin_actual TEXT,
+                        checkout_actual TEXT,
+                        breakfast_code TEXT,
+                        comment TEXT,
+                        parking_space TEXT,
+                        parking_plate TEXT,
+                        parking_notes TEXT,
+                        FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+                    )
+                """)
+                # Safe migration: add front_office_notes if missing
+                try:
+                    c.execute("ALTER TABLE reservations ADD COLUMN front_office_notes TEXT")
+                except sqlite3.OperationalError:
+                    # Column already exists
+                    pass
+
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS rooms (
+                        room_number TEXT PRIMARY KEY,
+                        room_type TEXT,
+                        floor INTEGER,
+                        status TEXT DEFAULT 'VACANT',
+                        is_twin INTEGER DEFAULT 0
+                    )
+                """)
+
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        task_date TEXT,
+                        title TEXT,
+                        created_by TEXT,
+                        assigned_to TEXT,
+                        comment TEXT,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS no_shows (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        arrival_date TEXT,
+                        guest_name TEXT,
+                        main_client TEXT,
+                        charged INTEGER,
+                        amount_charged REAL,
+                        amount_pending REAL,
+                        comment TEXT,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        invoice_no INTEGER UNIQUE,
+                        reservation_id INTEGER,
+                        guest_name TEXT,
+                        room_number TEXT,
+                        total_net REAL,
+                        total_vat REAL,
+                        total_amount REAL,
+                        invoice_date TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+                    )
+                ''')
+
+
+                # Safe migrations: add missing columns if DB is older
+                try:
+                    c.execute("ALTER TABLE no_shows ADD COLUMN amount_charged REAL")
+                except sqlite3.OperationalError:
+                    pass
+
+                try:
+                    c.execute("ALTER TABLE no_shows ADD COLUMN amount_pending REAL")
+                except sqlite3.OperationalError:
+                    pass
+
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS payments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reservation_id INTEGER,
+                        guest_name TEXT,
+                        amount REAL,
+                        type TEXT,               -- PAYMENT or REFUND
+                        method TEXT,             -- card / cash / etc.
+                        reference TEXT,          -- PMS folio ref, POS ref
+                        note TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+                    )
+                """)
+
+
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS spare_rooms (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        target_date TEXT,
+                        room_number TEXT
+                    )
+                """)
+                c.execute("""
+    CREATE TABLE IF NOT EXISTS hsk_task_status (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_date TEXT,
+        room_number TEXT,
+        task_type TEXT,
+        status TEXT DEFAULT 'PENDING',
+        notes TEXT,
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(task_date, room_number, task_type)
+    )
+""")
+    def get_invoice_by_reservation(self, reservation_id: int):
+        return self.fetch_one(
+            "SELECT * FROM invoices WHERE reservation_id = ?",
+            (reservation_id,),
+        )
+
+    def ensure_invoice_for_reservation(self, reservation_id: int, guest_name: str = "", room_number: str | None = None):
+        inv = self.get_invoice_by_reservation(reservation_id)
+        if inv:
+            return inv["invoice_no"]
+
+        invoice_no = self.get_next_invoice_number()
+        self.execute(
+            """
+            INSERT INTO invoices (invoice_no, reservation_id, guest_name, room_number,
+                                  total_net, total_vat, total_amount, invoice_date)
+            VALUES (?, ?, ?, ?, 0.0, 0.0, 0.0, date('now'))
+            """,
+            (invoice_no, reservation_id, guest_name or None, room_number or None),
+        )
+        return invoice_no
+
+    def apply_payment_to_invoice(self, reservation_id: int, amount: float, pay_type: str):
+        """
+        Update invoice total_amount in real-time when a payment is recorded.
+        Convention:
+          - PAYMENT reduces the guest balance (negative on invoice total).
+          - REFUND increases the balance (positive).
+        """
+        if reservation_id is None:
+            return  # external/manual payment, not linked to an invoice
+
+        signed = -amount if pay_type == "PAYMENT" else amount
+
+        inv = self.get_invoice_by_reservation(reservation_id)
+        if not inv:
+            # create a shell invoice first
+            self.ensure_invoice_for_reservation(reservation_id)
+            inv = self.get_invoice_by_reservation(reservation_id)
+
+        current_total = inv.get("total_amount") or 0.0
+        new_total = current_total + signed
+
+        # IMPORTANT: your invoices table has `created_at`, not `updated_at`
+        self.execute(
+            "UPDATE invoices SET total_amount = ? WHERE id = ?",
+            (new_total, inv["id"]),
+        )
+
+    def update_arrival_comment(reservation_id: str, comment: str):
+        # example – adjust to your schema/table
+        try:
+            db.execute(
+                "UPDATE reservations SET arrival_comment = %s WHERE id = %s",
+                (comment, reservation_id),
+            )
+            return True, "Updated comment."
+        except Exception as e:
+            return False, f"Could not update comment: {e}"
+
+    def get_full_breakfast_for_date(self, targetdate: date):
+        return self.fetch_all(
+            """
+            SELECT
+                r.room_number  AS room_number,
+                r.guest_name   AS guest_name,
+                r.adults      AS adults,
+                r.children    AS children,
+                r.total_guests AS total_guests,
+                r.meal_plan    AS meal_plan,
+                r.arrival_date AS arrival_date,
+                r.depart_date  AS depart_date,
+                r.reservation_status AS reservation_status
+            FROM reservations r
+            WHERE date(r.arrival_date) <= date(?)
+            AND date(r.depart_date)  >= date(?)
+            AND r.meal_plan IS NOT NULL
+            AND r.room_number IS NOT NULL
+            AND r.meal_plan != ''
+            AND (
+                r.meal_plan = 'BB'
+                OR r.meal_plan LIKE '%BB%'
+                OR lower(r.meal_plan) LIKE '%breakfast%'
+            )
+            AND r.reservation_status NOT IN ('CANCELLED', 'NO_SHOW')
+            ORDER BY CAST(r.room_number AS INTEGER)
+            """,
+            (targetdate.isoformat(), targetdate.isoformat()),
+        )
+    def add_reservation(
+        self,
+        arrival: date,
+        depart: date,
+        guest_name: str,
+        room_number: str = "",
+        main_client: str = "",
+        channel: str = "",
+        meal_plan: str = "",
+        adults: int = 2,
+        children: int = 0,
+    ):
+        total_guests = adults + children
+        nights = (depart - arrival).days
+        if nights <= 0:
+            nights = 1
+
+        c = self.execute(
+            """
+            INSERT INTO reservations (
+                arrival_date, depart_date, room_number,
+                guest_name, main_client, channel, meal_plan,
+                adults, children, total_guests, nights,
+                reservation_status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', datetime('now'), datetime('now'))
+            """,
+            (
+                arrival.isoformat(),
+                depart.isoformat(),
+                room_number or None,
+                guest_name,
+                main_client or None,
+                channel or None,
+                meal_plan or None,
+                adults,
+                children,
+                total_guests,
+                nights,
+            ),
+        )
+        return c.lastrowid
+
+            
+    def cancel_noshow(self, noshow_id: int):
+        """Cancel a no-show record and restore the reservation."""
+        # 1. Find the no-show row
+        ns = self.fetch_one(
+            "SELECT arrival_date, guest_name, main_client FROM no_shows WHERE id = ?",
+            (noshow_id,),
+        )
+        if not ns:
+            return False, "No-show record not found."
+
+        # 2. Find matching reservation (same guest + arrival date)
+        res = self.fetch_one(
+            """
+            SELECT id, room_number
+            FROM reservations
+            WHERE guest_name = ?
+            AND date(arrival_date) = date(?)
+            AND reservation_status = 'NO_SHOW'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (ns["guest_name"], ns["arrival_date"]),
+        )
+        if not res:
+            return False, "Matching reservation not found or not marked as NO_SHOW."
+
+        resid = res["id"]
+        room = res.get("room_number")
+
+        with closing(self.get_conn()) as conn, conn:
+            c = conn.cursor()
+            # 3. Restore reservation status
+            c.execute(
+                "UPDATE reservations SET reservation_status = 'CONFIRMED', updated_at = datetime('now') WHERE id = ?",
+                (resid,),
+            )
+            # 4. Optionally restore room status to VACANT or leave as is
+            if room:
+                c.execute(
+                    "UPDATE rooms SET status = 'VACANT' WHERE room_number = ?",
+                    (room,),
+                )
+            # 5. Remove the no-show record (or you could keep it with a flag)
+            c.execute("DELETE FROM no_shows WHERE id = ?", (noshow_id,))
+
+        return True, "No-show cancelled and reservation restored."  
+
+    def update_stay_comment(self, stay_id: int, comment: str):
+        """Update in-house stay comment (front office notes)."""
+        self.execute(
+            "UPDATE stays SET comment = ? WHERE id = ?",
+            (comment, stay_id),
+        )
+
+    # def add_payment(self, reservation_id: int, guest_name: str, amount: float,
+    #                 pay_type: str, method: str, reference: str, note: str):
+    #     self.execute(
+    #         """
+    #         INSERT INTO payments (reservation_id, guest_name, amount, type, method, reference, note)
+    #         VALUES (?, ?, ?, ?, ?, ?, ?)
+    #         """,
+    #         (reservation_id, guest_name, amount, pay_type, method, reference, note),
+    #     )
+    def add_payment(self, reservation_id: int, guest_name: str, amount: float,
+                    pay_type: str, method: str, reference: str, note: str):
+        """
+        Record a payment/refund and automatically reflect it in the linked invoice
+        (if reservation_id is provided).
+        """
+        self.execute(
+            """
+            INSERT INTO payments (reservation_id, guest_name, amount, type, method, reference, note)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (reservation_id, guest_name, amount, pay_type, method, reference, note),
+        )
+
+        # Real-time invoice linkage
+        self.apply_payment_to_invoice(reservation_id, amount, pay_type)
+
+    def is_room_clean(self, room_number: str) -> bool:
+        """Return True if room exists and status is not DIRTY."""
+        row = self.fetch_one(
+            "SELECT status FROM rooms WHERE room_number = ?",
+            (room_number.strip(),),
+        )
+        if not row:
+            # if room not found, keep existing validation behaviour elsewhere
+            return True
+        return row["status"] != "DIRTY"
+
+    def get_next_invoice_number(self) -> int:
+        """Get next auto-incremented invoice number starting from 254000, guaranteed unique."""
+        result = self.fetch_one("SELECT MAX(invoice_no) as max_inv FROM invoices")
+        if result and result.get("max_inv"):
+            return int(result["max_inv"]) + 1
+        return 254000
+
+    def save_invoice_number(self, reservation_id: int, invoice_no: int):
+        """Persist the invoice number against a reservation so it never duplicates."""
+        self.execute(
+            "INSERT OR REPLACE INTO invoices (reservation_id, invoice_no, created_at) "
+            "VALUES (?, ?, datetime('now'))",
+            (reservation_id, invoice_no),
+        )
+
+    
+    def get_guests_for_date(self, d: date):
+        """Guests actually in-house or staying on date d, from stays."""
+        return self.fetch_all(
+            """
+            SELECT DISTINCT
+                s.id            AS stay_id,
+                s.reservation_id AS reservation_id,
+                r.guest_name     AS guest_name,
+                s.room_number    AS room_number,
+                r.reservation_no AS reservation_no,
+                s.checkin_planned  AS arrival_date,
+                s.checkout_planned AS depart_date
+            FROM stays s
+            JOIN reservations r ON r.id = s.reservation_id
+            WHERE date(s.checkin_planned) <= date(?)
+            AND date(s.checkout_planned) >= date(?)
+            AND s.status = 'CHECKED_IN'
+            ORDER BY r.guest_name
+            """,
+            (d.isoformat(), d.isoformat()),
+        )
+
+
+    def update_reservation_mealplan(self, reservation_id: int, meal_plan: str):
+        """Update meal plan for a reservation (e.g., add breakfast)."""
+        print(f"MEAL PLAN: {meal_plan}")
+        self.execute(
+            "UPDATE reservations SET meal_plan = ?, updated_at = datetime('now') WHERE id = ?",
+            (meal_plan, reservation_id),
+        )
+    def get_reservations_for_date(self, d: date):
+        """All reservations whose stay covers date d, regardless of CHECKED_IN/CHECKEDOUT."""
+        return self.fetch_all(
+            """
+            SELECT
+                r.id,
+                r.guest_name      AS guest_name,
+                r.room_number     AS room_number,
+                r.reservation_no  AS reservation_no,
+                r.arrival_date    AS arrival_date,
+                r.depart_date     AS depart_date,
+                r.reservation_status AS reservation_status,
+                r.main_client     AS main_client
+            FROM reservations r
+            WHERE date(r.arrival_date) <= date(?)
+            AND date(r.depart_date)  >= date(?)
+            AND r.reservation_status NOT IN ('CANCELLED', 'NO_SHOW')
+            ORDER BY r.guest_name
+            """,
+            (d.isoformat(), d.isoformat()),
+        )
+
+    def get_reservation_by_guest_and_date(self, guest_name: str, d: date):
+        return self.fetch_one(
+            """
+            SELECT
+                r.id,
+                r.guest_name      AS guest_name,
+                r.room_number     AS room_number,   -- ADD THIS
+                r.arrival_date,
+                r.depart_date,
+                r.reservation_no,
+                r.main_client,
+                r.meal_plan,
+                r.rate_code,
+                r.channel
+            FROM reservations r
+            WHERE r.guest_name = ?
+            AND date(r.arrival_date) <= date(?)
+            AND date(r.depart_date)  >= date(?)
+            ORDER BY r.arrival_date DESC
+            LIMIT 1
+            """,
+            (guest_name, d.isoformat(), d.isoformat()),
+        )
+
+
+    def get_payments_for_reservation(self, reservation_id: int):
+        return self.fetch_all(
+            """
+            SELECT * FROM payments
+            WHERE reservation_id = ?
+            ORDER BY created_at DESC
+            """,
+            (reservation_id,),
+        )
+
+    def get_all_payments(self, limit: int = 500):
+        return self.fetch_all(
+            """
+            SELECT p.*, r.arrival_date, r.depart_date, r.room_number, r.main_client
+            FROM payments p
+            LEFT JOIN reservations r ON p.reservation_id = r.id
+            ORDER BY p.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+    def update_reservation_name(self, reservation_id: int, guest_name: str = None, main_client: str = None):
+        fields = []
+        params = []
+        if guest_name is not None:
+            fields.append("guest_name = ?")
+            params.append(guest_name)
+        if main_client is not None:
+            fields.append("main_client = ?")
+            params.append(main_client)
+
+        if not fields:
+            return False, "Nothing to update"
+
+        params.append(reservation_id)
+        self.execute(
+            f"UPDATE reservations SET {', '.join(fields)}, updated_at = datetime('now') WHERE id = ?",
+            tuple(params),
+        )
+        return True, "Reservation updated"
+
+
+    def __init__(self, dbpath: str):
+        self.dbpath = dbpath
+        self.init_db()
+        if self.reservations_empty():
+            self.import_all_arrivals_from_fs()
+            self.seed_rooms_from_blocks()
+            self.sync_room_status_from_stays()
+    def get_hsk_task_status(self, task_date: date, room_number: str, task_type: str):
+        return self.fetch_one(
+            "SELECT status, notes FROM hsk_task_status WHERE task_date = ? AND room_number = ? AND task_type = ?",
+            (task_date.isoformat(), room_number, task_type)
+        )
+# helpers
+    def move_checked_in_guest(self, stay_id: int, new_room: str):
+        """Move a checked-in guest to a different room (updates stays, reservations, rooms)."""
+        stay = self.fetch_one("SELECT * FROM stays WHERE id = ?", (stay_id,))
+        if not stay:
+            return False, "Stay not found"
+
+        res = self.fetch_one("SELECT * FROM reservations WHERE id = ?", (stay["reservation_id"],))
+        if not res:
+            return False, "Reservation not found"
+
+        old_room = stay["room_number"]
+
+        isvalid, normalized = self.is_valid_room_number(new_room)
+        if not isvalid:
+            return False, normalized
+
+        arr = datetime.fromisoformat(res["arrival_date"]).date()
+        dep = datetime.fromisoformat(res["depart_date"]).date()
+
+        available, msg = self.check_room_available_for_assignment(normalized, arr, dep, res["id"])
+        if not available:
+            return False, msg
+
+        with closing(self.get_conn()) as conn, conn:
+            c = conn.cursor()
+
+            # Update stay
+            c.execute(
+                "UPDATE stays SET room_number = ? WHERE id = ?",
+                (normalized, stay["id"]),
+            )
+
+            # Update reservation
+            c.execute(
+                "UPDATE reservations SET room_number = ?, updated_at = datetime('now') WHERE id = ?",
+                (normalized, res["id"]),
+            )
+
+            # Free old room, occupy new room
+            c.execute("UPDATE rooms SET status = 'VACANT' WHERE room_number = ?", (old_room,))
+            c.execute("INSERT OR IGNORE INTO rooms (room_number, status) VALUES (?, 'OCCUPIED')", (normalized,))
+            c.execute("UPDATE rooms SET status = 'OCCUPIED' WHERE room_number = ?", (normalized,))
+
+        return True, f"Guest moved from {old_room} to {normalized}"
+
+    def update_reservation_notes(self, reservation_id: int, main_remark: str, total_remarks: str = ""):
+        """Update Front Office notes for a reservation."""
+        self.execute(
+            """
+            UPDATE reservations
+            SET main_remark = ?,
+                total_remarks = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (main_remark, total_remarks, reservation_id),
+        )
+    # def add_payment(self, reservation_id: int, guest_name: str, amount: float, pay_type: str, method: str, reference: str, note: str):
+    #     self.execute(
+    #         "INSERT INTO payments (reservation_id, guest_name, amount, type, method, reference, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    #         (reservation_id, guest_name, amount, pay_type, method, reference, note),
+    #     )
+
+    def update_payment(self, payment_id: int, amount: float, pay_type: str, method: str, reference: str, note: str):
+        self.execute(
+            "UPDATE payments SET amount=?, type=?, method=?, reference=?, note=? WHERE id=?",
+            (amount, pay_type, method, reference, note, payment_id),
+        )
+
+    def delete_payment(self, payment_id: int):
+        self.execute("DELETE FROM payments WHERE id=?", (payment_id,))
+
+
+    def mark_reservation_as_no_show(
+        self,
+        reservation_id: int,
+        arrival_date: date,
+        guest_name: str,
+        main_client: str,
+        charged: bool = False,
+        amount_charged: float = 0.0,
+        amount_pending: float = 0.0,
+        comment: str = "",
+    ):
+        charged_int = 1 if charged else 0
+        amount_charged = amount_charged or 0.0
+        amount_pending = amount_pending or 0.0
+
+        # 1) Insert no-show record
+        self.execute(
+            "INSERT INTO no_shows (arrival_date, guest_name, main_client, charged, amount_charged, amount_pending, comment) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (arrival_date.isoformat(), guest_name, main_client, charged_int, amount_charged, amount_pending, comment),
+        )
+
+        # 2) Get assigned room for this reservation
+        res = self.fetch_one(
+            "SELECT room_number FROM reservations WHERE id = ?",
+            (reservation_id,),
+        )
+        room = res.get("room_number") if res else None
+
+        # 3) Mark reservation as NOSHOW
+        self.execute(
+            "UPDATE reservations SET reservation_status = 'NO_SHOW', updated_at = datetime('now') WHERE id = ?",
+            (reservation_id,),
+        )
+
+        # 4) If there is a room, free it
+        if room:
+            self.execute(
+                "UPDATE rooms SET status = 'VACANT' WHERE room_number = ?",
+                (room.strip(),),
+            )
+
+    def update_hsk_task_status(self, task_date: date, room_number: str, task_type: str, status: str, notes: str = ""):
+        self.execute(
+            """
+            INSERT INTO hsk_task_status (task_date, room_number, task_type, status, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(task_date, room_number, task_type)
+            DO UPDATE SET status = ?, notes = ?, updated_at = datetime('now')
+            """,
+            (task_date.isoformat(), room_number, task_type, status, notes, status, notes)
+        )
+    def search_reservations_by_room_number(self, room_number: str):
+        return self.fetch_all(
+            """
+            SELECT *
+            FROM reservations
+            WHERE room_number = ?
+            ORDER BY arrival_date DESC
+            LIMIT 500
+            """,
+            (room_number.strip(),),
+        )
+
+
+
+    def get_potential_no_shows(self, d: date):
+        """Get arrivals who didn't check in - potential no-shows"""
+        return self.fetch_all(
+            """
+            SELECT r.id, r.guest_name, r.reservation_no, r.main_client, r.room_number
+            FROM reservations r
+            WHERE date(r.arrival_date) = date(?)
+            AND NOT EXISTS (
+                SELECT 1 FROM stays s
+                WHERE s.reservation_id = r.id
+                    AND s.status = 'CHECKED_IN'
+            )
+            ORDER BY r.guest_name
+            """,
+            (d.isoformat(),),
+        )
+
+
+    def get_conn(self):
+            conn = sqlite3.connect(self.dbpath, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            return conn
+
+    def execute(self, query, params=None):
+        with closing(self.get_conn()) as conn, conn:
+            c = conn.cursor()
+            if params is None:
+                c.execute(query)
+            else:
+                c.execute(query, params)
+            return c
+
+    def fetch_all(self, query, params=None):
+        with closing(self.get_conn()) as conn:
+            c = conn.cursor()
+            if params is None:
+                c.execute(query)
+            else:
+                c.execute(query, params)
+            rows = c.fetchall()
+            return [dict(row) for row in rows]
+
+    def fetch_one(self, query, params=None):
+        with closing(self.get_conn()) as conn:
+            c = conn.cursor()
+            if params is None:
+                c.execute(query)
+            else:
+                c.execute(query, params)
+            row = c.fetchone()
+            return dict(row) if row else None
+
+
+    def get_breakfast_list_for_date(self, target_date: date):
+        return self.fetch_all(
+            """
+            SELECT
+                s.room_number      AS room_number,
+                r.guest_name       AS guest_name,
+                r.adults          AS adults,
+                r.children        AS children,
+                r.total_guests     AS total_guests,
+                r.meal_plan        AS meal_plan
+            FROM stays AS s
+            JOIN reservations AS r
+            ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_IN'
+            AND date(s.checkin_planned) < date(?)
+            AND date(s.checkout_planned) >= date(?)
+            AND r.room_number IS NOT NULL
+            AND r.room_number != ''
+            AND (
+                r.meal_plan = 'BB'
+                OR r.meal_plan LIKE '%BB%'
+                OR lower(r.meal_plan) LIKE '%breakfast%'
+            )
+            ORDER BY CAST(s.room_number AS INTEGER)
+            """,
+            (target_date.isoformat(), target_date.isoformat()),
+        )
+
+    def get_daily_revenue_data(self, target_date: date):
+        """
+        Data needed to build columns:
+        Room No, ARRIVALS, DEPARTURE, Occupancy:, MEAL PLAN, Name:,
+        Daily Acc, Remarks (+ reservation_id for joining payments).
+        """
+        return self.fetch_all(
+            """
+            SELECT 
+                s.room_number,          -- Room No
+                r.id AS reservation_id, -- link to payments
+                r.arrival_date,         -- ARRIVALS
+                r.depart_date,          -- DEPARTURE
+                r.nights,               -- Occupancy:
+                r.meal_plan,            -- MEAL PLAN
+                r.guest_name,           -- Name:
+                r.amount_pending,       -- Daily Acc (base)
+                s.checkout_planned,     -- DEPARTURE fallback / stay window
+                s.comment               -- Remarks
+            FROM stays s
+            JOIN reservations r ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_IN'
+            AND date(s.checkin_planned) <= date(?)
+            AND date(s.checkout_planned) > date(?)
+            ORDER BY CAST(s.room_number AS INTEGER)
+            """,
+            (target_date.isoformat(), target_date.isoformat()),
+        )
+
+
+
+
+    def generate_hsk_tasks_for_date(self, target_date: date):
+        """Auto-generate housekeeping tasks for the day"""
+        tasks = []
+        d = target_date.isoformat()
+
+        conn = self.get_conn()
+        c = conn.cursor()
+
+        try:
+            # 1. CHECKOUTS – checked-in guests whose planned checkout is today
+            c.execute("""
+                SELECT s.room_number, r.guest_name, r.main_remark, r.total_remarks, s.status
+                FROM stays s
+                JOIN reservations r ON r.id = s.reservation_id
+                WHERE s.status = 'CHECKED_IN'
+                AND date(s.checkout_planned) = date(?)
+                AND s.room_number IS NOT NULL AND s.room_number != ''
+                ORDER BY CAST(s.room_number AS INTEGER)
+            """, (d,))
+
+            for co in c.fetchall():
+                co = dict(co)
+                room = co["room_number"]
+                guest = co["guest_name"]
+                remarks = f"{co.get('main_remark') or ''} {co.get('total_remarks') or ''}".lower()
+
+                task = {
+                    "room": room,
+                    "tasktype": "CHECKOUT",
+                    "priority": "HIGH",
+                    "description": f"Clean room {room} - {guest} checkout",
+                    "notes": []
+                }
+                if 'vip' in remarks or 'birthday' in remarks:
+                    task["priority"] = "URGENT"
+                    task["notes"].append("VIP/SPECIAL")
+                if '2t' in remarks:
+                    task["notes"].append("2 TWIN BEDS")
+
+                tasks.append(task)
+
+            # 2. STAYOVERS – checked-in guests whose stay COVERS today but do NOT depart today
+            c.execute("""
+                SELECT DISTINCT s.room_number, r.guest_name
+                FROM stays s
+                JOIN reservations r ON r.id = s.reservation_id
+                WHERE s.status = 'CHECKED_IN'
+                AND date(s.checkin_planned) <= date(?)
+                AND date(s.checkout_planned) > date(?)
+                AND s.room_number IS NOT NULL AND s.room_number != ''
+                ORDER BY CAST(s.room_number AS INTEGER)
+            """, (d, d))
+
+            for so in c.fetchall():
+                so = dict(so)
+                tasks.append({
+                    "room": so["room_number"],
+                    "tasktype": "STAYOVER",
+                    "priority": "MEDIUM",
+                    "description": f"Refresh room {so['room_number']} - {so['guest_name']} stayover",
+                    "notes": []
+                })
+
+            # 3. ARRIVALS – reservations arriving today, room assigned,
+            #    not cancelled/noshow, and NOT yet checked in
+            c.execute("""
+                SELECT r.room_number, r.guest_name, r.main_remark, r.total_remarks
+                FROM reservations r
+                LEFT JOIN stays s
+                ON s.reservation_id = r.id
+                AND s.status = 'CHECKED_IN'
+                WHERE date(r.arrival_date) = date(?)
+                AND r.room_number IS NOT NULL AND r.room_number != ''
+                AND r.reservation_status NOT IN ('CANCELLED', 'NO_SHOW')
+                AND s.id IS NULL
+                ORDER BY CAST(r.room_number AS INTEGER)
+            """, (d,))
+
+            for arr in c.fetchall():
+                arr = dict(arr)
+                room = arr["room_number"]
+                guest = arr["guest_name"]
+                remarks = f"{arr.get('main_remark') or ''} {arr.get('total_remarks') or ''}".lower()
+
+                task = {
+                    "room": room,
+                    "tasktype": "ARRIVAL",
+                    "priority": "HIGH",
+                    "description": f"Prepare room {room} for {guest} arrival",
+                    "notes": []
+                }
+                if '2t' in remarks:
+                    task["notes"].append("2 TWIN BEDS")
+                if 'accessible' in remarks or 'disabled' in remarks:
+                    task["notes"].append("ACCESSIBLE ROOM")
+
+                tasks.append(task)
+
+        finally:
+            conn.close()
+
+        return tasks
+
+
+
+
+    def cancel_checkin(self, stay_id: int):
+        stay = self.fetch_one("SELECT * FROM stays WHERE id = ?", (stay_id,))
+        if not stay:
+            return False, "Stay not found"
+        
+        self.execute("DELETE FROM stays WHERE id = ?", (stay_id,))
+        self.execute(
+            "UPDATE rooms SET status = 'VACANT' WHERE room_number = ?",
+            (stay["room_number"],),
+        )
+        return True, "Check-in cancelled successfully"
+
+
+    def cancel_checkout(self, stay_id: int):
+        stay = self.fetch_one("SELECT * FROM stays WHERE id = ?", (stay_id,))
+        if not stay:
+            return False, "Stay not found"
+        if stay["status"] != "CHECKED_OUT":
+            return False, "Not checked out"
+        
+        self.execute("UPDATE stays SET status = 'CHECKED_IN', checkout_actual = NULL WHERE id = ?", (stay_id,))
+        self.execute("UPDATE rooms SET status = 'OCCUPIED' WHERE room_number = ?", (stay["room_number"],))
+        return True, f"Check-out cancelled - room {stay['room_number']} back to in-house"
+
+
+
+    def is_valid_room_number(self, room_number: str) -> tuple[bool, str]:
+        """Check if room number is valid (integer within ROOM_BLOCKS)"""
+        if not room_number or not room_number.strip():
+            return False, "Room number cannot be empty"
+        
+        # Try to parse as integer (reject decimals)
+        try:
+            # First check if it contains a decimal point
+            if '.' in room_number.strip():
+                return False, "Room number cannot have decimals. Use whole numbers only"
+            
+            room_int = int(room_number.strip())
+        except:
+            return False, "Room number must be a valid whole number"
+        
+        # Check if it's in valid ranges
+        for start, end in ROOM_BLOCKS:
+            if start <= room_int <= end:
+                return True, str(room_int)
+        
+        # Not in any valid range
+        valid_ranges = ", ".join([f"{s}-{e}" for s, e in ROOM_BLOCKS])
+        return False, f"Room {room_int} not in valid ranges: {valid_ranges}"
+
+    def check_room_available_for_assignment(self, room_number: str, arrival_date: date, depart_date: date, exclude_reservation_id: int = None):
+        if not room_number or not room_number.strip():
+            return True, ""
+        try:
+            rn = str(int(float(room_number.strip())))
+        except:
+            return False, "Invalid room number format"
+        
+        params = [rn, depart_date.isoformat(), arrival_date.isoformat()]
+        sql = """
+            SELECT r.id, r.guest_name, r.arrival_date, r.depart_date, r.reservation_no
+            FROM reservations r
+            WHERE r.room_number = ?
+            AND r.arrival_date < ?
+            AND r.depart_date > ?
+        """
+
+        if exclude_reservation_id is not None:
+            sql += " AND r.id != ?"
+            params.append(exclude_reservation_id)
+
+        conflict = self.fetch_one(sql, tuple(params))
+       
+        if conflict:
+            return False, f"Room {rn} occupied by {conflict['guest_name']} (Res #{conflict['reservation_no']})"
+        return True, ""
+
+
+   
+    def reservations_empty(self):
+        result = self.fetch_one("SELECT COUNT(*) as cnt FROM reservations")
+        return result["cnt"] == 0 if result else True
+
+
+    def build_reservations_from_df(self, df: pd.DataFrame):
+           df.columns = [str(c).strip() for c in df.columns]
+           
+           # Simple mapping - keep everything as strings initially
+           df_clean = pd.DataFrame({
+               "arrival_date": pd.to_datetime(df.get("Arrival Date"), errors='coerce'),
+               "depart_date": pd.to_datetime(df.get("Depart"), errors='coerce'),
+               "room_number": df.get("Room"),
+               "room_type_code": df.get("Room type"),
+               "adults": pd.to_numeric(df.get("AD"), errors='coerce').fillna(1).astype(int),
+               "children": 0,
+               "total_guests": pd.to_numeric(df.get("Tot. guests"), errors='coerce').fillna(1).astype(int),
+               "reservation_no": df.get("Reservation No.").astype(str),
+               "voucher": df.get("Voucher").astype(str) if "Voucher" in df.columns else None,
+               "guest_name": df.get("Guest or Group's name"),
+               "main_client": df.get("Main client"),
+               "nights": pd.to_numeric(df.get("Nights"), errors='coerce'),
+               "meal_plan": df.get("Meal Plan"),
+               "rate_code": df.get("Rate"),
+               "channel": df.get("Chanl"),
+               "main_remark": df.get("Main Rem."),
+               "contact_name": df.get("Contact person"),
+               "contact_email": df.get("E-mail"),
+               "source_of_business": df.get("Source of Business"),
+           })
+           
+           # Drop rows with invalid dates
+           df_clean = df_clean.dropna(subset=["arrival_date", "depart_date"])
+           
+           # Replace remaining NaT/NaN with None
+           df_clean = df_clean.where(pd.notna(df_clean), None)
+           
+           return df_clean
+    def get_stays_covering_range(self, start_date: date, end_date: date):
+        """
+        Return all reservations whose stay overlaps [start_date, end_date),
+        i.e. arrival_date <= end_date-1 and depart_date > start_date.
+        """
+        return self.fetch_all(
+            """
+            SELECT
+                r.id AS reservation_id,
+                r.room_number,
+                r.arrival_date,
+                r.depart_date,
+                r.nights,
+                r.meal_plan,
+                r.guest_name,
+                r.amount_pending,
+                r.main_remark AS comment,
+                r.reservation_status
+            FROM reservations r
+            WHERE r.room_number IS NOT NULL
+            AND r.room_number != ''
+            AND r.reservation_status NOT IN ('CANCELLED','NOSHOW')
+            AND date(r.arrival_date) <= date(?)
+            AND date(r.depart_date) > date(?)
+            ORDER BY CAST(r.room_number AS INTEGER)
+            """,
+            (end_date.isoformat(), start_date.isoformat()),
+        )
+    def export_revenue_multi_excel(
+    self,
+    start_date: date,
+    end_date: date,
+    ro_rate: float = 0.0,
+    bb_rate: float = 0.0,
+):
+        """
+        Generate a workbook with one sheet per day in [start_date, end_date],
+        coloured by:
+        - Green row on arrival date
+        - Yellow row on subsequent days
+        Columns:
+        Room No, ARRIVALS, DEPARTURE, Occupancy:, MEAL PLAN, Name:,
+        Payment method, Daily Acc, Paid amount, 4 digits,
+        Paid amount, 4 digits, Remarks.
+        """
+        from io import BytesIO
+        import pandas as pd
+        from datetime import datetime, timedelta
+
+        if end_date < start_date:
+            return None
+
+        # 1) Fetch all stays that overlap the range (once)
+        all_stays = self.get_stays_covering_range(start_date, end_date)
+
+        if not all_stays:
+            return None
+
+        # 2) Fetch all payments up to end_date
+        payments = self.fetch_all(
+            """
+            SELECT
+                reservation_id,
+                amount,
+                method,
+                reference,
+                created_at,
+                type
+            FROM payments
+            WHERE date(created_at) <= date(?)
+            ORDER BY created_at DESC
+            """,
+            (end_date.isoformat(),),
+        )
+
+        # Group payments by reservation_id
+        payments_by_res = {}
+        for p in payments:
+            rid = p.get("reservation_id")
+            if not rid:
+                continue
+            payments_by_res.setdefault(rid, []).append(p)
+
+        out = BytesIO()
+
+        with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
+            workbook = writer.book
+
+            header_fmt = workbook.add_format({
+                "bold": True,
+                "font_size": 11,
+                "align": "center",
+                "valign": "vcenter",
+                "border": 1,
+            })
+            arrival_fmt = workbook.add_format({
+                "bg_color": "#C6EFCE",  # green
+                "border": 1,
+            })
+            stay_fmt = workbook.add_format({
+                "bg_color": "#FFD580",  # yellow/orange
+                "border": 1,
+            })
+            white_fmt = workbook.add_format({"border": 1})
+
+            # Helper to compute payments (room only) for a reservation
+            def get_room_payment(res_id: int):
+                """
+                Returns (pay_method, paid_amount, last4_digits) for room revenue.
+                paid_amount will be used both as Daily Acc and Paid amount.
+                """
+                pay_method = ""
+                paid_amount = 0.0
+                last4 = ""
+
+                res_pays = payments_by_res.get(res_id) or []
+                room_pays = [
+                    p for p in res_pays
+                    if (p.get("type") or "").upper() == "PAYMENT"
+                ]
+                if not room_pays:
+                    return pay_method, paid_amount, last4
+
+                paid_amount = sum(p.get("amount") or 0.0 for p in room_pays)
+                last_p = sorted(
+                    room_pays,
+                    key=lambda p: p.get("created_at") or "",
+                    reverse=True,
+                )[0]
+                pay_method = last_p.get("method") or ""
+                ref = (last_p.get("reference") or "").strip()
+                digits = "".join(ch for ch in ref if ch.isdigit())
+                if len(digits) >= 4:
+                    last4 = digits[-4:]
+                return pay_method, paid_amount, last4
+
+
+            # 3) One sheet per day
+            current = start_date
+            while current <= end_date:
+                sheet_name = current.strftime("%d-%b")  # e.g. "06-Mar"
+                worksheet = workbook.add_worksheet(sheet_name)
+
+                # Top header (row 0)
+                worksheet.write(0, 0, current.strftime("%d.%m.%Y"), header_fmt)
+                worksheet.write(0, 3, "Daily Rates", header_fmt)
+                worksheet.write(0, 10, "Parking", header_fmt)
+
+                # Rates rows (1–2)
+                worksheet.write(1, 3, "RO")
+                worksheet.write(1, 4, ro_rate)
+                worksheet.write(2, 3, "BB")
+                worksheet.write(2, 4, bb_rate)
+
+                # Header row (3)
+                headers = [
+                    "Room No",        # 0
+                    "ARRIVALS",       # 1
+                    "DEPARTURE",      # 2
+                    "Occupancy:",     # 3
+                    "MEAL PLAN",      # 4
+                    "Name:",          # 5
+                    "Payment method", # 6
+                    "Daily Acc",      # 7
+                    "Paid amount",    # 8
+                    "4 digits",       # 9
+                    "Paid amount",    # 10 (parking)
+                    "4 digits",       # 11 (parking)
+                    "Remarks",        # 12
+                ]
+                for col, h in enumerate(headers):
+                    worksheet.write(3, col, h, header_fmt)
+
+                # Example row (4)
+                worksheet.write(4, 0, "Example", white_fmt)
+
+                row = 5
+
+                total_paid = 0.0
+
+                for s in all_stays:
+                    res_id = s.get("reservation_id")
+                    room = s.get("room_number") or ""
+                    arrival = s.get("arrival_date")
+                    depart = s.get("depart_date")
+                    nights = s.get("nights") or ""
+                    meal_plan = s.get("meal_plan") or "RO"
+                    guest_name = s.get("guest_name") or ""
+                    daily_acc = s.get("amount_pending") or 0.0
+                    comment = s.get("comment") or ""
+
+                    # Convert arrival/depart to dates
+                    try:
+                        arr_d = datetime.fromisoformat(str(arrival)).date()
+                    except Exception:
+                        arr_d = None
+                    try:
+                        dep_d = datetime.fromisoformat(str(depart)).date()
+                    except Exception:
+                        dep_d = None
+
+                    if not arr_d or not dep_d:
+                        continue
+
+                    # Does this stay cover 'current' date?
+                    if not (arr_d <= current < dep_d):
+                        continue
+
+                    # Green if arrival day, yellow otherwise
+                    fmt = arrival_fmt if current == arr_d else stay_fmt
+
+                    # Compute payments (room revenue)
+                    pay_method, paid_amount, last4 = get_room_payment(res_id)
+
+                    # 0 Room No
+                    worksheet.write(row, 0, room, fmt)
+
+                    # 1 ARRIVALS (always show actual arrival date)
+                    try:
+                        worksheet.write(row, 1, arr_d.strftime("%d.%m.%Y"), fmt)
+                    except Exception:
+                        worksheet.write(row, 1, str(arrival), fmt)
+
+                    # 2 DEPARTURE
+                    try:
+                        worksheet.write(row, 2, dep_d.strftime("%d.%m.%Y"), fmt)
+                    except Exception:
+                        worksheet.write(row, 2, str(depart), fmt)
+
+                    # 3 Occupancy:
+                    worksheet.write(row, 3, nights, fmt)
+
+                    # 4 MEAL PLAN
+                    worksheet.write(row, 4, meal_plan, fmt)
+
+                    # 5 Name:
+                    worksheet.write(row, 5, guest_name, fmt)
+
+                    # 6 Payment method
+                    worksheet.write(row, 6, pay_method, fmt)
+
+                    try:
+                        nights_val = float(nights) if nights is not None else 0.0
+                    except Exception:
+                        nights_val = 0.0
+
+                    if paid_amount and nights_val > 0:
+                        daily_acc = float(paid_amount) / nights_val
+                    else:
+                        daily_acc = 0.0
+
+                    # 7 Daily Acc = paid amount / nights
+                    worksheet.write_number(row, 7, daily_acc, fmt)
+
+                    # 8 Paid amount (room) = total amount guest has paid for full stay
+                    if paid_amount:
+                        worksheet.write_number(row, 8, float(paid_amount), fmt)
+                        total_paid += float(paid_amount)
+                    else:
+                        worksheet.write(row, 8, "", fmt)
+
+
+                    # 9 4 digits
+                    worksheet.write(row, 9, last4, fmt)
+
+                    # 10–11 parking paid & digits (not used yet)
+                    worksheet.write(row, 10, "", fmt)
+                    worksheet.write(row, 11, "", fmt)
+
+                    # 12 Remarks
+                    worksheet.write(row, 12, comment, fmt)
+
+                    row += 1
+
+                # Summary & legend
+                row += 1
+                worksheet.write(row, 0, "Total Paid")
+                worksheet.write_number(row, 1, total_paid)
+
+                row += 2
+                worksheet.write(row, 0, "Key Note", header_fmt)
+                row += 1
+                worksheet.write(row, 0, "Green for Arrivals", arrival_fmt)
+                row += 1
+                worksheet.write(row, 0, "Orange for overnight", stay_fmt)
+                row += 1
+                worksheet.write(row, 0, "White No Shows", white_fmt)
+
+                # Column widths
+                worksheet.set_column(0, 0, 10)   # Room No
+                worksheet.set_column(1, 2, 12)   # Dates
+                worksheet.set_column(3, 4, 12)   # Occupancy, Meal
+                worksheet.set_column(5, 5, 20)   # Name
+                worksheet.set_column(6, 6, 15)   # Payment method
+                worksheet.set_column(7, 9, 12)   # Daily Acc, Paid, 4 digits
+                worksheet.set_column(10, 12, 12) # Parking, Remarks
+
+                current += timedelta(days=1)
+
+        out.seek(0)
+        return out
+
+
+    def export_daily_revenue_excel(self, target_date: date, ro_rate: float = 0, bb_rate: float = 0):
+        """
+        Generate daily revenue Excel with columns:
+        Room No, ARRIVALS, DEPARTURE, Occupancy:, MEAL PLAN, Name:,
+        Payment method, Daily Acc, Paid amount, 4 digits,
+        Paid amount, 4 digits, Remarks.
+        """
+        from io import BytesIO
+        import pandas as pd
+        from datetime import datetime
+
+        guests = self.get_daily_revenue_data(target_date)
+        if not guests:
+            return None
+
+        # All PAYMENT rows up to this date (room revenue)
+        payments = self.fetch_all(
+            """
+            SELECT 
+                p.reservation_id,
+                p.amount,
+                p.method,
+                p.reference,
+                p.created_at,
+                p.type
+            FROM payments p
+            WHERE date(p.created_at) <= date(?)
+            ORDER BY p.created_at DESC
+            """,
+            (target_date.isoformat(),),
+        )
+
+        # Group by reservation_id
+        payments_by_res = {}
+        for p in payments:
+            rid = p.get("reservation_id")
+            if not rid:
+                continue
+            payments_by_res.setdefault(rid, []).append(p)
+
+        output = BytesIO()
+
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            workbook = writer.book
+            worksheet = workbook.add_worksheet("Daily Revenue")
+
+            header_format = workbook.add_format({
+                "bold": True,
+                "font_size": 12,
+                "align": "center",
+                "valign": "vcenter",
+                "border": 1,
+            })
+            arrival_format = workbook.add_format({
+                "bg_color": "#C6EFCE",  # arrivals
+                "border": 1,
+            })
+            stayover_format = workbook.add_format({
+                "bg_color": "#FFD580",  # overnight
+                "border": 1,
+            })
+            white_format = workbook.add_format({"border": 1})
+
+            # Row 0 – date and section titles
+            worksheet.write(0, 0, target_date.strftime("%d.%m.%Y"), header_format)
+            worksheet.write(0, 3, "Daily Rates", header_format)
+            worksheet.write(0, 10, "Parking", header_format)
+
+            # Rates rows 1–2
+            worksheet.write(1, 3, "RO")
+            worksheet.write(1, 4, ro_rate)
+            worksheet.write(2, 3, "BB")
+            worksheet.write(2, 4, bb_rate)
+
+            # Header row 3 – EXACT 13 columns
+            headers = [
+                "Room No",        # 0
+                "ARRIVALS",       # 1
+                "DEPARTURE",      # 2
+                "Occupancy:",     # 3
+                "MEAL PLAN",      # 4
+                "Name:",          # 5
+                "Payment method", # 6
+                "Daily Acc",      # 7
+                "Paid amount",    # 8
+                "4 digits",       # 9
+                "Paid amount",    # 10 (parking)
+                "4 digits",       # 11 (parking)
+                "Remarks",        # 12
+            ]
+            for col, h in enumerate(headers):
+                worksheet.write(3, col, h, header_format)
+
+            # Example row (row 4)
+            worksheet.write(4, 0, "Example", white_format)
+
+            row = 5
+            total_paid = 0.0
+
+            for g in guests:
+                room = g.get("room_number") or ""
+                res_id = g.get("reservation_id")
+                arrival = g.get("arrival_date")
+                departure = g.get("depart_date") or g.get("checkout_planned")
+                nights = g.get("nights") or ""
+                meal_plan = g.get("meal_plan") or "RO"
+                guest_name = g.get("guest_name") or ""
+                daily_acc = g.get("amount_pending") or 0.0
+                comment = g.get("comment") or ""
+
+                # Is this an arrival day?
+                is_arrival = False
+                if arrival:
+                    try:
+                        arr_dt = datetime.fromisoformat(str(arrival)).date()
+                        is_arrival = (arr_dt == target_date)
+                    except Exception:
+                        pass
+                row_fmt = arrival_format if is_arrival else stayover_format
+
+                # Payments for this reservation
+                pay_method = ""
+                paid_amount = 0.0
+                card_digits = ""
+
+                if res_id and res_id in payments_by_res:
+                    res_pays = payments_by_res[res_id]
+                    # Filter to room payments (type == 'PAYMENT'); ignore REFUND in total
+                    room_pays = [p for p in res_pays if (p.get("type") or "").upper() == "PAYMENT"]
+                    if room_pays:
+                        paid_amount = sum(p.get("amount") or 0.0 for p in room_pays)
+                        # latest payment by created_at
+                        last_p = sorted(
+                            room_pays,
+                            key=lambda p: p.get("created_at") or "",
+                            reverse=True,
+                        )[0]
+                        pay_method = last_p.get("method") or ""
+                        ref = (last_p.get("reference") or "").strip()
+                        digits = "".join(ch for ch in ref if ch.isdigit())
+                        if len(digits) >= 4:
+                            card_digits = digits[-4:]
+
+                # 0 Room No
+                worksheet.write(row, 0, room, row_fmt)
+
+                # 1 ARRIVALS
+                if arrival:
+                    try:
+                        dt = datetime.fromisoformat(str(arrival))
+                        worksheet.write(row, 1, dt.strftime("%d.%m.%Y"), row_fmt)
+                    except Exception:
+                        worksheet.write(row, 1, str(arrival), row_fmt)
+                else:
+                    worksheet.write(row, 1, "", row_fmt)
+
+                # 2 DEPARTURE
+                if departure:
+                    try:
+                        dt = datetime.fromisoformat(str(departure))
+                        worksheet.write(row, 2, dt.strftime("%d.%m.%Y"), row_fmt)
+                    except Exception:
+                        worksheet.write(row, 2, str(departure), row_fmt)
+                else:
+                    worksheet.write(row, 2, "", row_fmt)
+
+                # 3 Occupancy:
+                worksheet.write(row, 3, nights, row_fmt)
+
+                # 4 MEAL PLAN
+                worksheet.write(row, 4, meal_plan, row_fmt)
+
+                # 5 Name:
+                worksheet.write(row, 5, guest_name, row_fmt)
+
+                # 6 Payment method
+                worksheet.write(row, 6, pay_method, row_fmt)
+
+                # 7 Daily Acc (you can change formula later if needed)
+                worksheet.write_number(row, 7, float(daily_acc) if daily_acc else 0.0, row_fmt)
+
+                # 8 Paid amount (room)
+                if paid_amount:
+                    worksheet.write_number(row, 8, float(paid_amount), row_fmt)
+                    total_paid += float(paid_amount)
+                else:
+                    worksheet.write(row, 8, "", row_fmt)
+
+                # 9 4 digits (room card)
+                worksheet.write(row, 9, card_digits, row_fmt)
+
+                # 10 Paid amount (parking) – currently blank
+                worksheet.write(row, 10, "", row_fmt)
+
+                # 11 4 digits (parking) – currently blank
+                worksheet.write(row, 11, "", row_fmt)
+
+                # 12 Remarks
+                worksheet.write(row, 12, comment, row_fmt)
+
+                row += 1
+
+            # Simple summary and legend
+            row += 1
+            worksheet.write(row, 0, "Total Paid")
+            worksheet.write_number(row, 1, total_paid)
+
+            row += 2
+            worksheet.write(row, 0, "Key Note", header_format)
+            row += 1
+            worksheet.write(row, 0, "Green for Arrivals", arrival_format)
+            row += 1
+            worksheet.write(row, 0, "Orange for overnight", stayover_format)
+            row += 1
+            worksheet.write(row, 0, "White No Shows", white_format)
+
+            # Column widths
+            worksheet.set_column(0, 0, 10)   # Room No
+            worksheet.set_column(1, 2, 12)   # Dates
+            worksheet.set_column(3, 4, 12)   # Occupancy, Meal
+            worksheet.set_column(5, 5, 20)   # Name
+            worksheet.set_column(6, 6, 15)   # Payment method
+            worksheet.set_column(7, 9, 12)   # Daily Acc, Paid, 4 digits
+            worksheet.set_column(10, 12, 12) # Parking paid, digits, Remarks
+
+        output.seek(0)
+        return output
+
+
+
+
+
+    def import_arrivals_file(self, path: str):
+        try:
+            df = pd.read_excel(path)
+            df_db = self.build_reservations_from_df(df)
+            from contextlib import closing
+            with closing(self.get_conn()) as conn:
+                df_db.to_sql("reservations", conn, if_exists="append", index=False)
+            return len(df_db)
+        except Exception as e:
+            st.error(f"Import error: {e}")
+            return 0
+
+    def get_daily_revenue_data(self, target_date: date):
+        """Guests in-house on target_date (for revenue report)."""
+        return self.fetch_all(
+            """
+            SELECT 
+                s.room_number,
+                r.id AS reservation_id,
+                r.arrival_date,
+                r.depart_date,
+                r.nights,
+                r.meal_plan,
+                r.guest_name,
+                r.amount_pending,
+                s.checkin_actual,
+                s.checkout_planned,
+                s.parking_space,
+                s.parking_plate,
+                s.comment
+            FROM stays s
+            JOIN reservations r ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_IN'
+            AND date(s.checkin_planned) <= date(?)
+            AND date(s.checkout_planned) > date(?)
+            ORDER BY CAST(s.room_number AS INTEGER)
+            """,
+            (target_date.isoformat(), target_date.isoformat()),
+        )
+
+
+
+    def import_all_arrivals_from_fs(self) -> int:
+        pattern = os.path.join(ARRIVALS_ROOT, "**", "Arrivals *.XLSX")
+        files = sorted(glob(pattern, recursive=True))
+        total = 0
+        for path in files:
+            total += self.import_arrivals_file(path)
+        return total
+
+    def get_arrivals_for_date(self, d: date):
+        return self.fetch_all(
+            """
+            SELECT r.*
+            FROM reservations AS r
+            WHERE date(r.arrival_date) = date(?)
+            AND r.reservation_status NOT IN ('CHECKED_IN', 'CHECKED_OUT')
+            AND NOT EXISTS (
+                SELECT 1
+                FROM stays AS s
+                WHERE s.reservation_id = r.id
+                    AND s.status IN ('CHECKED_IN', 'CHECKED_OUT')
+            )
+            ORDER BY COALESCE(r.room_number, ''), r.guest_name
+            """,
+            (d.isoformat(),),
+        )
+
+
+
+
+    def update_reservation_room(self, resid: int, room_number: str):
+        if not room_number or not room_number.strip():
+            return False, "Room number cannot be empty"
+
+        isvalid, result = self.is_valid_room_number(room_number)
+        if not isvalid:
+            return False, result
+
+        # NEW: block dirty rooms
+        if not self.is_room_clean(room_number):
+            return False, "Room is marked DIRTY. Please choose a clean room."
+
+        with closing(self.get_conn()) as conn:
+            c = conn.cursor()
+            c.execute("SELECT arrival_date, depart_date FROM reservations WHERE id = ?", (resid,))
+            res = c.fetchone()
+            if not res:
+                return False, "Reservation not found"
+
+            arr = datetime.fromisoformat(res["arrival_date"]).date()
+            dep = datetime.fromisoformat(res["depart_date"]).date()
+
+        available, msg = self.check_room_available_for_assignment(room_number, arr, dep, resid)
+        if not available:
+            return False, msg
+
+        with closing(self.get_conn()) as conn, conn:
+            c = conn.cursor()
+            c.execute(
+                "UPDATE reservations SET room_number = ?, updated_at = datetime('now') WHERE id = ?",
+                (room_number, resid),
+            )
+        return True, f"Room {room_number} assigned successfully"
+
+
+
+
+    
+    def get_checked_out_for_date(self, d: date):
+        return self.fetch_all(
+            """
+            SELECT s.*, r.guest_name, r.reservation_no
+            FROM stays s
+            JOIN reservations r ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_OUT'
+            AND date(s.checkout_actual) = date(?)
+            ORDER BY CAST(s.room_number AS INTEGER)
+            """,
+            (d.isoformat(),),
+        )
+
+
+
+    def set_room_status(self, room_number: str, status: str):
+        """Set room status manually (e.g. CLEAN, DIRTY)."""
+        if not room_number:
+            return False, "Room number required"
+        status = status.upper().strip()
+        if status not in ["CLEAN", "DIRTY", "VACANT", "OCCUPIED"]:
+            return False, "Invalid status. Use CLEAN, DIRTY, VACANT or OCCUPIED."
+
+        self.execute(
+            "UPDATE rooms SET status = ? WHERE room_number = ?",
+            (status, room_number.strip()),
+        )
+        return True, f"Room {room_number} set to {status}"
+
+    # ---- rooms / stays ----
+
+    def ensure_room_exists(self, room_number: str):
+        if not room_number:
+            return
+        self.execute("""
+            INSERT INTO rooms (room_number, status) VALUES (:room, 'VACANT')
+            ON CONFLICT (room_number) DO NOTHING
+        """, {"room": room_number.strip()})
+
+    def check_room_conflict(self, room_number: str, d: date):
+    # This method is no longer needed - already handled by check_room_available_for_assignment
+        return []
+
+
+    def checkin_reservation(self, res_id: int):
+        res = self.fetch_one("SELECT * FROM reservations WHERE id = ?", (res_id,))
+
+        if not res:
+            return False, "Reservation not found"
+        if not res["room_number"]:
+            return False, "Assign a room first"
+        
+        is_valid, result = self.is_valid_room_number(res["room_number"])
+        if not is_valid:
+            return False, result
+        
+        # if res["arrival_date"] < date.today():
+        #     return False, f"Cannot check in for past date"
+        
+        self.ensure_room_exists(result)
+        
+        self.execute("""
+            INSERT INTO stays (reservation_id, room_number, status, checkin_planned, checkout_planned, checkin_actual)
+            VALUES (:res_id, :room, 'CHECKED_IN', :arr, :dep, CURRENT_TIMESTAMP)
+        """, {"res_id": res_id, "room": result, "arr": res["arrival_date"], "dep": res["depart_date"]})
+        
+        self.execute(
+    "UPDATE rooms SET status = 'OCCUPIED' WHERE room_number = ?",
+    (result,),
+)
+
+        return True, "Checked in successfully"
+    
+    def checkout_stay(self, stay_id: int):
+        # Try to find existing stay by stay_id
+        stay = self.fetch_one("SELECT * FROM stays WHERE id = ?", (stay_id,))
+        
+        if stay:
+            # Existing stay: mark as checked out
+            self.execute(
+                "UPDATE stays SET status = 'CHECKED_OUT', checkout_actual = datetime('now') WHERE id = ?",
+                (stay_id,),
+            )
+            self.execute(
+                "UPDATE rooms SET status = 'VACANT' WHERE room_number = ?",
+                (stay["room_number"],),
+            )
+        else:
+            # No stay row: treat stay_id as reservation_id
+            res = self.fetch_one("SELECT * FROM reservations WHERE id = ?", (stay_id,))
+            if not res or not res["room_number"]:
+                return False, "Reservation not found or no room assigned"
+            
+            self.execute(
+                """
+                INSERT INTO stays (
+                    reservation_id, room_number, status,
+                    checkin_planned, checkout_planned,
+                    checkin_actual, checkout_actual
+                )
+                VALUES (?, ?, 'CHECKED_OUT', ?, ?, datetime('now'), datetime('now'))
+                """,
+                (stay_id, res["room_number"], res["arrival_date"], res["depart_date"]),
+            )
+            self.execute(
+                "UPDATE rooms SET status = 'VACANT' WHERE room_number = ?",
+                (res["room_number"],),
+            )
+
+        return True, "Checked out successfully"
+
+
+
+
+
+    def get_inhouse(self, target_date: date = None):
+        """Get only CHECKED_IN guests who are actually in the hotel."""
+        if not target_date:
+            target_date = date.today()
+
+        return self.fetch_all(
+            """
+            SELECT
+                s.id AS stay_id,
+                s.reservation_id AS id,
+                r.reservation_no,
+                r.guest_name,
+                s.room_number,
+                s.checkin_planned,
+                s.checkout_planned,
+                r.meal_plan      AS breakfast_code,
+                r.main_remark    AS main_remark,
+                r.total_remarks  AS total_remarks,
+                s.comment        AS comment,
+                COALESCE(s.parking_space, '') AS parking_space,
+                COALESCE(s.parking_plate, '') AS parking_plate,
+                s.status
+            FROM stays s
+            JOIN reservations r ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_IN'
+            AND date(s.checkin_planned) <= date(?)
+            AND date(s.checkout_planned) >= date(?)
+            ORDER BY s.room_number
+            """,
+            (target_date.isoformat(), target_date.isoformat()),
+        )
+
+
+
+
+
+
+
+    def get_departures_for_date(self, d: date):
+        return self.fetch_all(
+            """
+            SELECT s.id AS stay_id, r.id, r.reservation_no, r.guest_name, s.room_number,
+                s.checkin_planned, s.checkout_planned, s.status
+            FROM stays s
+            JOIN reservations r ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_IN'
+            AND date(s.checkout_planned) = date(?)
+            ORDER BY CAST(s.room_number AS INTEGER)
+            """,
+            (d.isoformat(),),
+        )
+
+
+
+
+    def checkout_stay(self, stay_id: int):
+        """Checkout a guest - handles both stay IDs and reservation IDs"""
+    
+        # Try to find existing stay
+        stay = self.fetch_one("SELECT * FROM stays WHERE id = ?", (stay_id,))
+        
+        if stay:
+            # Actual stay exists - update it
+            self.execute(
+            "UPDATE stays SET status = 'CHECKED_OUT', checkout_actual = datetime('now') WHERE id = ?",
+            (stay_id,),
+        )
+            self.execute(
+            "UPDATE rooms SET status = 'VACANT' WHERE room_number = ?",
+            (stay["room_number"],),
+)
+        else:
+            # No stay exists - create one as checked out
+            res = self.fetch_one("SELECT * FROM reservations WHERE id = ?", (stay_id,))
+
+            
+            if not res or not res["room_number"]:
+                return False, "Reservation not found or no room assigned"
+            
+            self.execute("""
+                INSERT INTO stays (reservation_id, room_number, status, 
+                                checkin_planned, checkout_planned, 
+                                checkin_actual, checkout_actual)
+                VALUES (:res_id, :room, 'CHECKED_OUT', :arr, :dep, 
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """, {
+                "res_id": stay_id, 
+                "room": res["room_number"], 
+                "arr": res["arrival_date"], 
+                "dep": res["depart_date"]
+            })
+            
+            self.execute(
+    "UPDATE rooms SET status = 'VACANT' WHERE room_number = ?",
+    (res["room_number"],),
+)
+
+        
+        return True, "Checked out successfully"
+
+
+
+    from contextlib import closing
+
+    def seed_rooms_from_blocks(self):
+        with closing(self.get_conn()) as conn, conn:
+            c = conn.cursor()
+            for start, end in ROOM_BLOCKS:
+                for rn in range(start, end + 1):
+                    c.execute(
+                        "INSERT OR IGNORE INTO rooms (room_number, status) VALUES (?, 'VACANT')",
+                        (str(rn),),
+                    )
+
+
+    def sync_room_status_from_stays(self):
+        self.execute("UPDATE rooms SET status = 'VACANT'")
+        occupied = self.fetch_all("SELECT DISTINCT room_number FROM stays WHERE status = 'CHECKED_IN'")
+        for row in occupied:
+            self.execute(
+    "UPDATE rooms SET status = 'OCCUPIED' WHERE room_number = ?",
+    (row["room_number"],),
+)
+
+    
+    def update_parking_for_stay(self, stay_id: int, space: str, plate: str, notes: str):
+        self.execute(
+    """
+    UPDATE stays
+    SET parking_space = ?, parking_plate = ?, parking_notes = ?
+    WHERE id = ?
+    """,
+    (space, plate, notes, stay_id),
+)
+
+    # ---- parking helpers ----
+
+    def get_parking_overview_for_date(self, target_date: date):
+        return self.fetch_all(
+            """
+            SELECT
+                s.id,
+                s.reservation_id,
+                s.room_number,
+                s.status,
+                s.checkin_planned,
+                s.checkout_planned,
+                s.checkin_actual,
+                s.checkout_actual,
+                s.parking_space,
+                s.parking_plate,
+                s.parking_notes,
+                r.guest_name
+            FROM stays AS s
+            JOIN reservations AS r ON r.id = s.reservation_id
+            WHERE s.status = 'CHECKED_IN'
+            AND date(s.checkin_planned) <= date(?)
+            AND date(s.checkout_planned) >= date(?)
+            AND (s.parking_space IS NOT NULL OR s.parking_plate IS NOT NULL)
+            ORDER BY s.parking_space, CAST(s.room_number AS INTEGER)
+            """,
+            (target_date.isoformat(), target_date.isoformat()),
+        )
+
+
+
+
+    def add_task(self, task_date: date, title: str, created_by: str, assigned_to: str, comment: str):
+        self.execute("""
+            INSERT INTO tasks (task_date, title, created_by, assigned_to, comment)
+            VALUES (:date, :title, :by, :to, :comment)
+        """, {"date": task_date, "title": title, "by": created_by, "to": assigned_to, "comment": comment})
+    
+    def get_tasks_for_date(self, d: date):
+        return self.fetch_all("SELECT * FROM tasks WHERE task_date = :date ORDER BY created_at", {"date": d})
+    
+    def add_no_show(
+        self,
+        arrival_date: date,
+        guest_name: str,
+        main_client: str,
+        charged: bool,
+        amount_charged: float,
+        amount_pending: float,
+        comment: str,
+    ):
+        existing = self.fetch_one(
+            """
+            SELECT id
+            FROM no_shows
+            WHERE guest_name = ?
+            AND date(arrival_date) = date(?)
+            """,
+            (guest_name, arrival_date.isoformat()),
+        )
+
+        charged_int = 1 if charged else 0
+        amount_charged = amount_charged or 0.0
+        amount_pending = amount_pending or 0.0
+
+        if existing:
+            self.execute(
+                """
+                UPDATE no_shows
+                SET main_client   = ?,
+                    charged       = ?,
+                    amount_charged = ?,
+                    amount_pending = ?,
+                    comment       = ?
+                WHERE id = ?
+                """,
+                (
+                    main_client,
+                    charged_int,
+                    amount_charged,
+                    amount_pending,
+                    comment,
+                    existing["id"],
+                ),
+            )
+        else:
+            self.execute(
+                """
+                INSERT INTO no_shows (
+                    arrival_date,
+                    guest_name,
+                    main_client,
+                    charged,
+                    amount_charged,
+                    amount_pending,
+                    comment
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    arrival_date.isoformat(),
+                    guest_name,
+                    main_client,
+                    charged_int,
+                    amount_charged,
+                    amount_pending,
+                    comment,
+                ),
+            )
+
+
+    def get_no_shows_for_date(self, target_date: date):
+        return self.fetch_all(
+            """
+            SELECT *
+            FROM no_shows
+            WHERE date(arrival_date) = date(?)
+            ORDER BY created_at
+            """,
+            (target_date.isoformat(),),
+        )
+
+    
+    def get_twin_rooms(self):
+        rows = self.fetch_all("SELECT room_number FROM rooms WHERE is_twin = 1 ORDER BY CAST(room_number AS INTEGER)")
+        return [r["room_number"] for r in rows]
+    
+    def get_all_rooms(self):
+        rows = self.fetch_all("SELECT room_number FROM rooms ORDER BY CAST(room_number AS INTEGER)")
+        return [r["room_number"] for r in rows]
+    def get_suggested_rooms_for_type(self, room_type_code: str, target_date: date, exclude_reservation_id: int = None) -> list:
+        """Return rooms mapped to room_type_code that have no CHECKED_IN stay on target_date."""
+        mapped = ROOM_TYPE_MAP.get(room_type_code.strip().upper() if room_type_code else "", [])
+        if not mapped:
+            return []
+        # Rooms occupied by a CHECKED_IN stay that covers target_date
+        occupied_rows = self.fetch_all(
+            """
+            SELECT DISTINCT s.room_number
+            FROM stays s
+            WHERE s.status = 'CHECKED_IN'
+              AND date(s.checkin_planned) <= date(?)
+              AND date(s.checkout_planned) > date(?)
+            """,
+            (target_date.isoformat(), target_date.isoformat()),
+        )
+        occupied = {row["room_number"] for row in occupied_rows}
+
+        # Also exclude rooms reserved (not yet checked in) that overlap target_date
+        reserved_rows = self.fetch_all(
+            """
+            SELECT DISTINCT r.room_number
+            FROM reservations r
+            WHERE r.reservation_status NOT IN ('CANCELLED','NO_SHOW')
+              AND r.room_number IS NOT NULL AND r.room_number != ''
+              AND date(r.arrival_date) <= date(?)
+              AND date(r.depart_date) > date(?)
+              AND (? IS NULL OR r.id != ?)
+            """,
+            (target_date.isoformat(), target_date.isoformat(),
+             exclude_reservation_id, exclude_reservation_id),
+        )
+        occupied |= {row["room_number"] for row in reserved_rows}
+
+        suggested = []
+        for rn in mapped:
+            if rn in occupied:
+                continue
+            room_row = self.fetch_one("SELECT status FROM rooms WHERE room_number = ?", (rn,))
+            status = room_row.get("status", "VACANT") if room_row else "VACANT"
+            suggested.append({"room_number": rn, "status": status})
+        return suggested
+
+
+
+    def set_spare_rooms_for_date(self, target_date: date, rooms: list):
+        self.execute("DELETE FROM spare_rooms WHERE target_date = :date", {"date": target_date})
+        for rn in rooms:
+            self.execute("INSERT INTO spare_rooms (target_date, room_number) VALUES (:date, :room)", 
+                         {"date": target_date, "room": rn})
+    
+    def get_spare_rooms_for_date(self, target_date: date):
+        rows = self.fetch_all("""
+            SELECT room_number FROM spare_rooms WHERE target_date = :date
+            ORDER BY CAST(room_number AS INTEGER)
+        """, {"date": target_date})
+        return [r["room_number"] for r in rows]
+    
+    def search_reservations(self, q: str):
+        like_pattern = f"%{q}%"
+        return self.fetch_all(
+            """
+            SELECT * FROM reservations
+            WHERE guest_name LIKE ?
+            OR room_number LIKE ?
+            OR reservation_no LIKE ?
+            OR main_client LIKE ?
+            OR channel LIKE ?
+            ORDER BY arrival_date DESC
+            LIMIT 500
+            """,
+            (like_pattern, like_pattern, like_pattern, like_pattern, like_pattern),
+        )
+    
+    def cancel_reservation(self, reservation_id: int):
+        self.execute(
+            """
+            UPDATE reservations
+            SET reservation_status = 'CANCELLED',
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (reservation_id,),
+        )
+        return True, "Reservation marked as CANCELLED (cannot be checked-in)"
+
+    
+    def read_table(self, name: str):
+        from contextlib import closing
+        with closing(self.get_conn()) as conn:
+            return pd.read_sql_query(f"SELECT * FROM {name}", conn)
+
+
+
+    def export_arrivals_excel(self, d: date):
+        rows = self.get_arrivals_for_date(d)
+        if not rows:
+            return None
+        df = pd.DataFrame([dict(r) for r in rows])
+        preferred_order = [
+            "amount_pending", "arrival_date", "room_number", "room_type_code",
+            "adults", "total_guests", "reservation_no", "voucher",
+            "related_reservation", "crs_code", "crs_name", "guest_id_raw",
+            "guest_name", "vip_flag", "client_id", "main_client", "nights",
+            "depart_date", "meal_plan", "rate_code", "channel",
+            "cancellation_policy", "main_remark", "contact_name",
+            "contact_phone", "contact_email", "total_remarks",
+            "source_of_business", "stay_option_desc", "remarks_by_chain"
+        ]
+        cols = [c for c in preferred_order if c in df.columns] + [
+            c for c in df.columns if c not in preferred_order
+        ]
+        df = df[cols]
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Arrivals")
+        output.seek(0)
+        return output
+
+    def export_inhouse_excel(self, d: date):
+        inhouse_rows = self.get_inhouse()
+        dep_rows = self.get_departures_for_date(d)
+        df_inhouse = pd.DataFrame([dict(r) for r in inhouse_rows]) if inhouse_rows else pd.DataFrame()
+        df_dep = pd.DataFrame([dict(r) for r in dep_rows]) if dep_rows else pd.DataFrame()
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df_inhouse.to_excel(writer, index=False, sheet_name="InHouse")
+            df_dep.to_excel(writer, index=False, sheet_name="Departures")
+        output.seek(0)
+        return output
+
+
+# =========================
+# Streamlit UI
+# =========================
+def inject_base_css():
+    st.markdown(
+        """
+        <style>
+        .stApp {
+    background:
+        radial-gradient(circle at 0% 100%, rgba(184, 11, 11, 0.10) 0, transparent 45%),
+        radial-gradient(circle at 100% 0%, rgba(184, 11, 11, 0.06) 0, transparent 40%),
+        linear-gradient(to bottom, #ffffff 0, #f9fafb 55%, #f3f4f6 100%);
+    background-attachment: fixed;
+}
+/* Sidebar background */
+section[data-testid="stSidebar"] {
+    background:
+        radial-gradient(circle at 0% 0%, rgba(184, 11, 11, 0.10) 0, transparent 45%),
+        radial-gradient(circle at 100% 100%, rgba(184, 11, 11, 0.05) 0, transparent 40%),
+        linear-gradient(to bottom, #f9fafb 0, #f3f4f6 100%);
+    background-attachment: fixed;
+    border-right: 1px solid rgba(209, 213, 219, 0.9);
+}
+
+
+        .main > div {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* Reservation cards */
+        [data-testid="stExpander"] {
+            border-radius: 14px !important;
+            border: 0px solid rgba(209, 213, 219, 0.9);
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+            backdrop-filter: blur(10px);
+            margin-bottom: 0.6rem;
+        }
+        [data-testid="stExpander"] summary {
+            font-weight: 400;
+            letter-spacing: 0.0em;
+        }
+
+        /* Primary buttons – TwoTable red */
+        .stButton > button[kind="primary"] {
+            background: linear-gradient(135deg, #b80b0b, #e11d48);
+            color: white;
+            border-radius: 999px;
+            border: none;
+            box-shadow: 0 8px 18px rgba(184, 11, 11, 0.35);
+            transition: transform 0.08s ease-out, box-shadow 0.08s ease-out;
+        }
+        .stButton > button[kind="primary"]:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 26px rgba(184, 11, 11, 0.45);
+        }
+
+        /* Secondary buttons */
+        .stButton > button[kind="secondary"] {
+            border-radius: 999px;
+        }
+
+        /* Inputs rounded */
+        .stTextInput > div > div > input {
+            border-radius: 999px;
+        }
+
+        h1, h2, h3 {
+            letter-spacing: 0.04em;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+db = None  # Will be initialized in main()
+ # Use cached connection
+from datetime import date  # make sure this is imported at top of file
+def page_daily_revenue():
+    st.header("Daily Revenue Report")
+
+    target_date = st.date_input("Report Date", value=date.today(), key="revenue_date")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        ro_rate = st.number_input(
+            "RO Daily Rate (£)",
+            min_value=0.0,
+            value=0.0,
+            step=10.0,
+            format="%.2f",
+        )
+    with col2:
+        bb_rate = st.number_input(
+            "BB Daily Rate (£)",
+            min_value=0.0,
+            value=0.0,
+            step=10.0,
+            format="%.2f",
+        )
+
+    guests = db.get_daily_revenue_data(target_date)
+
+    if not guests:
+        st.info("No guests in-house for this date.")
+        return
+
+    # Fetch payments for preview (same logic as Excel)
+    payments = db.fetch_all(
+        """
+        SELECT 
+            reservation_id,
+            amount,
+            method,
+            reference,
+            created_at,
+            type
+        FROM payments
+        WHERE date(created_at) <= date(?)
+        ORDER BY created_at DESC
+        """,
+        (target_date.isoformat(),),
+    )
+
+    payments_by_res = {}
+    for p in payments:
+        rid = p.get("reservation_id")
+        if not rid:
+            continue
+        payments_by_res.setdefault(rid, []).append(p)
+
+    st.subheader(f"Revenue Summary for {target_date.strftime('%d %B %Y')}")
+
+    total_nights = sum((g.get("nights") or 0) for g in guests)
+    col1, col2 = st.columns(2)
+    col1.metric("Rooms Occupied", len(guests))
+    col2.metric("Total Room Nights", total_nights)
+
+    rows = []
+    for g in guests:
+        res_id = g.get("reservation_id")
+        pay_method = ""
+        paid_amount = 0.0
+        last4 = ""
+
+        if res_id and res_id in payments_by_res:
+            res_pays = payments_by_res[res_id]
+            room_pays = [p for p in res_pays if (p.get("type") or "").upper() == "PAYMENT"]
+            if room_pays:
+                paid_amount = sum(p.get("amount") or 0.0 for p in room_pays)
+                last_p = sorted(
+                    room_pays,
+                    key=lambda p: p.get("created_at") or "",
+                    reverse=True,
+                )[0]
+                pay_method = last_p.get("method") or ""
+                ref = (last_p.get("reference") or "").strip()
+                digits = "".join(ch for ch in ref if ch.isdigit())
+                if len(digits) >= 4:
+                    last4 = digits[-4:]
+
+        rows.append(
+            {
+                "Room No": g.get("room_number"),
+                "ARRIVALS": format_date(g.get("arrival_date")),
+                "DEPARTURE": format_date(g.get("checkout_planned") or g.get("depart_date")),
+                "Occupancy:": g.get("nights"),
+                "MEAL PLAN": g.get("meal_plan") or "RO",
+                "Name:": g.get("guest_name"),
+                "Payment method": pay_method,
+                "Daily Acc": f"£{(g.get('amount_pending') or 0):.2f}",
+                "Paid amount": f"£{paid_amount:.2f}" if paid_amount else "",
+                "4 digits": last4,
+                "Remarks": g.get("comment") or "",
+            }
+        )
+
+    df_preview = pd.DataFrame(rows)
+    df_preview = clean_numeric_columns(df_preview, ["Room No", "Occupancy:"])
+    st.dataframe(df_preview, use_container_width=True, hide_index=True)
+
+    if st.button("Generate Daily Revenue Excel", type="primary", use_container_width=True):
+        excel_data = db.export_daily_revenue_excel(target_date, ro_rate, bb_rate)
+        if excel_data:
+            st.download_button(
+                label="📥 Download Revenue Report",
+                data=excel_data,
+                file_name=f"Daily_Revenue_{target_date.strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        else:
+            st.error("Failed to generate report.")
+
+def page_revenue_multi():
+    st.header("Multi‑Day Revenue Report")
+
+    col_dates = st.columns(2)
+    with col_dates[0]:
+        start_d = st.date_input(
+            "Start date",
+            value=date.today(),
+            key="rev_multi_start",
+        )
+    with col_dates[1]:
+        end_d = st.date_input(
+            "End date",
+            value=start_d,
+            key="rev_multi_end",
+        )
+
+    col_rates = st.columns(2)
+    with col_rates[0]:
+        ro_rate = st.number_input(
+            "RO Daily Rate (£)",
+            min_value=0.0,
+            value=0.0,
+            step=10.0,
+            format="%.2f",
+        )
+    with col_rates[1]:
+        bb_rate = st.number_input(
+            "BB Daily Rate (£)",
+            min_value=0.0,
+            value=0.0,
+            step=10.0,
+            format="%.2f",
+        )
+
+    if end_d < start_d:
+        st.error("End date must be on or after start date.")
+        return
+
+    st.caption(
+        "Workbook will have one sheet per day in the range. "
+        "Green = arrival day, orange = following days of the stay."
+    )
+
+    if st.button("Generate Revenue Report", type="primary", use_container_width=True):
+        data = db.export_revenue_multi_excel(start_d, end_d, ro_rate, bb_rate)
+        if not data:
+            st.error("No reservations found covering this date range.")
+            return
+
+        file_name = f"Revenue_{start_d.strftime('%Y%m%d')}_{end_d.strftime('%Y%m%d')}.xlsx"
+        st.download_button(
+            label="📥 Download Revenue Report",
+            data=data,
+            file_name=file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+def page_add_reservation():
+    st.header("Add Reservation Manually")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        arrival = st.date_input("Arrival date", value=date.today(), key="addres_arrival")
+    with col2:
+        depart = st.date_input("Departure date", value=date.today(), key="addres_depart")
+
+    guest_name = st.text_input("Guest name")
+    main_client = st.text_input("Main client (optional)")
+    room_number = st.text_input("Room number (optional)")
+    channel = st.text_input("Channel (e.g. Direct, OTA)")
+    meal_plan = st.text_input("Meal plan (e.g. BB, RO)")
+
+    col3, col4 = st.columns(2)
+    with col3:
+        adults = st.number_input("Adults", min_value=1, value=2, step=1)
+    with col4:
+        children = st.number_input("Children", min_value=0, value=0, step=1)
+
+    if st.button("Add reservation", type="primary", use_container_width=True):
+        if not guest_name.strip():
+            st.error("Guest name is required.")
+        elif depart < arrival:
+            st.error("Departure cannot be before arrival.")
+        else:
+            reservation_id = db.add_reservation(
+                arrival=arrival,
+                depart=depart,
+                guest_name=guest_name.strip(),
+                room_number=room_number.strip(),
+                main_client=main_client.strip(),
+                channel=channel.strip(),
+                meal_plan=meal_plan.strip(),
+                adults=int(adults),
+                children=int(children),
+            )
+            st.success(f"Reservation #{reservation_id} added.")
+
+def page_payments():
+    st.header("Payments / Refunds")
+
+    # --- Date selection ---
+    col1, col2 = st.columns(2)
+    with col1:
+        pay_date = st.date_input("Payment Date", value=date.today(), key="payment_date")
+    with col2:
+        st.write("")  # spacer
+
+    # --- Build guest / reservation dropdown ---
+    # Use all reservations whose stay covers this date
+    res_list = db.get_reservations_for_date(pay_date)
+    options = []
+    for r in res_list:
+        label = f"{r['guest_name']} (Room {r.get('room_number') or '—'}) · Res {r.get('reservation_no') or r['id']}"
+        options.append((label, r["id"]))
+
+    options_labels = [lbl for (lbl, _id) in options] + ["➕ Add manual guest / external payment"]
+
+    if not options_labels:
+        st.warning("No reservations for this date. You can still add a manual payment below.")
+        selected = "➕ Add manual guest / external payment"
+    else:
+        selected = st.selectbox(
+            "Select Guest / Reservation",
+            options_labels,
+            key="payment_guest_selector",
+        )
+
+    # --- Resolve selection / manual mode ---
+    manual_mode = (selected == "➕ Add manual guest / external payment")
+
+    if manual_mode:
+        reservation_id = None
+        guest_name = st.text_input("Guest name (manual)", key="pay_manual_guest")
+        room_no = st.text_input("Room (optional)", key="pay_manual_room")
+        st.info("This payment will not be linked to a specific reservation unless you update it later.")
+    else:
+        idx = options_labels.index(selected)
+        reservation_id = options[idx][1]
+        res_data = db.fetch_one(
+            "SELECT id, guest_name, room_number FROM reservations WHERE id = ?",
+            (reservation_id,),
+        )
+        if not res_data:
+            st.error("Could not load reservation data for this selection.")
+            return
+        guest_name = res_data.get("guest_name", "")
+        room_no = res_data.get("room_number", "")
+        st.info(f"✓ Selected: {guest_name} | Room: {room_no or '—'} | Res ID: {reservation_id}")
+
+    # --- Payment details ---
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        amount = st.number_input("Amount (£)", min_value=0.0, step=0.01, format="%.2f")
+    with col4:
+        pay_type = st.selectbox("Type", ["PAYMENT", "REFUND"])
+    with col5:
+        method = st.selectbox("Method", ["VISA", "MASTER", "AMEX", "OTHER"])
+
+    reference = st.text_input("Last 4 digits of the card")
+    note = st.text_area("Note")
+
+    if st.button("Add entry", type="primary", use_container_width=True):
+        if amount <= 0:
+            st.error("Amount must be greater than 0.")
+        elif not guest_name.strip():
+            st.error("Guest name is required.")
+        else:
+            db.add_payment(
+                int(reservation_id) if reservation_id is not None else None,
+                guest_name.strip(),
+                amount,
+                pay_type,
+                method,
+                reference.strip(),
+                note.strip(),
+            )
+            st.success("Payment/refund recorded.")
+            st.rerun()
+
+    st.divider()
+    st.subheader("Recent payments / refunds")
+
+    rows = db.get_all_payments()
+    if not rows:
+        st.info("No payments recorded yet.")
+    else:
+        for row in rows:
+            pid = row["id"]
+            label = f"{row.get('guest_name')} ({row.get('type')})"
+            sublabel = f"{row.get('amount', 0):.2f} · {row.get('method')} · {row.get('created_at', '')[:10]}"
+
+            with st.expander(f"{label} — {sublabel}", expanded=False):
+                ec1, ec2, ec3 = st.columns(3)
+                eamount = ec1.number_input(
+                    "Amount",
+                    value=float(row.get("amount") or 0),
+                    step=0.01,
+                    format="%.2f",
+                    key=f"ep_amt_{pid}",
+                )
+                etype = ec2.selectbox(
+                    "Type",
+                    ["PAYMENT", "REFUND"],
+                    index=0 if row.get("type") == "PAYMENT" else 1,
+                    key=f"ep_type_{pid}",
+                )
+                emethod = ec3.selectbox(
+                    "Method",
+                    ["CARD", "CASH", "BANK", "OTHER"],
+                    index=(["CARD", "CASH", "BANK", "OTHER"].index(row.get("method", "CARD"))
+                           if row.get("method", "CARD") in ["CARD", "CASH", "BANK", "OTHER"] else 0),
+                    key=f"ep_method_{pid}",
+                )
+                ereference = st.text_input(
+                    "Reference",
+                    value=row.get("reference") or "",
+                    key=f"ep_ref_{pid}",
+                )
+                enote = st.text_area(
+                    "Note",
+                    value=row.get("note") or "",
+                    height=60,
+                    key=f"ep_note_{pid}",
+                )
+
+                colsave, coldel = st.columns(2)
+                with colsave:
+                    if st.button("Save changes", key=f"ep_save_{pid}", type="primary", use_container_width=True):
+                        db.update_payment(pid, eamount, etype, emethod, ereference, enote)
+                        st.success("Payment updated.")
+                        st.rerun()
+                with coldel:
+                    del_key = f"ep_del_confirm_{pid}"
+                    if del_key not in st.session_state:
+                        st.session_state[del_key] = False
+
+                    if not st.session_state[del_key]:
+                        if st.button("Delete", key=f"ep_del_{pid}", use_container_width=True):
+                            st.session_state[del_key] = True
+                            st.rerun()
+                    else:
+                        st.warning("Delete this entry?")
+                        cy, cn = st.columns(2)
+                        with cy:
+                            if st.button("Yes, delete", key=f"ep_del_yes_{pid}", use_container_width=True):
+                                db.delete_payment(pid)
+                                st.session_state[del_key] = False
+                                st.success("Deleted.")
+                                st.rerun()
+                        with cn:
+                            if st.button("Cancel", key=f"ep_del_no_{pid}", use_container_width=True):
+                                st.session_state[del_key] = False
+                                st.rerun()
+
+
+
+
+def page_breakfast():
+    st.header("Breakfast List")
+
+    today = st.date_input("Date", value=date.today(), key="breakfast_date")
+
+    # Use new, wider query
+    breakfast_rows = db.get_full_breakfast_for_date(today)
+
+    if not breakfast_rows:
+        st.info("No guests with breakfast for this date.")
+        return
+
+    dfbreakfast = pd.DataFrame(
+        {
+            "room_number": r.get("room_number"),
+            "arrival_date": r.get("arrival_date") or 0,
+            "guest_name": r.get("guest_name"),
+            "adults": r.get("adults") or 0,
+            "children": r.get("children") or 0,
+            "departure_date": r.get("depart_date") or 0,
+            "total_guests": r.get("total_guests") or 0,
+            "meal_plan": r.get("meal_plan"),
+            "status": r.get("reservation_status"),
+        }
+        for r in breakfast_rows
+    )
+
+    total_rooms = len(dfbreakfast["room_number"].dropna().unique())
+    total_adults = dfbreakfast["adults"].sum()
+    total_children = dfbreakfast["children"].sum()
+    total_guests = total_adults + total_children
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Rooms", total_rooms)
+    col2.metric("Adults", int(total_adults))
+    col3.metric("Children", int(total_children))
+    col4.metric("Total Guests", int(total_guests))
+
+    dfdisplay = dfbreakfast[["room_number", "guest_name", "adults", "children", "total_guests", "meal_plan", "status"]].copy()
+    dfdisplay = clean_numeric_columns(dfdisplay, ["room_number", "adults", "children", "total_guests"])
+    dfdisplay.columns = ["Room", "Guest Name", "Adults", "Children", "Total", "Meal Plan", "Status"]
+    dfdisplay.insert(0, "#", range(1, len(dfdisplay) + 1))
+    dfdisplay = clean_numeric_columns(dfdisplay, ["Room"])
+
+    st.subheader(f"Breakfast for {today.strftime('%d %B %Y')}")
+    st.dataframe(dfdisplay, use_container_width=True, hide_index=True)
+    st.caption("Print this list for the kitchen.")
+
+def page_housekeeping():
+    st.header("Housekeeping Task List")
+    today = st.date_input("Date", value=date.today(), key="hsk_date")
+    
+    tasks = db.generate_hsk_tasks_for_date(today)
+    
+    if not tasks:
+        st.info("No housekeeping tasks for this date.")
+        return
+    
+    # Get existing statuses and merge with tasks
+    for task in tasks:
+        status_data = db.get_hsk_task_status(today, task["room"], task["tasktype"])
+        if status_data:
+            task["Status"] = status_data["status"]
+            task["HSK Notes"] = status_data["notes"] or ""
+        else:
+            task["Status"] = "PENDING"
+            task["HSK Notes"] = ""
+    
+    # Summary metrics
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Total Tasks", len(tasks))
+    col2.metric("Checkouts", len([t for t in tasks if t['tasktype'] == 'CHECKOUT']))
+    col3.metric("Stayovers", len([t for t in tasks if t['tasktype'] == 'STAYOVER']))
+    col4.metric("Arrivals", len([t for t in tasks if t['tasktype'] == 'ARRIVAL']))
+    completed_count = len([t for t in tasks if t.get('Status') == 'DONE'])
+    col5.metric("Completed", completed_count)
+    
+    # Create editable DataFrame
+    df_tasks = pd.DataFrame([
+        {
+            "#": idx,
+            "Room": format_room_number(t["room"]),
+            "Type": t["tasktype"],
+            "Priority": t["priority"],
+            "Task": t["description"],
+            "Notes": " | ".join(t["notes"]) if t["notes"] else "",
+            "Status": t["Status"],
+            "HSK Notes": t["HSK Notes"]
+        }
+        for idx, t in enumerate(tasks, 1)
+    ])
+    
+    # Display editable table
+    st.subheader("Task Tracking")
+    edited_df = st.data_editor(
+        df_tasks,
+        use_container_width=True,
+        hide_index=True,
+        disabled=["#", "Room", "Type", "Priority", "Task", "Notes"],  # Only Status and HSK Notes are editable
+        column_config={
+            "Status": st.column_config.SelectboxColumn(
+                "Status",
+                options=["PENDING", "DONE"],
+                required=True
+            ),
+            "HSK Notes": st.column_config.TextColumn(
+                "HSK Notes",
+                help="Add notes here (e.g., 'Cleaned', 'Extra towels needed')",
+                max_chars=200
+            )
+        }
+    )
+    
+    # Save button
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("Save", type="primary", use_container_width=True):
+            # Save each task status
+             for idx, row in edited_df.iterrows():
+                original_task = tasks[idx]
+                db.update_hsk_task_status(
+                    today,
+                    original_task["room"],
+                    original_task["tasktype"],
+                    row["Status"],
+                    row["HSK Notes"],
+                )
+
+                # If checkout cleaning task is DONE, mark room as CLEAN
+                if original_task["tasktype"] == "CHECKOUT" and row["Status"] == "DONE":
+                    db.set_room_status(original_task["room"], "CLEAN")
+
+    
+    # Download CSV
+    csv = edited_df.to_csv(index=False)
+    st.download_button(
+        label="Download HSK List",
+        data=csv,
+        file_name=f"HSK_{today.strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+    
+    # Summary
+    pending = len(edited_df[edited_df["Status"] == "PENDING"])
+    completed = len(edited_df[edited_df["Status"] == "DONE"])
+    st.caption(f"Total: {len(tasks)} tasks | ✅ Completed: {completed} | ⏳ Pending: {pending}")
+
+
+def page_arrivals():
+    st.header("Arrivals")
+
+    if "open_arrival_id" not in st.session_state:
+        st.session_state.open_arrival_id = None
+
+    arrival_date = st.date_input("Arrival date", value=date.today(), key="arrivals_date")
+    rows = db.get_arrivals_for_date(arrival_date)
+    if not rows:
+        st.info("No arrivals for this date.")
+        return
+
+    # --- Filter panel as its own expander ---
+    with st.expander("Filters for this date", expanded=True):
+        col_filter_status, col_filter_search = st.columns([2, 2])
+
+        with col_filter_status:
+            st.caption("Filter by status")
+            show_confirmed = st.checkbox("Confirmed", value=True, key="arrivals_show_confirmed")
+            show_cancelled = st.checkbox("Cancelled", value=True, key="arrivals_show_cancelled")
+            show_noshow = st.checkbox("No-show", value=True, key="arrivals_show_noshow")
+
+        with col_filter_search:
+            search_term = st.text_input(
+                "Search in today's arrivals",
+                placeholder="Search",
+                key="arrivals_inline_search",
+            ).strip().lower()
+
+    # --- Apply filters using the values from inside expander ---
+    filtered_rows = []
+    for r in rows:
+        status = (r.get("reservation_status") or "CONFIRMED").upper()
+
+        if status == "CONFIRMED" and not show_confirmed:
+            continue
+        if status == "CANCELLED" and not show_cancelled:
+            continue
+        if status == "NO_SHOW" and not show_noshow:
+            continue
+
+        if search_term:
+            haystack = " ".join(
+                str(r.get(field) or "")
+                for field in ("guest_name", "room_number", "reservation_no", "main_client", "channel")
+            ).lower()
+            if search_term not in haystack:
+                continue
+
+        filtered_rows.append(r)
+
+    st.subheader(f"Arrivals list – {len(filtered_rows)} reservations" if filtered_rows else "Arrivals list")
+
+    if not filtered_rows:
+        st.warning("No arrivals matching current filters/search.")
+        return
+
+    # --- List arrivals ---
+    for idx, r in enumerate(filtered_rows, 1):
+        reservation_id = r["id"]
+        room_number = r.get("room_number") or "Not assigned"
+        guest_name = r.get("guest_name") or "No name"
+        reservation_no = r.get("reservation_no") or reservation_id
+        status = (r.get("reservation_status") or "CONFIRMED").upper()
+
+        is_cancelled = status == "CANCELLED"
+        is_noshow = status == "NO_SHOW"
+
+        main_comment = (r.get("main_remark") or "").strip()
+        comment_snippet = f" ·  {main_comment[:40]}{'…' if len(main_comment) > 40 else ''}" if main_comment else ""
+        header_label = f"{idx}. {guest_name} – Room {room_number} (Res {reservation_no}){comment_snippet}"
+        if is_cancelled:
+            header_label = f"❌ {header_label} [CANCELLED]"
+        elif is_noshow:
+            header_label = f"⚠️ {header_label} [NO-SHOW]"
+
+        expanded = st.session_state.open_arrival_id == reservation_id
+
+        with st.expander(header_label, expanded=expanded):
+            st.caption(f"Status: {status}")
+
+            # Top details
+            col1, col2, col3, col4 = st.columns(4)
+            col1.write(f"Arrival: {format_date(r['arrival_date'])}")
+            col2.write(f"Departure: {format_date(r['depart_date'])}")
+            col3.write(f"Nights: {r.get('nights')}")
+            col4.write(f"Guests: {r.get('total_guests')}")
+
+            col5, col6, col7 = st.columns(3)
+            col5.write(f"Room type: {r.get('room_type_code')}")
+            col6.write(f"Channel: {r.get('channel')}")
+            col7.write(f"Meal plan: {r.get('meal_plan') or 'RO'}")
+
+            if r.get("total_remarks"):
+                st.caption(r["total_remarks"])
+
+            st.markdown("---")
+
+            # 🔹 Comments block
+            # Front Office notes (editable)
+            main_note = st.text_area(
+                "Front Office Note",
+                value=r.get("main_remark") or "",
+                key=f"fo_main_{r['id']}",
+                height=80,
+            )
+            # extra_note = st.text_area(
+            #     "Extra Notes (optional)",
+            #     value=r.get("total_remarks") or "",
+            #     key=f"fo_extra_{r['id']}",
+            #     height=80,
+            # )
+
+            if st.button("Save Notes", key=f"save_notes_{r['id']}", use_container_width=True):
+                db.update_reservation_notes(r["id"], main_note)
+                st.success("Notes saved.")
+                st.rerun()
+
+
+            st.markdown("---")
+
+            # Single row: Room input + 3 actions
+            col_room = st.columns(1)[0]
+
+            # Room input
+            with col_room:
+                disabled_room_edit = is_cancelled or is_noshow
+                room_label = "Room number (blocked)" if disabled_room_edit else "Room number"
+                new_room = st.text_input(
+                    room_label,
+                    value=r.get("room_number") or "",
+                    key=f"room_{r['id']}",
+                    placeholder="Enter room number",
+                    disabled=disabled_room_edit,
+                )
+            col_save_room, col_checkin, col_noshow = st.columns(3)
+            # Save room
+            with col_save_room:
+                save_disabled = disabled_room_edit
+                save_label = "Save room (blocked)" if save_disabled else "Save room"
+                if st.button(
+                    save_label,
+                    key=f"save_room_{r['id']}",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=save_disabled,
+                ):
+                    if not save_disabled and new_room and new_room.strip():
+                        success, msg = db.update_reservation_room(r['id'], new_room)
+                        if success:
+                            st.session_state.open_arrival_id = r['id']
+                            st.success(msg)
+                            # no st.rerun() here, avoid jump
+                        else:
+                            st.error(msg)
+                    elif not save_disabled:
+                        st.warning("Please enter a room number.")
+
+            # Check-in
+            with col_checkin:
+                disabled_checkin = is_cancelled or is_noshow
+                checkin_label = "Check-in (blocked)" if disabled_checkin else "Check-in"
+                if st.button(
+                    checkin_label,
+                    key=f"checkin_{r['id']}",
+                    type="secondary",
+                    use_container_width=True,
+                    disabled=disabled_checkin,
+                ):
+                    if not disabled_checkin:
+                        success, msg = db.checkin_reservation(r['id'])
+                        if success:
+                            st.session_state.open_arrival_id = r['id']
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+            # No-show
+            with col_noshow:
+                disabled_noshow = is_cancelled
+                noshow_label = "No-Show blocked" if disabled_noshow else "No-Show"
+                if st.button(noshow_label, key=f"noshow_{r['id']}", type="secondary", use_container_width=True, disabled=disabled_noshow):
+                    if not disabled_noshow:
+                        db.mark_reservation_as_no_show(
+                            reservation_id=r['id'],
+                            arrival_date=datetime.fromisoformat(r["arrival_date"]).date(),
+                            guest_name=guest_name,
+                            main_client=r.get("main_client") or "",
+                            charged=False, amount_charged=0.0, amount_pending=0.0,
+                            comment=r.get("main_remark") or "",
+                        )
+                        st.session_state.open_arrival_id = r['id']
+                        st.success("Marked as no-show and removed from arrivals.")
+                        st.rerun()
+
+            # ── Suggested Rooms (outside modify) ───────────────────────
+            room_type_code = r.get("room_type_code") or ""
+            arr_d = datetime.fromisoformat(r["arrival_date"]).date()
+            dep_d = datetime.fromisoformat(r["depart_date"]).date()
+            if room_type_code:
+                # Determine the "family" prefix to show sibling types too
+                _rt_upper = room_type_code.strip().upper()
+                _prefix_map = {
+                    "BSTD":   ["BSTD-1D", "BSTD-2T"],
+                    "PSUPVC": ["PSUPVC-1D", "PSUPVC-2T"],
+                    "PSUPVH": ["PSUPVH-1D", "PSUPVH-2T"],
+                    "PPREVC": ["PPREVC-1D", "PPREVC-2T"],
+                    "PPREVH": ["PPREVH-1D", "PPREVH-2T"],
+                    "SS1BVHTR": ["SS1BVHTR"],
+                    "UPRSVP":   ["UPRSVP"],
+                }
+                types_to_show = []
+                for prefix, type_list in _prefix_map.items():
+                    if _rt_upper.startswith(prefix):
+                        types_to_show = type_list
+                        break
+                if not types_to_show:
+                    types_to_show = [room_type_code]
+
+                st.markdown(f"**🛏 Suggested Rooms** — booked type: `{room_type_code}`")
+                any_shown = False
+                for rt in types_to_show:
+                    avail = db.get_suggested_rooms_for_type(rt, arr_d, r['id'])
+                    room_nums = [s["room_number"] for s in avail]
+                    label = f"{rt}: {', '.join(room_nums)}" if room_nums else f"{rt}: —"
+                    highlight = "**" if rt == _rt_upper else ""
+                    st.markdown(
+                        f"<span style='font-size:12px;color:#555'>{highlight}{label}{highlight}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    if room_nums:
+                        any_shown = True
+                if not any_shown:
+                    st.caption("No available rooms found for this type on these dates.")
+                st.caption("Enter a room number manually above, or type one from the suggestions.")
+
+            # ── Modify Reservation ──────────────────────────────────────
+            with st.expander("Modify Reservation", expanded=False):
+                _all_room_types = list(ROOM_TYPE_MAP.keys())
+                _current_rt = r.get("room_type_code") or ""
+                _rt_idx = _all_room_types.index(_current_rt) if _current_rt in _all_room_types else 0
+
+                mod_col1, mod_col2 = st.columns(2)
+                with mod_col1:
+                    mod_name    = st.text_input("Guest Name",    value=r.get("guest_name") or "",  key=f"mod_name_{r['id']}")
+                    mod_arrival = st.date_input("Arrival Date",  value=arr_d,                       key=f"mod_arr_{r['id']}")
+                    mod_room_type = st.selectbox(
+                        "Room Type",
+                        options=_all_room_types,
+                        index=_rt_idx,
+                        key=f"mod_rt_{r['id']}",
+                    )
+                with mod_col2:
+                    mod_client = st.text_input("Main Client",    value=r.get("main_client") or "", key=f"mod_client_{r['id']}")
+                    mod_depart = st.date_input("Departure Date", value=dep_d,                      key=f"mod_dep_{r['id']}")
+                    mod_meal   = st.selectbox(
+                        "Breakfast",
+                        options=["RO", "BB"],
+                        index=0 if (r.get("meal_plan") or "RO").upper().startswith("RO") else 1,
+                        key=f"mod_meal_{r['id']}",
+                    )
+
+                st.markdown("---")
+                if st.button("Save Modifications", key=f"mod_save_{r['id']}", type="primary", use_container_width=True):
+                    db.execute(
+                        "UPDATE reservations SET guest_name=?, main_client=?, arrival_date=?, depart_date=?, "
+                        "room_type_code=?, meal_plan=?, updated_at=datetime('now') WHERE id=?",
+                        (mod_name.strip(), mod_client.strip(),
+                            mod_arrival.isoformat(), mod_depart.isoformat(),
+                            mod_room_type, mod_meal, r['id'])
+                    )
+                    st.success("Reservation updated.")
+                    st.rerun()
+
+                st.markdown("---")
+                # ── Cancel Reservation (inside modify, with confirmation) ──
+                if not is_cancelled and not is_noshow:
+                    _confirm_key = f"confirm_cancel_{r['id']}"
+                    if _confirm_key not in st.session_state:
+                        st.session_state[_confirm_key] = False
+                    if not st.session_state[_confirm_key]:
+                        if st.button("Cancel Reservation", key=f"cancel_res_btn_{r['id']}", use_container_width=True):
+                            st.session_state[_confirm_key] = True
+                            st.rerun()
+                    else:
+                        st.warning("Are you sure you want to cancel this reservation? This cannot be undone.")
+                        col_yes, col_no = st.columns(2)
+                        with col_yes:
+                            if st.button("I agree, cancel it", key=f"cancel_yes_{r['id']}", type="primary", use_container_width=True):
+                                ok, msg = db.cancel_reservation(r['id'])
+                                st.session_state[_confirm_key] = False
+                                st.success(msg) if ok else st.error(msg)
+                                st.rerun()
+                        with col_no:
+                            if st.button("↩ Go back", key=f"cancel_no_{r['id']}", use_container_width=True):
+                                st.session_state[_confirm_key] = False
+                                st.rerun()
+
+
+
+
+
+
+
+
+def page_inhouse_list():
+    st.header("In-House List")
+    today = st.date_input("Date", value=date.today(), key="inhouse_list_date")
+    
+    st.subheader(f"Guests in hotel on {today.strftime('%d %B %Y')}")
+    inhouse_rows = db.get_inhouse(today)
+    
+    if not inhouse_rows:
+        st.info("No guests scheduled for this date.")
+        return
+
+    # Build DataFrame with reservation_id for updating mealplan
+    df_inhouse = pd.DataFrame([
+    {
+        "reservation_id": r["id"],
+        "stay_id": r["stay_id"],
+        "Room": r["room_number"],
+        "Guest Name": r["guest_name"],
+        "Status": r["status"],
+        "Arrival": r["checkin_planned"],
+        "Departure": r["checkout_planned"],
+        "Meal Plan": r.get("meal_plan") or r.get("breakfast_code") or "",
+        "Parking": r.get("parking_space") or "",
+        "Notes": " | ".join(
+            part
+            for part in [
+                r.get("main_remark") or "",
+                r.get("total_remarks") or "",
+            ]
+            if part
+        ),
+        "Comment": r.get("comment") or "",
+    }
+    for r in inhouse_rows
+])
+
+    df_inhouse["reservation_id"] = pd.to_numeric(df_inhouse["reservation_id"], errors="coerce").astype("Int64")
+    df_inhouse["stay_id"] = pd.to_numeric(df_inhouse["stay_id"], errors="coerce").astype("Int64")
+
+
+
+
+    df_inhouse = clean_numeric_columns(df_inhouse, ["reservation_id", "stay_id", "Room"])
+
+    st.caption(f"{len(df_inhouse)} guests in-house")
+    st.caption("You can edit breakfast plan and also add comments, and then ENTER SAVE TWICE to save it.")
+
+    edited_df = st.data_editor(
+    df_inhouse,
+    width="stretch",
+    hide_index=True,
+    column_config={
+        "reservation_id": st.column_config.NumberColumn("reservation_id", disabled=True),
+        "stay_id": st.column_config.NumberColumn("stay_id", disabled=True),
+        "Room": st.column_config.TextColumn("Room", disabled=True),
+        "Guest Name": st.column_config.TextColumn("Guest Name", disabled=True),
+        "Status": st.column_config.TextColumn("Status", disabled=True),
+        "Arrival": st.column_config.TextColumn("Arrival", disabled=True),
+        "Departure": st.column_config.TextColumn("Departure", disabled=True),
+        "Meal Plan": st.column_config.TextColumn(
+            "Meal Plan",
+            help="Change to BB / HB / RO+BB etc. to control breakfast eligibility",
+        ),
+        "Parking": st.column_config.TextColumn("Parking", disabled=True),
+        "Notes": st.column_config.TextColumn("Notes", disabled=True),
+        "Comment": st.column_config.TextColumn(
+            "Comment",
+            help="Front Office comment for in-house stay; editable even after check-in",
+        ),
+    },
+    key="inhouse_editor",
+)
+
+# cache the latest edited data for the next rerun
+    st.session_state["inhouse_edited_df"] = edited_df.copy()
+
+
+
+
+
+    if st.button("Save changes", type="primary", width="stretch"):
+        df_to_save = st.session_state.get("inhouse_edited_df", edited_df)
+
+        for _, row in df_to_save.iterrows():
+            if not pd.isna(row["reservation_id"]):
+                reservation_id = int(row["reservation_id"])
+                mealplan = row.get("Meal Plan") or ""
+                print(f"MEAL PLAN: {mealplan}")
+                db.update_reservation_mealplan(reservation_id, mealplan)
+
+            if not pd.isna(row["stay_id"]):
+                stay_id = int(row["stay_id"])
+                comment = row.get("Comment") or ""
+                print(f"COMMENT UPDATE for stay {stay_id}: {comment}")
+                db.update_stay_comment(stay_id, comment)
+
+        st.success("In-house data updated.")
+        st.rerun()
+
+    # st.write(edited_df[["reservation_id", "stay_id", "Comment"]])
+
+
+
+
+    # Cancel check-in section (unchanged)
+    checked_in_guests = [dict(r) for r in inhouse_rows if r["status"] == "CHECKED_IN"]
+    
+    if checked_in_guests:
+        st.divider()
+        st.subheader("Cancel check-in")
+        for idx, guest in enumerate(checked_in_guests, 1):
+            col1, col2 = st.columns([4, 1])
+            col1.write(f"**{idx}.** Room {guest['room_number']} - {guest['guest_name']}")
+            if col2.button("Cancel", key=f"cancel_{idx}_{guest['stay_id']}", use_container_width=True):
+                success, msg = db.cancel_checkin(guest["stay_id"])
+                if success:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+    if checked_in_guests:
+        st.divider()
+        st.subheader("Change room for checked-in guests")
+        for idx, guest in enumerate(checked_in_guests, 1):
+            with st.expander(f"{idx}. Room {guest['room_number']} - {guest['guest_name']}", expanded=False):
+                new_room = st.text_input("New Room Number", key=f"move_room_{guest['stay_id']}", placeholder="Enter new room")
+                if st.button("Move", key=f"move_btn_{guest['stay_id']}", use_container_width=True):
+                    if not new_room.strip():
+                        st.warning("Enter a room number.")
+                    else:
+                        success, msg = db.move_checked_in_guest(guest['stay_id'], new_room)
+                        if success:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+        st.divider()
+        st.subheader("Modify Reservations")
+        for idx, guest in enumerate(checked_in_guests, 1):
+            res_id = guest.get("id") or guest.get("reservationid") or guest.get("reservation_id")
+            with st.expander(f"{idx}. Room {guest['room_number']} - {guest['guest_name']}", expanded=False):
+                full_res = db.fetch_one("SELECT * FROM reservations WHERE id = ?", (res_id,))
+                if full_res:
+                    mod_col1, mod_col2 = st.columns(2)
+                    with mod_col1:
+                        inh_name   = st.text_input("Guest Name",   value=full_res.get("guest_name") or "", key=f"inh_name_{res_id}")
+                        inh_arr    = st.date_input("Arrival Date",  value=datetime.fromisoformat(full_res["arrival_date"]).date(), key=f"inh_arr_{res_id}")
+                        inh_rt     = st.text_input("Room Type",     value=full_res.get("room_type_code") or "", key=f"inh_rt_{res_id}")
+                    with mod_col2:
+                        inh_client = st.text_input("Main Client",   value=full_res.get("main_client") or "", key=f"inh_client_{res_id}")
+                        inh_dep    = st.date_input("Departure Date",value=datetime.fromisoformat(full_res["depart_date"]).date(), key=f"inh_dep_{res_id}")
+                        inh_meal   = st.text_input("Meal Plan",     value=full_res.get("meal_plan") or "", key=f"inh_meal_{res_id}")
+                    
+                    if st.button("Save Changes", key=f"inh_save_{res_id}", type="primary", use_container_width=True):
+                        db.execute(
+                            "UPDATE reservations SET guest_name=?, main_client=?, arrival_date=?, depart_date=?, "
+                            "room_type_code=?, meal_plan=?, updated_at=datetime('now') WHERE id=?",
+                            (inh_name.strip(), inh_client.strip(),
+                                inh_arr.isoformat(), inh_dep.isoformat(),
+                                inh_rt.strip(), inh_meal.strip(), res_id)
+                        )
+                        st.success("Reservation updated.")
+                        st.rerun()
+                    # with col_cancel:
+                    #     if st.button("🚫 Cancel Reservation", key=f"inh_cancel_{res_id}", use_container_width=True):
+                    #         ok, msg = db.cancel_reservation(res_id)
+                    #         st.success(msg) if ok else st.error(msg)
+                    #         st.rerun()
+
+
+
+
+def page_checkout_list():
+    st.header("Check-out List")
+    today = st.date_input("Date", value=date.today(), key="checkout_date")
+    
+    st.subheader(f"Guests checking out on {today.strftime('%d %B %Y')}")
+    dep_rows = db.get_departures_for_date(today)
+    
+    if not dep_rows:
+        st.info("No departures scheduled for this date.")
+    else:
+        st.caption(f"{len(dep_rows)} departures scheduled")
+        df_dep = pd.DataFrame([{
+            "Room": r["room_number"],
+            "Guest Name": r["guest_name"],
+            "Arrival": r["checkin_planned"],
+            "Departure": r["checkout_planned"],
+            "Status": r["status"]
+        } for r in dep_rows])
+        df_dep = clean_numeric_columns(df_dep, ["Room"])
+        st.dataframe(df_dep, use_container_width=True, hide_index=True)
+        
+        st.subheader("Quick checkout")
+        for idx, row_data in enumerate(dep_rows, 1):
+            row_dict = dict(row_data)
+            
+            # Create a bordered card for each guest
+            with st.container():
+                col1, col2 = st.columns([5, 1])
+                
+                with col1:
+                    st.markdown(f"""
+                    <div style="
+                        border: 2px solid #e0e0e0; 
+                        border-radius: 8px; 
+                        padding: 12px; 
+                        background-color: #f9f9f9;
+                        margin-bottom: 8px;
+                    ">
+                        <strong style="font-size: 16px;">{idx}. Room {format_room_number(row_dict['room_number'])} - {row_dict['guest_name']}</strong>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    if st.button("Check-out", key=f"co_{idx}_{row_dict['stay_id']}", use_container_width=True):
+                        success, msg = db.checkout_stay(int(row_dict["stay_id"]))
+                        if success:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+                
+            
+    st.divider()
+    st.subheader(f"Already checked out on {today.strftime('%d %B %Y')}")
+    checkout_rows = db.get_checked_out_for_date(today)
+    
+    if not checkout_rows:
+        st.info("No check-outs completed for this date.")
+    else:
+        df_checkout = pd.DataFrame([{
+            "Room": r["room_number"],
+            "Guest Name": r["guest_name"],
+            "Planned": r["checkout_planned"],
+            "Actual": r["checkout_actual"]
+        } for r in checkout_rows])
+        df_checkout = clean_numeric_columns(df_checkout, ["Room"])
+        st.dataframe(df_checkout, use_container_width=True, hide_index=True)
+        st.caption(f"{len(df_checkout)} completed check-outs")
+        
+        st.subheader("Cancel check-out")
+        for idx, row_data in enumerate(checkout_rows, 1):
+            row_dict = dict(row_data)
+            col1, col2 = st.columns([4, 1])
+            col1.write(f"**{idx}.** Room {row_dict['room_number']} - {row_dict['guest_name']}")
+            if col2.button("Undo", key=f"undo_{row_dict['id']}", use_container_width=True):
+                success, msg = db.cancel_checkout(row_dict["id"])
+                if success:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+
+
+def page_tasks_handover():
+    st.header("Handover")
+    d = st.date_input("Date", value=date.today(), key="tasks_date")
+
+    st.subheader("Add task")
+    col1, col2 = st.columns(2)
+    title = col1.text_input("Task")
+    created_by = col2.text_input("By")
+    assigned_to = col1.text_input("To")
+    comment = col2.text_input("Comment")
+    if st.button("Add Handover"):
+        if title:
+            db.add_task(d, title, created_by, assigned_to, comment)
+            st.success("Handover added.")
+        else:
+            st.error("Handover title required.")
+
+        st.subheader("Handover for this date")
+    rows = db.get_tasks_for_date(d)
+    df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
+    if df.empty:
+        st.info("No Handovers.")
+    else:
+        df_edit = st.data_editor(
+            df[["id", "task_date", "title", "created_by", "assigned_to", "comment"]],
+            hide_index=True,
+            disabled=["id", "task_date"],
+            use_container_width=True,
+        )
+
+        if st.button("Save changes", type="primary"):
+            for _, row in df_edit.iterrows():
+                db.execute(
+                    """
+                    UPDATE tasks
+                    SET title = ?, created_by = ?, assigned_to = ?, comment = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        row["title"],
+                        row["created_by"],
+                        row["assigned_to"],
+                        row["comment"],
+                        row["id"],
+                    ),
+                )
+            st.success("Handover updated.")
+            st.rerun()
+
+
+def page_no_shows():
+    st.header("No Shows")
+    d = st.date_input("Arrival date", value=date.today(), key="no_show_date")
+    
+    st.subheader("Add no-show")
+    
+    # Get potential no-shows
+    potential = db.get_potential_no_shows(d)
+    
+    with st.form("no_show_form", clear_on_submit=True):
+        if potential:
+            guest_options = ["Select a guest..."] + [
+                f"{g['guest_name']} (Res {g['reservation_no']}) - {g.get('main_client', '')}" 
+                for g in potential
+            ]
+            
+            selected_idx = st.selectbox("Guest who didn't show up", options=range(len(guest_options)),
+                                       format_func=lambda x: guest_options[x])
+            
+            if selected_idx > 0:
+                guest_data = potential[selected_idx - 1]
+                guest_name = guest_data['guest_name']
+                main_client = guest_data.get('main_client', '')
+                # st.info(f"Selected: {guest_name}")
+            else:
+                guest_name = st.text_input("Guest Name (manual-optional)")
+                main_client = st.text_input("Main Client")
+        else:
+            st.info("No expected arrivals for this date")
+            guest_name = st.text_input("Guest Name")
+            main_client = st.text_input("Main Client")
+        
+        col1, col2 = st.columns(2)
+        amount_charged = col1.number_input("Amount Charged (£)", min_value=0.0, step=0.01, format="%.2f")
+        amount_pending = col2.number_input("Amount Pending (£)", min_value=0.0, step=0.01, format="%.2f")
+        
+        charged = st.checkbox("Payment Received")
+        comment = st.text_area("Comment")
+        
+        submitted = st.form_submit_button("Add No-Show", type="primary", use_container_width=True)
+        
+        if submitted and guest_name:
+            # Add to database
+            db.add_no_show(d, guest_name, main_client, charged, amount_charged, amount_pending, comment)
+            st.success(f"✓ No-show added: {guest_name}")
+    
+    st.divider()
+    st.subheader(f"No-shows for {d.strftime('%d %B %Y')}")
+    rows = db.get_no_shows_for_date(d)
+    
+    if not rows:
+        st.info("No no-shows recorded.")
+    else:
+        df = pd.DataFrame([{
+            "Guest": r["guest_name"],
+            "Client": r["main_client"] if r.get("main_client") else "",
+            "Charged": f"£{float(r['amount_charged']):.2f}" if r.get('amount_charged') is not None else "£0.00",
+            "Pending": f"£{float(r['amount_pending']):.2f}" if r.get('amount_pending') is not None else "£0.00",
+            "Paid": "✓" if r["charged"] else "✗",
+            "Comment": r.get("comment", "")
+        } for r in rows])
+        
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.caption(f"{len(rows)} no-shows")
+
+        st.subheader("Cancel no-show")
+        for r in rows:
+            col1, col2 = st.columns([4, 1])
+            col1.write(f"{r['guest_name']} ({r.get('main_client') or ''})")
+            if col2.button("Cancel no-show", key=f"cancel_ns_{r['id']}", use_container_width=True):
+                ok, msg = db.cancel_noshow(r["id"])
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+
+
+
+def page_search():
+    st.header("Search Reservations")
+    
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        search_type = st.selectbox(
+            "Search by",
+            [
+                
+                "Room Number",
+                "Guest Name",
+                "Reservation No",
+                "Main Client",
+                "Channel",
+                "All Fields"
+            ]
+        )
+    
+    with col2:
+        q = st.text_input(
+            "Search term",
+            placeholder=f"Enter {search_type.lower()}...",
+            key="search_input"
+        )
+    
+    if not q:
+        st.info("Enter a search term to find reservations.")
+        return
+    
+    # Build query based on search type
+    like_pattern = f"%{q}%"
+    
+    if search_type == "Room Number":
+        room_number = q.strip()
+        rows = db.search_reservations_by_room_number(room_number)
+
+    elif search_type == "Guest Name":
+        rows = db.fetch_all(
+            """
+            SELECT * FROM reservations
+            WHERE guest_name LIKE ?
+            ORDER BY arrival_date DESC
+            LIMIT 500
+            """,
+            (like_pattern,),
+        )
+    elif search_type == "Reservation No":
+        rows = db.fetch_all(
+            """
+            SELECT * FROM reservations
+            WHERE reservation_no LIKE ?
+            ORDER BY arrival_date DESC
+            LIMIT 500
+            """,
+            (like_pattern,),
+        )
+    elif search_type == "Main Client":
+        rows = db.fetch_all(
+            """
+            SELECT * FROM reservations
+            WHERE main_client LIKE ?
+            ORDER BY arrival_date DESC
+            LIMIT 500
+            """,
+            (like_pattern,),
+        )
+    elif search_type == "Channel":
+        rows = db.fetch_all(
+            """
+            SELECT * FROM reservations
+            WHERE channel LIKE ?
+            ORDER BY arrival_date DESC
+            LIMIT 500
+            """,
+            (like_pattern,),
+        )
+    else:  # All Fields
+        rows = db.search_reservations(q)
+    
+    # Display results
+    if not rows:
+        st.warning(f"No reservations found matching '{q}' in {search_type}.")
+        return
+    
+    st.success(f"Found {len(rows)} reservation(s)")
+    for r in rows:
+        reservation_id = r["id"]
+        resno = r.get("reservation_no") or reservation_id
+        title = f"Res {resno} – {r.get('guest_name') or 'No name'}"
+
+        with st.expander(title):
+            col1, col2 = st.columns(2)
+            with col1:
+                new_guest_name = st.text_input(
+                    "Guest name",
+                    value=r.get("guest_name") or "",
+                    key=f"edit_guest_{reservation_id}",
+                )
+            with col2:
+                new_main_client = st.text_input(
+                    "Main client",
+                    value=r.get("main_client") or "",
+                    key=f"edit_client_{reservation_id}",
+                )
+
+            c1, c2, c3 = st.columns([1, 1, 2])
+
+            with c1:
+                if st.button("Save names", key=f"save_names_{reservation_id}", use_container_width=True):
+                    ok, msg = db.update_reservation_name(
+                        reservation_id,
+                        guest_name=new_guest_name.strip() or None,
+                        main_client=new_main_client.strip() or None,
+                    )
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            with c2:
+                is_cancelled = r.get("reservation_status") == "CANCELLED"
+                label = "Cancel reservation" if not is_cancelled else "Already cancelled"
+                disabled = is_cancelled
+                if st.button(label, key=f"cancel_res_{reservation_id}", use_container_width=True, disabled=disabled):
+                    ok, msg = db.cancel_reservation(reservation_id)
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            with c3:
+                st.text(f"Status: {r.get('reservation_status') or 'CONFIRMED'}")
+
+    
+    # Create display DataFrame
+    df = pd.DataFrame([dict(r) for r in rows])
+    df_clean = clean_numeric_columns(df, ["room_number", "reservation_no"])
+    
+    # Select and format columns for display
+    display_cols = [
+        "arrival_date", "depart_date", "guest_name", "room_number",
+        "reservation_no", "channel", "rate_code", "main_client", "main_remark"
+    ]
+    
+    # Only show columns that exist
+    display_cols = [col for col in display_cols if col in df_clean.columns]
+    
+    st.dataframe(
+        df_clean[display_cols],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "arrival_date": st.column_config.TextColumn("Arrival"),
+            "depart_date": st.column_config.TextColumn("Departure"),
+            "guest_name": st.column_config.TextColumn("Guest Name"),
+            "room_number": st.column_config.TextColumn("Room"),
+            "reservation_no": st.column_config.TextColumn("Res No"),
+            "channel": st.column_config.TextColumn("Channel"),
+            "rate_code": st.column_config.TextColumn("Rate"),
+            "main_client": st.column_config.TextColumn("Client"),
+            "main_remark": st.column_config.TextColumn("Remarks"),
+        }
+    )
+    
+    # Show detailed view option
+    with st.expander("📋 View Full Details"):
+        for idx, row in enumerate(rows, 1):
+            with st.container():
+                st.markdown(f"### {idx}. {row['guest_name']} - Room {format_room_number(row.get('room_number', 'Not assigned'))}")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                col1.write(f"**Arrival:** {format_date(row['arrival_date'])}")
+                col2.write(f"**Departure:** {format_date(row['depart_date'])}")
+                col3.write(f"**Nights:** {row.get('nights', 'N/A')}")
+                col4.write(f"**Guests:** {row.get('total_guests', 'N/A')}")
+                
+                col1, col2, col3 = st.columns(3)
+                col1.write(f"**Res No:** {row.get('reservation_no', 'N/A')}")
+                col2.write(f"**Channel:** {row.get('channel', 'N/A')}")
+                col3.write(f"**Meal Plan:** {row.get('meal_plan', 'N/A')}")
+                
+                if row.get('main_remark'):
+                    st.info(f"📝 {row['main_remark']}")
+                
+                if row.get('main_client'):
+                    st.caption(f"Client: {row['main_client']}")
+                
+                st.divider()
+
+def page_room_list():
+    st.header("Room List")
+    st.caption("Manage room inventory and room status: CLEAN / DIRTY / VACANT / OCCUPIED")
+
+    # ── Room-Type Map reference panel ──────────────────────────────────────
+    with st.expander("🗂 Room Type → Room Number Mapping", expanded=False):
+        for rt, rooms in ROOM_TYPE_MAP.items():
+            st.markdown(f"**{rt}** — {', '.join(rooms)}")
+
+    df = db.read_table("rooms")
+    if df.empty:
+        st.info("No rooms yet – should have been seeded.")
+        return
+
+    # Merge room_type into display
+    def _room_type(rn):
+        rn = str(rn).strip()
+        for rt, rooms in ROOM_TYPE_MAP.items():
+            if rn in rooms:
+                return rt
+        return ""
+
+    df_display = df[["room_number", "status"]].copy()
+    df_display = df_display.sort_values(by="room_number", key=lambda s: pd.to_numeric(s, errors="coerce"))
+    df_display["room_type"] = df_display["room_number"].apply(_room_type)
+    df_display.columns = ["Room", "Status", "Room Type"]
+    st.subheader("Rooms")
+
+
+    edited = st.data_editor(df_display, use_container_width=True, hide_index=True,
+                        column_config={
+                            "Status": st.column_config.SelectboxColumn("Status", options=["VACANT", "OCCUPIED", "CLEAN", "DIRTY"]),
+                            "Room Type": st.column_config.TextColumn("Room Type", disabled=True),
+                        })
+
+
+    if st.button("Save room statuses", type="primary", use_container_width=True):
+        for _, row in edited.iterrows():
+            rn = str(row["Room"]).strip()
+            status = row["Status"]
+            db.set_room_status(rn, status)
+        st.success("Room statuses updated.")
+        st.rerun()
+
+    st.caption(f"Total: {len(df)} rooms")
+
+
+def page_spare_rooms():
+    st.header("Spare Twin rooms")
+    st.caption("Mark rooms as spare twins for a specific date (e.g. Spare Twin List).")
+
+    target = st.date_input("Date", value=date.today(), key="spare_date")
+
+    all_rooms = db.get_all_rooms()
+    if not all_rooms:
+        st.info("No rooms in inventory yet. Fill the Room list first.")
+        return
+
+    current_spare = db.get_spare_rooms_for_date(target)
+    twin_rooms = set(db.get_twin_rooms())
+
+    st.subheader("Select spare twins rooms")
+    selected = st.multiselect(
+        "spare twins rooms for this date",
+        options=all_rooms,
+        default=current_spare,
+        help="Include twin and non-twin rooms; twin rooms are listed below.",
+    )
+
+    if twin_rooms:
+        st.caption(
+            "Twin rooms (for reference): " +
+            ", ".join(sorted(twin_rooms, key=int))
+        )
+
+    if st.button("Save spare twins rooms"):
+        db.set_spare_rooms_for_date(target, selected)
+        st.success(f"Saved {len(selected)} spare twins rooms for {target}.")
+
+    saved = db.get_spare_rooms_for_date(target)
+    st.subheader("Saved spare twins rooms")
+    if not saved:
+        st.info("No spare twins rooms saved for this date.")
+    else:
+        st.write(", ".join(saved))
+
+
+def page_parking():
+    st.header("Parking Overview")
+    today = st.date_input("Date", value=date.today(), key="parking_date")
+    
+    inhouse = db.get_inhouse(today)
+    
+    if not inhouse:
+        st.info("No in-house guests for this date.")
+        return
+    
+    inhouse_dicts = [dict(r) for r in inhouse]
+    
+    # Filter: has parking_space OR "parking" mentioned in notes
+    guests_with_parking = [r for r in inhouse_dicts if r.get("parking_space") or (r.get("comment") and ("parking" in r.get("comment", "").lower() or "poa" in r.get("comment", "").lower()))]
+    guests_without_parking = [r for r in inhouse_dicts if r not in guests_with_parking]
+    
+    col1, col2 = st.columns(2)
+    col1.metric("Total In-House", len(inhouse_dicts))
+    col2.metric("With Parking", len(guests_with_parking))
+    
+    if guests_with_parking:
+        st.subheader("Parking Assigned")
+        df_parking = pd.DataFrame([{
+            "Space": r.get("parking_space", "See notes"),
+            "Room": r["room_number"],
+            "Guest Name": r["guest_name"],
+            "Plate": r.get("parking_plate", ""),
+            "Notes": r.get("comment", "") or r.get("parking_notes", "")
+        } for r in guests_with_parking])
+        df_parking = clean_numeric_columns(df_parking, ["Room"]) 
+        st.dataframe(df_parking, use_container_width=True, hide_index=True)
+    else:
+        st.info("No parking spaces assigned yet.")
+    
+    if guests_without_parking:
+        st.divider()
+        st.subheader("Guests without parking")
+        
+        for idx, guest in enumerate(guests_without_parking, 1):
+            with st.expander(f"{idx}. Room {guest['room_number']} - {guest['guest_name']}", expanded=False):
+                col1, col2, col3 = st.columns(3)
+                space = col1.text_input("Space", key=f"space_{guest['stay_id']}")
+                plate = col2.text_input("Plate", key=f"plate_{guest['stay_id']}")
+                notes = col3.text_input("Notes", key=f"notes_{guest['stay_id']}")
+                
+                if st.button("Assign Parking", key=f"assign_{guest['stay_id']}"):
+                    if space:
+                        db.update_parking_for_stay(guest["stay_id"], space, plate, notes)
+                        st.success(f"Parking {space} assigned to room {guest['room_number']}")
+                        st.rerun()
+                    else:
+                        st.warning("Enter parking space number")
+
+
+def page_db_viewer():
+    
+
+    st.header("Database Viewer")
+    
+    
+    # Database statistics
+    st.subheader("Database Overview")
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    reservations_count = db.fetch_one("SELECT COUNT(*) as cnt FROM reservations")
+    stays_count = db.fetch_one("SELECT COUNT(*) as cnt FROM stays")
+    rooms_count = db.fetch_one("SELECT COUNT(*) as cnt FROM rooms")
+    tasks_count = db.fetch_one("SELECT COUNT(*) as cnt FROM tasks")
+    no_shows_count = db.fetch_one("SELECT COUNT(*) as cnt FROM no_shows")
+    spare_count = db.fetch_one("SELECT COUNT(*) as cnt FROM spare_rooms")
+    
+    col1.metric("Reservations", reservations_count['cnt'])
+    col2.metric("Stays", stays_count['cnt'])
+    col3.metric("Rooms", rooms_count['cnt'])
+    col4.metric("Tasks", tasks_count['cnt'])
+    col5.metric("No Shows", no_shows_count['cnt'])
+    col6.metric("Spare Rooms", spare_count['cnt'])
+    
+    st.divider()
+    
+    # Table viewer with filters
+    st.subheader("View & Search Tables")
+    
+    col_table, col_limit = st.columns([3, 1])
+    table = col_table.selectbox("Select table", 
+                                ["reservations", "stays", "rooms", "tasks", "no_shows", "spare_rooms"])
+    limit = col_limit.number_input("Rows to show", min_value=10, max_value=1000, value=100, step=10)
+    
+    # Search box
+    search = st.text_input(f"Search in {table}", placeholder="Enter search term...")
+    
+    # Fetch data
+    if search:
+        # Simple search across all text columns
+        df = db.read_table(table)
+        mask = df.astype(str).apply(lambda row: row.str.contains(search, case=False).any(), axis=1)
+        df = df[mask].head(limit)
+    else:
+        df = db.read_table(table)
+        if limit:
+            df = df.head(limit)
+
+    
+    if df.empty:
+        st.info(f"No rows in {table}")
+    else:
+        # Clean numeric columns
+        if table == "reservations":
+            df = clean_numeric_columns(df, ["id", "reservation_no", "adults", "children", "total_guests", "nights"])
+        elif table == "stays":
+            df = clean_numeric_columns(df, ["id", "reservation_id"])
+        elif table == "tasks":
+            df = clean_numeric_columns(df, ["id"])
+        elif table == "no_shows":
+            df = clean_numeric_columns(df, ["id"])
+        
+        st.caption(f"Showing {len(df)} of {reservations_count['cnt'] if table == 'reservations' else '...'} total rows")
+        st.dataframe(df, use_container_width=True, height=500)
+        
+        # Export button
+        csv = df.to_csv(index=False)
+        st.download_button(
+            f"Download {table} as CSV",
+            data=csv,
+            file_name=f"{table}_{date.today().isoformat()}.csv",
+            mime="text/csv"
+        )
+    
+    DB_PATH = "hotel_fo.db"  # or hotel_fo_TEST.db
+    
+    if os.path.exists(DB_PATH):
+        with open(DB_PATH, 'rb') as f:
+            backup_data = f.read()
+        
+        st.download_button(
+            "⬇ DOWNLOAD LIVE DATABASE NOW",
+            data=backup_data,
+            file_name=f"hotel_PRODUCTION_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
+            mime="application/octet-stream",
+            type="primary"
+        )
+        st.success(f"Database size: {len(backup_data)/1024:.1f} KB")
+        
+def page_invoices():
+    """
+    Invoice generation page matching exact Excel template format.
+    Features:
+    - Auto-increment invoice number (starting 254000)
+    - Date selector with guest dropdown
+    - Multiple line items (multi-day stays)
+    - PDF export
+    """
+    st.header("📋 Invoice Generation")
+    
+    # Get next invoice number
+        # Check if this reservation already has a saved invoice number
+    existing_inv_row = db.fetch_one(
+        "SELECT invoice_no FROM invoices WHERE reservation_id = ? ORDER BY id DESC LIMIT 1",
+        (0,)  # placeholder; updated below after guest selection
+    )
+    next_inv = db.get_next_invoice_number()
+    col1, col2 = st.columns([3, .5], gap="large")
+    with col1:
+        st.subheader("Invoice Details")
+        invoice_no = st.number_input(" Invoice Number", value=next_inv, step=1, min_value=254000, format="%d")
+
+        
+        # Invoice Date
+        invoice_date = st.date_input("Invoice Date")
+        
+        st.divider()
+        st.write("**Guest Information**")
+        
+        # Date-based guest selection
+        reservations_for_date = db.get_reservations_for_date(invoice_date)
+
+        if not reservations_for_date:
+            st.warning("No reservations for this date.")
+            return
+
+        labels = [
+            f"{r['guest_name']} (Room {r.get('room_number') or 'N/A'}) [{r['reservation_status']}]"
+            for r in reservations_for_date
+        ]
+
+        idx = st.selectbox(
+            "Select Guest / Reservation",
+            options=range(len(reservations_for_date)),
+            format_func=lambda i: labels[i],
+        )
+
+        selected = reservations_for_date[idx]
+        reservation_id = selected["id"]
+        guest_name = selected["guest_name"]
+        room_no = selected.get("room_number") or ""
+
+        display_name = st.text_input(
+        "Invoice name (leave blank to use guest name)"
+        # value=guest_name,
+        # key="invoice_display_name",
+    )
+        if not display_name.strip():
+            display_name = guest_name
+        st.subheader(f"Invoice for {display_name} (Room {room_no})")
+
+        
+        st.divider()
+        st.write("**Billing Information**")
+        
+        # Line items approach - multiple dates for multi-day stays
+        st.write("**Add Line Items**")
+
+        # NEW: tax box
+        tax_rate = st.number_input(
+            "VAT rate (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=20.0,
+            step=0.5,
+            key="invoice_tax_rate",
+        )
+        tax_factor = 1 + (tax_rate / 100.0)
+
+        
+        col_date, col_qty, col_price = st.columns(3)
+        with col_date:
+            line_date = st.date_input("Item Date", value=invoice_date, key="line_date")
+        with col_qty:
+            line_qty = st.number_input("Qty", value=1, min_value=1, step=1, key="line_qty")
+        with col_price:
+            line_price = st.number_input("Price per Unit (£)", value=119.00, step=0.01, key="line_price")
+        
+        line_desc = st.text_input(
+            "Description",
+            value="Bed and Breakfast",
+            key="line_desc"
+        )
+        
+        # Initialize session state for line items if not exists
+        if "invoice_items" not in st.session_state:
+            st.session_state.invoice_items = []
+        
+        col_add, col_clear = st.columns(2)
+        with col_add:
+            if st.button("+ Add Item", use_container_width=True):
+                # use selected VAT rate
+                net_price = line_price / 1.2
+                vat = line_price / 5
+                st.session_state.invoice_items.append({
+                    "date": line_date, "qty": line_qty, "price_per_unit": line_price,
+                    "description": line_desc, "net_price": net_price, "vat": vat, "total": line_price
+                })
+
+                st.rerun()
+        
+        with col_clear:
+            if st.button("Clear All", use_container_width=True):
+                st.session_state.invoice_items = []
+                st.rerun()
+        
+        # Show added items
+        if st.session_state.invoice_items:
+            st.divider()
+            st.write("**Line Items Added:**")
+            for idx, item in enumerate(st.session_state.invoice_items):
+                col_remove, col_info = st.columns([0.5, 3])
+                with col_remove:
+                    if st.button("Remove", key=f"remove_{idx}", use_container_width=True):
+                        st.session_state.invoice_items.pop(idx)
+                        st.rerun()
+                with col_info:
+                    st.caption(f"{item['date']} - {item['description']} - £{item['total']:.2f}")
+            
+            # Calculate totals
+            total_net = sum(item['net_price'] for item in st.session_state.invoice_items)
+            total_vat = sum(item['vat'] for item in st.session_state.invoice_items)
+            total_amount = sum(item['total'] for item in st.session_state.invoice_items)
+            
+            st.divider()
+            st.metric("Total Amount", f"£{total_amount:.2f}")
+            
+            # PDF Export button
+            if st.button("📥 Download as PDF", use_container_width=True, type="primary"):
+                pdf_bytes = generate_invoice_pdf(
+                    invoice_no=invoice_no,
+                    invoice_date=invoice_date,
+                    guest_name=display_name,
+                    room_no=room_no,
+                    items=st.session_state.invoice_items,
+                    total_net=total_net,
+                    total_vat=total_vat,
+                    total_amount=total_amount
+                )
+                db.save_invoice_number(reservation_id, invoice_no)
+                st.download_button(
+                    "⬇️ Click to Download PDF",
+                    data=pdf_bytes,
+                    file_name=f"Invoice_{invoice_no}_{guest_name}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+        else:
+            st.warning("⚠️ Add at least one line item to generate invoice")
+
+
+def render_exact_invoice_preview(invoice_no, invoice_date, guest_name, room_no, 
+                                 items, total_net, total_vat, total_amount):
+    """
+    Render invoice preview in EXACT Excel template format.
+    NO HTML code visible - pure formatted display.
+    """
+    
+    # Create HTML that matches Excel layout exactly
+    items_html = ""
+    for item in items:
+        items_html += f"""
+        <tr style="border: 1px solid #ccc; height: 20px;">
+            <td style="padding: 1px; border: 1px solid #ccc; width: 15%; font-size: 12px;">{item['date'].strftime('%d/%m/%Y')}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: center; width: 8%; font-size: 12px;">{item['qty']}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: right; width: 15%; font-size: 12px;">£ {item['price_per_unit']:>9.2f}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; width: 25%; font-size: 12px;">{item['description']}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: right; width: 12%; font-size: 12px;">£ {item['net_price']:>9.2f}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: right; width: 12%; font-size: 12px;">£ {item['vat']:>9.2f}</td>
+            <td style="padding: 1px; border: 1px solid #ccc; text-align: right; width: 13%; font-size: 12px; font-weight: bold;">£ {item['total']:>9.2f}</td>
+        </tr>
+        """
+    
+    html = f"""
+    <style>
+        .invoice-container {{ font-family: 'Arial', sans-serif; background: white; padding: 30px; line-height: 1.4; }}
+        .header-title {{ font-size: 18px; font-weight: bold; color: #333; margin-bottom: 20px; }}
+        .section-label {{ font-size: 11px; font-weight: bold; margin-top: 15px; margin-bottom: 8px; }}
+        .guest-info {{ font-size: 11px; line-height: 1.6; margin-bottom: 20px; }}
+        .invoice-meta {{ display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 20px; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; }}
+        th {{ background-color: #f0f0f0; border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: bold; font-size: 11px; }}
+        td {{ border: 1px solid #ccc; padding: 8px; }}
+        .totals-section {{ background-color: #f9f9f9; padding: 15px; margin-bottom: 15px; border: 1px solid #ccc; }}
+        .total-row {{ display: flex; justify-content: space-between; font-size: 12px; padding: 8px 0; border-bottom: 1px solid #ddd; }}
+        .total-row-bold {{ display: flex; justify-content: space-between; font-size: 12px; padding: 8px 0; font-weight: bold; background-color: #003366; color: white; padding: 12px; }}
+        .vat-breakdown {{ background-color: #f0f0f0; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; }}
+        .vat-row {{ display: flex; justify-content: space-between; font-size: 11px; padding: 6px 0; }}
+        .payment-section {{ font-size: 10px; line-height: 1.8; }}
+        .bank-table {{ width: 100%; font-size: 10px; margin: 10px 0; }}
+        .bank-table td {{ border: none; padding: 4px 0; }}
+    </style>
+    
+    <div class="invoice-container">
+        
+        <!-- Header -->
+        <div class="header-title">INVOICE</div>
+        
+        <!-- Supplier Section -->
+        <div class="section-label">Supplier</div>
+        <div class="guest-info" style="margin-left: 20px;">
+            <strong>St Wulfstan ltd</strong><br>
+            T/A Radisson BLU Hotel, Bristol<br>
+            Broad Quay<br>
+            Bristol<br>
+            BS1 4BY
+        </div>
+        
+        <!-- Invoice To Section -->
+        <div class="section-label">Invoice to:</div>
+        <div class="guest-info" style="margin-left: 20px;">
+            <strong>{guest_name}</strong><br>
+            Room {room_no}
+        </div>
+        
+        <!-- Invoice Meta -->
+        <div class="invoice-meta">
+        Invoice number:
+            <div>
+                <strong>{invoice_no}</strong>
+            </div>
+            <div>
+                <span class="section-label">Date :</span>
+                <strong>{invoice_date.strftime('%d/%m/%Y')}</strong>
+            </div>
+        </div>
+        
+        <!-- Items Table -->
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 15%;">Date</th>
+                    <th style="width: 8%; text-align: center;">Qty</th>
+                    <th style="width: 15%; text-align: right;">Price Gross/unit</th>
+                    <th style="width: 25%;">Description</th>
+                    <th style="width: 12%; text-align: right;">Net Price</th>
+                    <th style="width: 12%; text-align: right;">VAT</th>
+                    <th style="width: 13%; text-align: right;">Total Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+                <tr style="border: 1px solid #ccc; background-color: #f9f9f9; font-weight: bold; height: 22px;">
+                    <td colspan="4" style="border: 1px solid #ccc; text-align: right; padding: 8px;">Total</td>
+                    <td style="border: 1px solid #ccc; text-align: right; padding: 8px;">£ {total_net:>9.2f}</td>
+                    <td style="border: 1px solid #ccc; text-align: right; padding: 8px;">£ {total_vat:>9.2f}</td>
+                    <td style="border: 1px solid #ccc; text-align: right; padding: 8px;">£ {total_amount:>9.2f}</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <!-- VAT Breakdown -->
+        <div class="vat-breakdown">
+            <div class="section-label" style="margin-top: 0;">VAT Breakdown</div>
+            <div class="vat-row">
+                <span>Vatable Amount (excl VAT)</span>
+                <span>£ {total_net:>15.2f}</span>
+            </div>
+            <div class="vat-row">
+                <span>Non Vatable Amount</span>
+                <span>£ {0:>15.2f}</span>
+            </div>
+            <div class="vat-row" style="font-weight: bold; border-top: 1px solid #ccc; padding-top: 8px;">
+                <span>VAT @ 20.00%</span>
+                <span>£ {total_vat:>15.2f}</span>
+            </div>
+            <div class="vat-row" style="font-weight: bold; background-color: #003366; color: white; margin-top: 8px; padding: 8px; margin-left: -12px; margin-right: -12px; margin-bottom: -12px;">
+                <span>TOTAL BILL</span>
+                <span>£ {total_amount:>15.2f}</span>
+            </div>
+        </div>
+        
+        <!-- Payment Details -->
+        <div class="payment-section">
+            <p><strong>Please pay to St Wulfstan LTD "Radisson BLU Hotel Bristol" account</strong></p>
+            
+            <p style="margin-top: 12px;"><strong>Our bank account details for CHAPS and BACS payments are:</strong></p>
+            
+            <table class="bank-table">
+                <tr>
+                    <td style="width: 30%;"><strong>Account name:</strong></td>
+                    <td>St Wulfstan ltd</td>
+                </tr>
+                <tr>
+                    <td><strong>Account number:</strong></td>
+                    <td>36744760</td>
+                    <td style="padding-left: 40px;"><strong>Sort code:</strong></td>
+                    <td>30-65-41</td>
+                </tr>
+                <tr>
+                    <td><strong>IBAN Code:</strong></td>
+                    <td colspan="3">GB98 LOYD 3065 4136 7447 60</td>
+                </tr>
+                <tr>
+                    <td><strong>BIC Code:</strong></td>
+                    <td colspan="3">LOYDGB21682</td>
+                </tr>
+            </table>
+            
+            <div style="border-top: 1px solid #ccc; padding-top: 8px; margin-top: 8px; font-size: 9px;">
+                <p style="margin: 4px 0;">Company Reg. No: 6824436</p>
+                <p style="margin: 4px 0;">VAT Reg. No: 979243179</p>
+            </div>
+        </div>
+        
+    </div>
+    """
+    
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def generate_invoice_pdf(invoice_no, invoice_date, guest_name, room_no, 
+                        items, total_net, total_vat, total_amount):
+    """
+    Generate PDF invoice matching exact Excel template format.
+    Uses reportlab for PDF generation.
+    """
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import cm, mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+        from reportlab.lib import colors
+        
+        buffer = BytesIO()
+        
+        # Create PDF
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=15*mm, bottomMargin=15*mm, 
+                               leftMargin=15*mm, rightMargin=15*mm)
+        
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#003366'),
+            spaceAfter=6,
+            alignment=TA_CENTER
+        )
+        
+        label_style = ParagraphStyle(
+            'Label',
+            parent=styles['Normal'],
+            fontSize=10,
+            fontName='Helvetica-Bold',
+            spaceAfter=4
+        )
+        
+        # Title
+        title = Paragraph("INVOICE", title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Supplier
+        supplier = Paragraph("<b>Supplier</b>", label_style)
+        elements.append(supplier)
+        supplier_text = Paragraph(
+            "St Wulfstan ltd<br/>T/A Radisson BLU Hotel, Bristol<br/>"
+            "Broad Quay<br/>Bristol<br/>BS1 4BY",
+            styles['Normal']
+        )
+        elements.append(supplier_text)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Invoice To
+        inv_to = Paragraph("<b>Invoice to:</b>", label_style)
+        elements.append(inv_to)
+        inv_to_text = Paragraph(
+            f"<b>{guest_name}</b><br/>Room {room_no}",
+            styles['Normal']
+        )
+        elements.append(inv_to_text)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Invoice Meta
+                # Invoice Meta
+        meta_data = [
+            [
+                Paragraph(f"<b>Invoice number :</b><br/>{invoice_no}", styles['Normal']),
+                Paragraph(f"<b>Date :</b><br/>{invoice_date.strftime('%d/%m/%Y')}", styles['Normal'])
+            ]
+        ]
+        meta_table = Table(meta_data, colWidths=[9.5*cm, 6.5*cm])
+        meta_table.setStyle(TableStyle([
+            ('ALIGN', (-1, 0), (0, -1), 'LEFT'),    # left cell (invoice no)
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),    # date cell, still left-aligned
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+
+        elements.append(meta_table)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Items Table Data
+        table_data = [
+            ['Date', 'Qty', 'Price Gross/unit', 'Description', 'Net Price', 'VAT', 'Total Price']
+        ]
+        
+        for item in items:
+            table_data.append([
+                item['date'].strftime('%d/%m/%Y'),
+                str(item['qty']),
+                f"£ {item['price_per_unit']:.2f}",
+                item['description'],
+                f"£ {item['net_price']:.2f}",
+                f"£ {item['vat']:.2f}",
+                f"£ {item['total']:.2f}"
+            ])
+        
+        # Add totals row
+        table_data.append([
+            '', '', '', 'Total',
+            f"£ {total_net:.2f}",
+            f"£ {total_vat:.2f}",
+            f"£ {total_amount:.2f}"
+        ])
+        
+        # Create table
+                # Create table
+        items_table = Table(
+            table_data,
+            colWidths=[
+                2.2*cm,   # Date  (slightly wider, but not huge)
+                1.0*cm,   # Qty
+                3.0*cm,   # Price Gross per Unit
+                5.0*cm,   # Description
+                2.2*cm,   # Net Price
+                2.2*cm,   # VAT
+                2.4*cm,   # Total Price
+            ],
+        )
+        items_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            # Left-align first 4 columns, right-align numeric ones
+            ('ALIGN', (0, 0), (3, -1), 'LEFT'),
+            ('ALIGN', (4, 0), (-1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f9f9f9')),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            # Slightly reduce side padding so text doesn’t crowd into next column
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ]))
+
+        elements.append(items_table)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # VAT Breakdown
+        vat_header = Paragraph("<b>VAT Breakdown</b>", label_style)
+        elements.append(vat_header)
+        
+        vat_data = [
+            [Paragraph("Vatable Amount (excl VAT)", styles['Normal']), Paragraph(f"£ {total_net:.2f}", styles['Normal'])],
+            [Paragraph("Non Vatable Amount", styles['Normal']), Paragraph(f"£ 0.00", styles['Normal'])],
+            [Paragraph("<b>VAT @ 20.00%</b>", styles['Normal']), Paragraph(f"<b>£ {total_vat:.2f}</b>", styles['Normal'])],
+            [Paragraph("<b>TOTAL BILL</b>", ParagraphStyle('Bold', parent=styles['Normal'], textColor=colors.white, fontName='Helvetica-Bold')), 
+             Paragraph(f"<b>£ {total_amount:.2f}</b>", ParagraphStyle('Bold', parent=styles['Normal'], textColor=colors.white, fontName='Helvetica-Bold'))]
+        ]
+        
+        vat_table = Table(vat_data, colWidths=[12*cm, 3*cm])
+        vat_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ROWBACKGROUNDS', (0, 0), (-1, 2), [colors.white, colors.white, colors.white]),
+            ('BACKGROUND', (0, 3), (-1, 3), colors.HexColor('#003366')),
+            ('TEXTCOLOR', (0, 3), (-1, 3), colors.white),
+            ('PADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(vat_table)
+        elements.append(Spacer(1, 0.5*cm))
+        
+        # Payment Details
+        payment_header = Paragraph("<b>Please pay to St Wulfstan LTD \"Radisson BLU Hotel Bristol\" account</b>", 
+                                 ParagraphStyle('PaymentHeader', parent=styles['Normal'], fontSize=9, spaceAfter=6))
+        elements.append(payment_header)
+        
+        bank_header = Paragraph("<b>Our bank account details for CHAPS and BACS payments are:</b>", 
+                              ParagraphStyle('BankHeader', parent=styles['Normal'], fontSize=9, spaceAfter=6))
+        elements.append(bank_header)
+        
+        bank_data = [
+            [Paragraph("<b>Account name:</b>", styles['Normal']), "St Wulfstan ltd"],
+            [Paragraph("<b>Account number:</b>", styles['Normal']), "36744760", Paragraph("<b>Sort code:</b>", styles['Normal']), "30-65-41"],
+            [Paragraph("<b>IBAN Code:</b>", styles['Normal']), "GB98 LOYD 3065 4136 7447 60"],
+            [Paragraph("<b>BIC Code:</b>", styles['Normal']), "LOYDGB21682"],
+        ]
+        
+        bank_table = Table(bank_data)
+        bank_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('PADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(bank_table)
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Company Info
+        company_info = Paragraph(
+            "Company Reg. No: 6824436<br/>VAT Reg. No: 979243179",
+            ParagraphStyle('CompanyInfo', parent=styles['Normal'], fontSize=8)
+        )
+        elements.append(company_info)
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer.getvalue()
+        
+    except ImportError:
+        st.error("⚠️ reportlab not installed. Install with: pip install reportlab")
+        return None
+    except Exception as e:
+        st.error(f"⚠️ Error generating PDF: {str(e)}")
+        return None
+
+# def render_invoice_preview(invoice_no, invoice_date, guest_name, room_no, 
+#                           net_amount, tax_rate, tax_amount, total_amount, 
+#                           service_desc, quantity):
+#     """
+#     Display invoice in Streamlit using styled HTML/CSS
+#     Matches Radisson BLU template format
+#     """
+    
+#     # Radisson BLU styling
+#     html_content = f"""
+#     <div style="background: white; padding: 40px; font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; border: 1px solid #ddd;">
+        
+#         <!-- Header -->
+#         <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #003366; padding-bottom: 20px;">
+#             <h1 style="color: #003366; margin: 0; font-size: 28px;">INVOICE</h1>
+#             <p style="color: #666; margin: 5px 0; font-size: 12px;">Radisson BLU Hotel, Bristol</p>
+#         </div>
+        
+#         <!-- Invoice To Section -->
+#         <div style="margin-bottom: 30px;">
+#             <div style="font-weight: bold; margin-bottom: 5px;">Invoice to:</div>
+#             <div style="margin-left: 20px; line-height: 1.8;">
+#                 <div><strong>{guest_name}</strong></div>
+#                 <div>Room: {room_no}</div>
+#                 <div style="margin-top: 15px; font-size: 12px; color: #666;">
+#                     <div>St Wulfstan ltd</div>
+#                     <div>T/A Radisson BLU Hotel, Bristol</div>
+#                     <div>Broad Quay</div>
+#                     <div>Bristol</div>
+#                     <div>BS1 4BY</div>
+#                 </div>
+#             </div>
+#         </div>
+        
+#         <!-- Invoice Details -->
+#         <div style="display: flex; justify-content: space-between; margin-bottom: 30px; font-size: 14px;">
+#             <div>
+#                 <div style="color: #666;">Invoice number:</div>
+#                 <div style="font-weight: bold; font-size: 16px;">{invoice_no}</div>
+#             </div>
+#             <div>
+#                 <div style="color: #666;">Date:</div>
+#                 <div style="font-weight: bold; font-size: 16px;">{invoice_date.strftime('%d %b %Y')}</div>
+#             </div>
+#         </div>
+        
+#         <!-- Items Table -->
+#         <div style="margin-bottom: 30px;">
+#             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+#                 <thead>
+#                     <tr style="background-color: #f0f0f0; border: 1px solid #ccc;">
+#                         <th style="padding: 10px; text-align: left; border: 1px solid #ccc;">Date</th>
+#                         <th style="padding: 10px; text-align: center; border: 1px solid #ccc;">Qty</th>
+#                         <th style="padding: 10px; text-align: right; border: 1px solid #ccc;">Price per Unit</th>
+#                         <th style="padding: 10px; text-align: left; border: 1px solid #ccc;">Description</th>
+#                         <th style="padding: 10px; text-align: right; border: 1px solid #ccc;">Net Price</th>
+#                         <th style="padding: 10px; text-align: right; border: 1px solid #ccc;">VAT</th>
+#                         <th style="padding: 10px; text-align: right; border: 1px solid #ccc;">Total</th>
+#                     </tr>
+#                 </thead>
+#                 <tbody>
+#                     <tr style="border: 1px solid #ccc;">
+#                         <td style="padding: 10px; border: 1px solid #ccc;">{invoice_date.strftime('%Y-%m-%d')}</td>
+#                         <td style="padding: 10px; text-align: center; border: 1px solid #ccc;">{quantity}</td>
+#                         <td style="padding: 10px; text-align: right; border: 1px solid #ccc;">£{(net_amount/quantity):.2f}</td>
+#                         <td style="padding: 10px; border: 1px solid #ccc;">{service_desc}</td>
+#                         <td style="padding: 10px; text-align: right; border: 1px solid #ccc;">£{net_amount:.2f}</td>
+#                         <td style="padding: 10px; text-align: right; border: 1px solid #ccc;">£{tax_amount:.2f}</td>
+#                         <td style="padding: 10px; text-align: right; border: 1px solid #ccc; font-weight: bold;">£{(net_amount + tax_amount):.2f}</td>
+#                     </tr>
+#                 </tbody>
+#             </table>
+#         </div>
+        
+#         <!-- Totals Section -->
+#         <div style="background-color: #f9f9f9; padding: 20px; border: 1px solid #ccc; margin-bottom: 30px;">
+#             <table style="width: 100%; font-size: 14px;">
+#                 <tr>
+#                     <td style="text-align: right; padding: 8px; width: 50%;">Subtotal (Net):</td>
+#                     <td style="text-align: right; padding: 8px; font-weight: bold;">£{net_amount:.2f}</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="text-align: right; padding: 8px;">VAT @ {tax_rate}%:</td>
+#                     <td style="text-align: right; padding: 8px; font-weight: bold;">£{tax_amount:.2f}</td>
+#                 </tr>
+#                 <tr style="background-color: #003366; color: white; font-size: 16px;">
+#                     <td style="text-align: right; padding: 12px; font-weight: bold;">TOTAL BILL:</td>
+#                     <td style="text-align: right; padding: 12px; font-weight: bold;">£{total_amount:.2f}</td>
+#                 </tr>
+#             </table>
+#         </div>
+        
+#         <!-- VAT Breakdown -->
+#         <div style="background-color: #f0f0f0; padding: 15px; border: 1px solid #ccc; margin-bottom: 20px; font-size: 13px;">
+#             <div style="font-weight: bold; margin-bottom: 10px;">VAT Breakdown</div>
+#             <table style="width: 100%; font-size: 12px;">
+#                 <tr>
+#                     <td style="padding: 5px;">Vatable Amount (excl VAT):</td>
+#                     <td style="text-align: right; padding: 5px;">£{net_amount:.2f}</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="padding: 5px;">Non Vatable Amount:</td>
+#                     <td style="text-align: right; padding: 5px;">£0.00</td>
+#                 </tr>
+#                 <tr style="font-weight: bold;">
+#                     <td style="padding: 5px;">VAT @ {tax_rate}%:</td>
+#                     <td style="text-align: right; padding: 5px;">£{tax_amount:.2f}</td>
+#                 </tr>
+#             </table>
+#         </div>
+        
+#         <!-- Payment Details -->
+#         <div style="font-size: 12px; line-height: 1.6; color: #333;">
+#             <p style="margin: 10px 0; font-weight: bold;">Please pay to St Wulfstan LTD "Radisson BLU Hotel Bristol" account</p>
+            
+#             <p style="margin: 15px 0; font-weight: bold;">Our bank account details for CHAPS and BACS payments are:</p>
+            
+#             <table style="font-size: 12px; width: 100%; margin-bottom: 15px;">
+#                 <tr>
+#                     <td style="padding: 5px; width: 40%; font-weight: bold;">Account name:</td>
+#                     <td style="padding: 5px;">St Wulfstan ltd</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="padding: 5px; font-weight: bold;">Account number:</td>
+#                     <td style="padding: 5px;">36744760</td>
+#                     <td style="padding: 5px; font-weight: bold;">Sort code:</td>
+#                     <td style="padding: 5px;">30-65-41</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="padding: 5px; font-weight: bold;">IBAN Code:</td>
+#                     <td colspan="3" style="padding: 5px;">GB98 LOYD 3065 4136 7447 60</td>
+#                 </tr>
+#                 <tr>
+#                     <td style="padding: 5px; font-weight: bold;">BIC Code:</td>
+#                     <td colspan="3" style="padding: 5px;">LOYDGB21682</td>
+#                 </tr>
+#             </table>
+            
+#             <div style="border-top: 1px solid #ccc; padding-top: 10px; margin-top: 10px;">
+#                 <div>Company Reg. No: 6824436</div>
+#                 <div>VAT Reg. No: 979243179</div>
+#             </div>
+#         </div>
+        
+#     </div>
+#     """
+    
+#     st.markdown(html_content, unsafe_allow_html=True)
+
+
+def generate_invoice_html(invoice_no, invoice_date, guest_name, room_no, 
+                         net_amount, tax_rate, tax_amount, total_amount, 
+                         service_desc, quantity):
+    """
+    Generate complete printable HTML invoice with all styling
+    """
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Invoice {invoice_no}</title>
+        <style>
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            
+            body {{
+                font-family: Arial, sans-serif;
+                background: #f5f5f5;
+                padding: 20px;
+            }}
+            
+            .invoice-container {{
+                background: white;
+                padding: 50px;
+                max-width: 900px;
+                margin: 0 auto;
+                box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            }}
+            
+            .header {{
+                text-align: center;
+                margin-bottom: 40px;
+                border-bottom: 3px solid #003366;
+                padding-bottom: 20px;
+            }}
+            
+            .header h1 {{
+                color: #003366;
+                font-size: 32px;
+                margin-bottom: 5px;
+            }}
+            
+            .header p {{
+                color: #666;
+                font-size: 12px;
+            }}
+            
+            .invoice-to {{
+                margin-bottom: 30px;
+            }}
+            
+            .invoice-to label {{
+                font-weight: bold;
+                display: block;
+                margin-bottom: 8px;
+            }}
+            
+            .invoice-to-content {{
+                margin-left: 20px;
+                line-height: 1.8;
+            }}
+            
+            .invoice-to-content strong {{
+                display: block;
+                font-size: 14px;
+            }}
+            
+            .company-details {{
+                font-size: 11px;
+                color: #666;
+                margin-top: 10px;
+            }}
+            
+            .invoice-meta {{
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 30px;
+                font-size: 13px;
+            }}
+            
+            .invoice-meta div {{
+                color: #666;
+            }}
+            
+            .invoice-meta strong {{
+                display: block;
+                font-size: 16px;
+                color: #333;
+                margin-top: 3px;
+            }}
+            
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+                font-size: 13px;
+            }}
+            
+            thead {{
+                background-color: #f0f0f0;
+            }}
+            
+            th, td {{
+                border: 1px solid #ccc;
+                padding: 12px;
+                text-align: left;
+            }}
+            
+            th {{
+                font-weight: bold;
+                background-color: #f0f0f0;
+            }}
+            
+            td.number {{
+                text-align: right;
+            }}
+            
+            .totals {{
+                background-color: #f9f9f9;
+                padding: 20px;
+                border: 1px solid #ccc;
+                margin-bottom: 20px;
+            }}
+            
+            .totals-table {{
+                width: 100%;
+                font-size: 13px;
+            }}
+            
+            .totals-table tr {{
+                border: none;
+            }}
+            
+            .totals-table td {{
+                border: none;
+                padding: 8px;
+            }}
+            
+            .totals-table td:first-child {{
+                text-align: right;
+                width: 60%;
+            }}
+            
+            .totals-table td:last-child {{
+                text-align: right;
+                font-weight: bold;
+            }}
+            
+            .total-row {{
+                background-color: #003366 !important;
+                color: white !important;
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            
+            .vat-breakdown {{
+                background-color: #f0f0f0;
+                padding: 15px;
+                border: 1px solid #ccc;
+                margin-bottom: 20px;
+                font-size: 12px;
+            }}
+            
+            .vat-breakdown h4 {{
+                font-weight: bold;
+                margin-bottom: 10px;
+                font-size: 13px;
+            }}
+            
+            .payment-details {{
+                font-size: 11px;
+                line-height: 1.6;
+                color: #333;
+            }}
+            
+            .payment-details p {{
+                margin: 10px 0;
+            }}
+            
+            .payment-details strong {{
+                font-weight: bold;
+            }}
+            
+            .bank-details {{
+                font-size: 11px;
+                margin: 15px 0;
+            }}
+            
+            .company-reg {{
+                border-top: 1px solid #ccc;
+                padding-top: 10px;
+                margin-top: 10px;
+                font-size: 11px;
+            }}
+            
+            @media print {{
+                body {{
+                    background: white;
+                    padding: 0;
+                }}
+                .invoice-container {{
+                    box-shadow: none;
+                    max-width: 100%;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="invoice-container">
+            
+            <!-- Header -->
+            <div class="header">
+                <h1>INVOICE</h1>
+                <p>Radisson BLU Hotel, Bristol</p>
+            </div>
+            
+            <!-- Invoice To -->
+            <div class="invoice-to">
+                <label>Invoice to:</label>
+                <div class="invoice-to-content">
+                    <strong>{guest_name}</strong>
+                    <div>Room: {room_no}</div>
+                    <div class="company-details">
+                        <div>St Wulfstan ltd</div>
+                        <div>T/A Radisson BLU Hotel, Bristol</div>
+                        <div>Broad Quay</div>
+                        <div>Bristol</div>
+                        <div>BS1 4BY</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Invoice Meta -->
+            <div class="invoice-meta">
+                <div>
+                    Invoice number:
+                    <strong>{invoice_no}</strong>
+                </div>
+                <div>
+                    Date:
+                    <strong>{invoice_date.strftime('%d %b %Y')}</strong>
+                </div>
+            </div>
+            
+            <!-- Items Table -->
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th style="text-align: center;">Qty</th>
+                        <th style="text-align: right;">Price per Unit</th>
+                        <th>Description</th>
+                        <th style="text-align: right;">Net Price</th>
+                        <th style="text-align: right;">VAT</th>
+                        <th style="text-align: right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{invoice_date.strftime('%Y-%m-%d')}</td>
+                        <td style="text-align: center;">{quantity}</td>
+                        <td class="number">£{(net_amount/quantity):.2f}</td>
+                        <td>{service_desc}</td>
+                        <td class="number">£{net_amount:.2f}</td>
+                        <td class="number">£{tax_amount:.2f}</td>
+                        <td class="number"><strong>£{(net_amount + tax_amount):.2f}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- Totals -->
+            <div class="totals">
+                <table class="totals-table">
+                    <tr>
+                        <td>Subtotal (Net):</td>
+                        <td>£{net_amount:.2f}</td>
+                    </tr>
+                    <tr>
+                        <td>VAT @ {tax_rate}%:</td>
+                        <td>£{tax_amount:.2f}</td>
+                    </tr>
+                    <tr class="total-row">
+                        <td>TOTAL BILL:</td>
+                        <td>£{total_amount:.2f}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <!-- VAT Breakdown -->
+            <div class="vat-breakdown">
+                <h4>VAT Breakdown</h4>
+                <table class="totals-table">
+                    <tr>
+                        <td>Vatable Amount (excl VAT):</td>
+                        <td>£{net_amount:.2f}</td>
+                    </tr>
+                    <tr>
+                        <td>Non Vatable Amount:</td>
+                        <td>£0.00</td>
+                    </tr>
+                    <tr>
+                        <td><strong>VAT @ {tax_rate}%:</strong></td>
+                        <td><strong>£{tax_amount:.2f}</strong></td>
+                    </tr>
+                </table>
+            </div>
+            
+            <!-- Payment Details -->
+            <div class="payment-details">
+                <p><strong>Please pay to St Wulfstan LTD "Radisson BLU Hotel Bristol" account</strong></p>
+                
+                <p><strong>Our bank account details for CHAPS and BACS payments are:</strong></p>
+                
+                <div class="bank-details">
+                    <p><strong>Account name:</strong> St Wulfstan ltd</p>
+                    <p><strong>Account number:</strong> 36744760 <span style="margin-left: 40px;"><strong>Sort code:</strong> 30-65-41</span></p>
+                    <p><strong>IBAN Code:</strong> GB98 LOYD 3065 4136 7447 60</p>
+                    <p><strong>BIC Code:</strong> LOYDGB21682</p>
+                </div>
+                
+                <div class="company-reg">
+                    <p>Company Reg. No: 6824436</p>
+                    <p>VAT Reg. No: 979243179</p>
+                </div>
+            </div>
+            
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html    
+
+# ═══════════════════════════════════════════════════════════════════
+# IDS NEXT SYNC PAGE
+# ═══════════════════════════════════════════════════════════════════
+
+IDS_API_URL = "https://fxreservationapi.idsnext.live//BulkReservation/CreateReservation"
+IDS_GUEST_PROFILE_URL = "https://fxprofileconfigapi.idsnext.live/GuestProfile/SaveGuestBasicInfo"
+
+IDS_ROOM_TYPE_MAP = {
+    "BSTD-1D": "STK", "BSTD-2T": "STT", "BSTD------": "STK",
+    "PSUPVC-1D": "SCK", "PSUPHV-1D": "SHK", "PSUPVC-2T": "SCT",
+    "PSUPVH-2T": "SHT", "PPREVH-1D": "PHK", "PPREVC-1D": "PCK",
+    "PPREVH-2T": "PHT", "PPREVC-2T": "PCT", "SS1BVHTR": "SUR",
+    "UPRSVP": "PRS", "ACCESIBLE": "STA", "FAMM": "FAM",
+}
+IDS_TAX_RATE = 0.2
+IDS_DEFAULT_GUEST_CODE = "0"
+
+
+def ids_map_room_type(raw):
+    raw = str(raw).strip()
+    if raw in IDS_ROOM_TYPE_MAP:
+        return IDS_ROOM_TYPE_MAP[raw]
+    for key, val in IDS_ROOM_TYPE_MAP.items():
+        if raw.startswith(key.split("-")[0]):
+            return val
+    return "STK"
+
+
+def ids_get_rate_info(meal_plan):
+    if str(meal_plan).strip().upper() == "BB":
+        return "BB1", "Package Rate"
+    return "BAR1", "Best Available Rate"
+
+
+def ids_parse_name(full_name):
+    """'Last, First' or 'LAST, FIRST' → (First, Last) with proper title case"""
+    name = str(full_name).strip()
+    if "," in name:
+        parts = [p.strip().title() for p in name.split(",", 1)]
+        return parts[1], parts[0]   # first, last
+    parts = name.split()
+    if len(parts) >= 2:
+        return parts[0].title(), " ".join(p.title() for p in parts[1:])
+    return name.title(), name.title()
+
+
+def ids_build_payload(r):
+    """Build IDS API payload from a reservation dict."""
+    import requests as _req
+    from datetime import datetime as _dt, timedelta as _td
+
+    arrival_dt  = pd.to_datetime(r["arrival_date"])
+    depart_dt   = pd.to_datetime(r["depart_date"])
+    nights      = int(r.get("nights") or 1)
+    room_type   = ids_map_room_type(r.get("room_type_code") or "BSTD-1D")
+    adults      = int(r.get("adults") or 1)
+    meal_plan   = str(r.get("meal_plan") or "RO").strip()
+    main_client = str(r.get("main_client") or "").strip()
+    main_rem    = str(r.get("main_remark") or "").strip()
+    total_rem   = str(r.get("total_remarks") or "").strip()
+    full_name   = str(r.get("guest_name") or "Guest").strip()
+    phone       = str(r.get("contact_phone") or "").strip()
+    rate_per_night = float(r.get("_ids_rate") or 100.0)
+
+    # Resolve first/last name — UI edit > parsed > fallback split
+    _fn = str(r.get("_first_name") or "").strip()
+    _ln = str(r.get("_last_name")  or "").strip()
+    if _fn and _ln:
+        first_name = _fn
+        last_name  = _ln
+    else:
+        first_name, last_name = ids_parse_name(full_name)
+    # Final safety — never send blank to IDS
+    if not first_name.strip():
+        parts = full_name.replace(",", " ").split()
+        first_name = parts[-1].title() if parts else "Guest"
+    if not last_name.strip():
+        parts = full_name.replace(",", " ").split()
+        last_name = parts[0].title() if parts else "Guest"
+    rate_code, _ = ids_get_rate_info(meal_plan)
+
+    arrival_str = arrival_dt.strftime("%Y-%m-%d 15:00")
+    depart_str  = depart_dt.strftime("%Y-%m-%d 12:00")
+
+    nett = round(rate_per_night / (1 + IDS_TAX_RATE), 8)
+    tax  = round(rate_per_night - nett, 8)
+    total_nett   = round(nett * nights, 8)
+    total_tax    = round(tax  * nights, 8)
+    total_amount = round(rate_per_night * nights, 2)
+
+    rate_details = []
+    for n in range(nights):
+        rate_date = (arrival_dt + _td(days=n)).strftime("%Y-%m-%d")
+        rate_details.append({
+            "RateCode": rate_code, "TaxStructureCode": "1001", "CurrencyCode": "GBP",
+            "ExchangeRate": 1, "RoomTypeCode": room_type, "DiscountUpsellOn": "Occupancy",
+            "OperationTYpe": "Create", "RoomReferenceNumber": 1,
+            "TaxAmount": tax, "ForeignExchangeRate": 1, "LocalTaxAmount": tax,
+            "AuthorizedBy": "", "ReasonCode": "", "Remarks": "", "DiscountUpsellType": "None",
+            "Person1Rate": str(rate_per_night), "Person1DiscountRate": 0,
+            "Person1DiscountType": "None", "Person1DiscountValue": str(rate_per_night),
+            "RateDate": rate_date,
+            "Person2Rate": str(rate_per_night) if adults >= 2 else "0",
+            "Person2DiscountRate": 0, "Person2DiscountType": "None",
+            "Person2DiscountValue": str(rate_per_night) if adults >= 2 else "0",
+            "Person3Rate": str(rate_per_night) if adults >= 3 else 0,
+            "Person3DiscountRate": 0, "Person3DiscountType": "None",
+            "Person3DiscountValue": str(rate_per_night) if adults >= 3 else 0,
+            "Person4Rate": str(rate_per_night) if adults >= 4 else 0,
+            "Person4DiscountRate": 0, "Person4DiscountType": "None",
+            "Person4DiscountValue": str(rate_per_night) if adults >= 4 else 0,
+            "Child1Rate": 0, "Child1DiscountRate": 0, "Child1DiscountType": "None", "Child1DiscountValue": 0,
+            "ExtraAdult1Rate": 0, "ExtraAdult1DiscountRate": 0,
+            "ExtraAdult1DiscountType": "None", "ExtraAdult1DiscountValue": 0,
+            "ExtraChild1Rate": 0, "ExtraChild1DiscountRate": 0,
+            "ExtraChild1DiscountType": "None", "ExtraChild1DiscountValue": 0,
+        })
+
+    # IDS SQL column is limited (~100 chars) — strict caps to avoid FCEX001 truncation error
+    instruction_parts = []
+    if main_client:
+        instruction_parts.append(main_client[:80].replace("\n"," ").replace("\r"," ").strip())
+    if main_rem:
+        instruction_parts.append(main_rem[:80].replace("\n"," ").replace("\r"," ").strip())
+    instruction_text = " - ".join(instruction_parts)[:100]
+    instructions = [{
+        "Instruction": instruction_text, "InstructionType": "Check-In",
+        "RecordCode": "Reservation", "OperationTYpe": "Create"
+    }] if instruction_text else []
+
+    detail = {
+        "LoginID": "jayeetra.uk@gmail.com", "PrimarySave": "FXFOM",
+        "IsFOMEnabled": True, "IsCRSEnabled": False,
+        "CRSPMSCUSTCODE": 10466, "FOMPMSCUSTCODE": 10466,
+        "AccountingDate_FX": arrival_dt.strftime("%Y-%m-%d"),
+        "ReservationNumber": 0, "ItenaryNumber": 0,
+        "BusinessSourceCode": "WEB", "CancellationRuleCode": "",
+        "CallerProfileCode": "", "CallerProfileName": "",
+        "CompanyCode": "", "CompanyName": "", "DeviceID": "",
+        "GroupCode": "", "GroupName": "", "GroupBlockID": 0,
+        "MarketSegmentCode": "LCOR", "Operation": "Create", "OriginCode": "EML",
+        "PMSCUSTCODE": 10466, "PaymentInstructionCode": "101",
+        "PaymodeClassificationID": "35", "PaymodeClassificationName": "Cash",
+        "ReservationChannelCode": "WEB", "ReservationClassification": "Regular",
+        "ReservationVoucher": "", "Source": "Web", "SourceCode": "", "SourceIP": "",
+        "SourceProgram": "Reservation", "TravelAgentCode": "", "TravelAgentName": "",
+        "ReservationStaus": "Expected",
+        "GuestCode": IDS_DEFAULT_GUEST_CODE,
+        "ContactPersonGuestCode": IDS_DEFAULT_GUEST_CODE,
+        "ThirdPartyGuestCode": "", "CheckinType": "12 Noon",
+        "BulkReservationRoomDetail": [{
+            "CutOffDays": 0, "InfantCount": 0, "RateCode": rate_code,
+            "ReconfirmType": "None", "RoomNumber": "", "RoomTypeCode": room_type,
+            "StayCardNumber": 1, "RoomReferenceNumber": 1, "WebRowNumber": 1,
+            "ReservationStatus": "Expected", "OperationTYpe": "Create",
+            "CutOffDate": None, "DepositDueDate": None, "DepositAmount": 0,
+            "IsRelease": False, "RateType": "B",
+            "RoomRateAmount": 0, "RoomRateAdultAmount": 0, "RoomRateChildAmount": 0,
+            "RoomRateExtraAdultAmount": 0, "RoomRateExtraChildAdultAmount": 0,
+            "ForeignRoomRateAmount": 0, "RoomRateTax": 0, "RoomRateAdultTax": 0,
+            "RoomRateChildTax": 0, "RoomRateExtraAdultTax": 0,
+            "RoomRateExtraChildAdultTax": 0, "ForeignRoomRateTax": 0,
+            "MealPlanAmount": 0, "MealPlanAdultAmount": 0, "MealPlanChildAmount": 0,
+            "MealPlanExtraAdultAmount": 0, "MealPlanExtraChildAdultAmount": 0,
+            "ForeignMealPlanAmount": 0, "MealPlanTax": 0, "MealPlanAdultTax": 0,
+            "MealPlanChildTax": 0, "MealPlanExtraAdultTax": 0,
+            "MealPlanExtraChildAdultTax": 0, "ForeignMealPlanTax": 0,
+            "AddOnAmount": 0, "AddOnAdultAmount": 0, "AddOnChildAmount": 0,
+            "AddOnExtraAdultAmount": 0, "AddOnExtraChildAdultAmount": 0,
+            "ForeignAddonAmount": 0, "AddOnTax": 0, "AddOnAdultTax": 0,
+            "AddOnChildTax": 0, "AddOnExtraAdultTax": 0,
+            "AddOnExtraChildAdultTax": 0, "ForeignAddonTax": 0,
+            "NetTotalAmount": 0, "TaxTotal": 0, "TotalAmount": 0,
+            "ForeignNetTotalAmount": 0, "ForeignTaxTotal": 0, "ForeignTotalAmount": 0,
+            "IsSingleLady": False, "IsTDFeeTaxApplicable": False, "IsDNM": False
+        }],
+        "BulkReservationGuestDetail": [{
+            "GuestFirstName": first_name,
+            "GuestLastName": last_name,
+            "GuestMiddleName": "",
+            "Title": "Mr.",
+            "Mobile": phone,
+            "RoomReferenceNumber": 1, "GuestReferenceNumber": 1,
+            "FXGuestCode": IDS_DEFAULT_GUEST_CODE, "AdultType": "Adult",
+            "ArrivalDateTime": arrival_str, "DepartureDateTime": depart_str,
+            "GuestType": "Main", "IsLeader": True,
+            "ReservationTypeCode": "CNF", "ReservationTypeName": "Confirm",
+            "SerialNumber": 1, "OperationTYpe": "Create",
+            "ReservationStatus": "Expected", "VisitPurPose": "", "CustomerType": "",
+            "ArrivalFlightNumber": "", "ArrivalFlightTime": 0,
+            "DepartureFlightNumber": "", "DepartureFlightTime": 0,
+            "ArrivalFrom": "", "ArrivalFromCity": "", "ArrivalLandingCardNo": "",
+            "ArrivalPointOfEntry": "", "ProceedingToCity": "", "StayExpiryDate": "",
+            "ProceedingTo": "", "ArrivaltoCountry": arrival_dt.strftime("%Y-%m-%d"),
+            "IsprimaryGuest": True, "PhoneTechType": "",
+            "FormattedInd": False, "DefaultInd": False,
+            "IsLoyaltyEnrolment": False, "LoyaltyEnrollAgentID": "",
+            "LoyaltyEnrollmentMode": "Expected", "IsGreenTaxApplicable": True
+        }],
+        "BulkReservationRateDetail": rate_details,
+        "BulkReservationRateCalculationDetail": [{
+            "RoomTypeCode": room_type, "RoomReferenceNumber": 1, "OperationTYpe": "Create",
+            "IsAddOnInclusive": False, "IsAddOnTaxesInclusive": False,
+            "IsAddonAmontInclusiveOfTaxes": True, "IsAllExclusive": False,
+            "IsAllInclusive": False, "IsCustom": True,
+            "IsExtraBedAddOnInclusive": False, "IsExtraBedAddOnTaxesInclusive": False,
+            "IsExtraBedMealPlanInclusive": True, "IsExtraBedMealPlanTaxesInclusive": True,
+            "IsExtraBedRateInclusive": True, "IsExtraBedRateTaxesInclusive": True,
+            "IsMealPlanInclusive": True, "IsMealPlanTaxesInclusive": True,
+            "IsPlanAmountInclusiveOfTaxes": True, "IsRateInclusive": True,
+            "IsRateTaxesInclusive": True
+        }],
+        "BulkReservationAddOnDetail": [{
+            "RoomReferenceNumber": 1, "RevenueCode": "104", "Type": "MealPlan",
+            "AdultCount": adults, "CalculationType": "", "ChildCount": 0,
+            "DiscountType": "None", "ExtraAdultCount": 0, "ExtraChildCount": 0,
+            "AdultDiscountRate": 0, "AdultDiscountType": "None", "AdultTotal": 0,
+            "AdultValueAfterDiscount": 0, "ChildDiscountRate": 0,
+            "ChildDiscountType": "None", "ChildTotal": 0, "ChildValueAfterDiscount": 0,
+            "ExtraChildDiscRate": 0, "ExtraChildDiscountType": "None", "ExtraChildRate": 0,
+            "ExtraChildDiscountValue": 0, "ExtraAdultDiscountRate": 0,
+            "ExtraAdultDiscountType": "None", "ExtraAdultRate": 0, "ExtraAdultDiscountValue": 0,
+            "FlatDiscountRate": 0, "FlatDiscountType": "None", "FlatTotal": 0,
+            "FlatValueAfterDiscount": 0, "AddOnCode": "104", "PostingMethod": "",
+            "PostingRythm": "PostEveryNight", "PostEveryNightCount": 0,
+            "StartOnNightCount": 0, "CustomPostingDays": 0, "ApplicableDay": 0,
+            "DiscountUpsellType": "None", "DiscountUpsellOn": "",
+            "TaxStructureCode": "", "IsTaxInclusive": False,
+            "OperationTYpe": "Create", "AddOnAmount": 0, "AddOntaxAmount": 0,
+            "AddOnDiscountAmount": 0, "AddOnDate": arrival_dt.strftime("%Y-%m-%d"),
+            "Description": "",
+            "Person1Rate": 0, "Person1DiscountRate": 0,
+            "Person1DiscountType": "None", "Person1DiscountValue": 0,
+            "Person2Rate": 0, "Person2DiscountRate": 0,
+            "Person2DiscountType": "None", "Person2DiscountValue": 0,
+            "Person3Rate": 0, "Person3DiscountRate": 0,
+            "Person3DiscountType": "None", "Person3DiscountValue": 0,
+            "Person4Rate": 0, "Person4DiscountRate": 0,
+            "Person4DiscountType": "None", "Person4DiscountValue": 0,
+            "IsBreakfast": meal_plan.upper() == "BB",
+            "IsLunch": False, "IsDinner": False
+        }],
+        "BulkReservationInstructionDetail": instructions,
+        "BulkReservationPickupDropDetail": [], "BulkReservationDocumentDetail": [],
+        "BulkGuestPickupDropDetail": [], "BulkReservationGuestTraceDetail": [],
+        "NameonCard": "", "CardNumber": "", "ExpiryDate": "", "Other": "",
+        "Cardtype": "", "ConnectionString": "",
+        "PrimarySourceCode": "", "PrimarySourceName": "",
+        "SecondarySourceCode": "", "SecondarySourceName": "",
+        "PartnerCompanyProfileId": "", "PartnerTravelAgentProfileId": "",
+        "Instruction": "", "DHReservationNumber": "", "PrintRateonVoucher": True,
+        "BulkCalculatedRate": total_nett, "BulkCalculatedMealPlan": 0,
+        "BulkCalculatedAddon": 0, "BulkCalculatedTax": total_tax,
+        "BulkCalculatedTotal": total_amount,
+        "IsCancel": False, "AuthorizedBy": "", "ReasonCode": "",
+        "CallerCode": "", "CallerContactNumber": "",
+        "IsItineraryReservation": False, "ReservationMode": "FXFOM",
+        "IsReinstated": False, "ReInstateType": "", "ReInstatedReservationNumber": 0,
+        "IsCopy": False, "IsGroupBlock": False,
+        "RoomAllocationDayWise": [], "BulkReservationTraceDetail": [],
+        "PartnerReservationNumber": "0", "IsOTAReservation": False,
+        "SabreGuaranteeType": "", "SabreGuaranteeCode": "", "SabreCardCode": "",
+        "SabreDepositAmount": 0, "GuranteeDescriptionText": "", "CardSeriesCode": "",
+        "SabreOffsetPeriod": "", "SabrePaymentType": 0, "SabreCreatedBy": "",
+        "SabreCreatedDateTime": "", "SabreModifiedDateTime": "", "SabreModifiedBy": "",
+        "SabreRequesterType": "", "SabreBookingChannelType": "",
+        "SabreCRSCancellationNumber": "", "SabreCancellationCode": "",
+        "SabreCancellationDescription": "", "SabreCancelledBy": "",
+        "FXInterfaceSyncReConfirmation": False, "OTASource": "",
+        "LoyaltyMembershipNumber": "", "LoyaltyCardName": "",
+        "ReservationPurposeofVisit": "",
+        "BulkGuestInstructionDetail": [], "IsCreateReservation": True,
+        "BulkReservationRoomFeatureDetail": [],
+        "RoomRateAmount": total_nett, "RoomRateTax": total_tax,
+        "MealPlanAmount": 0, "MealPlanTax": 0, "AddOnAmount": 0, "AddOnTax": 0,
+        "NettAmount": total_nett, "NettTax": total_tax, "TotalAmount": total_amount,
+        "ForeignRoomRateAmount": total_nett, "ForeignRoomRateTax": total_tax,
+        "ForeignMealPlanAmount": 0, "ForeignMealPlanTax": 0,
+        "ForeignAddonAmount": 0, "ForeignAddonTax": 0,
+        "ForeignNettAmount": total_nett, "ForeignNettTax": total_tax,
+        "ForeignTotalAmount": total_amount,
+        "CardauthorizationCode": "", "CardauthorizationAmount": 0,
+        "loyaltyGuestCode": "", "TravelPhoneTechType": "",
+        "TravelFormattedInd": False, "TravelDefaultInd": False,
+        "CompanyPhoneTechType": "", "CompanyFormattedInd": False,
+        "CompanyDefaultInd": False, "CMChainCode": "", "IsCreditCardMasked": False,
+        "IsChanelReservation": False, "IsSaberReservation": False,
+        "IsF65Reservation": False, "PaymentGateWayType": "",
+        "PaymentLinkCutOffDateTime": "", "MemberShipType": "",
+        "GroupBlockRateReservations": "", "IsWalkin": False,
+        "RateRestrictionAudthorizedby": "", "TurnAwayRemark": "",
+        "TurnAwayReasonCode": "", "TurnAwayType": "Hotel"
+    }
+    return {"PrimarySave": "FXFOM", "IsFOMEnabled": True, "IsCRSEnabled": False,
+            "BulkReservationDetail": [detail]}
+
+def ids_create_guest(r, token):
+    """
+    Call SaveGuestBasicInfo to create a guest profile in IDS.
+    Returns the guest `code` string (e.g. "7966") on success, or None on failure.
+    """
+    import requests as _req
+        # ids_build_payload already sets r["firstname"] / r["lastname"] via ids_parse_name()
+    # but ids_create_guest may be called before that mutation — so we parse independently.
+    full = str(r.get("guest_name") or "").strip()
+    first_name = str(r.get("_first_name") or "").strip()
+    last_name  = str(r.get("_last_name")  or "").strip()
+
+    if not first_name or not last_name:
+        # ids_parse_name logic: "Last, First" or "First Last"
+        if "," in full:
+            parts = [p.strip().title() for p in full.split(",", 1)]
+            first_name = parts[1] if len(parts) > 1 else "Guest"
+            last_name  = parts[0]
+        else:
+            parts = full.split()
+            if len(parts) >= 2:
+                first_name = " ".join(parts[1:]).title()
+                last_name  = parts[0].title()
+            elif len(parts) == 1:
+                first_name = parts[0].title()
+                last_name  = parts[0].title()
+            else:
+                first_name = "Guest"
+                last_name  = "Guest"
+
+    payload = {
+        "Mode": "FXFOM",
+        "pmsVendor": "F65",
+        "IsGSTRegistered": False,
+        "PANCardNumber": "",
+        "LinkedProfiles": [],
+        "GstregistrationNo": "",
+        "PmsCustCode": 10466,
+        "NationalityID": 1,
+        "CreatedBy": "jayeetra.uk@gmail.com",
+        "ModifiedBy": "jayeetra.uk@gmail.com",
+        "FirstName": first_name,
+        "MiddleName": "",
+        "LastName": last_name,
+        "FirstNameMultilingual": "",
+        "MiddleNameMultilingual": "",
+        "LastNameMultilingual": "",
+        "FullNameMultilingual": "  ",
+        "IsIncognito": False,
+        "IncognitoFirstName": "",
+        "IncognitoLastName": "",
+        "BlacklistDate": None,
+        "Gender": "Male",
+        "Email": "",
+        "Salutation": "",
+        "AnniversaryDate": None,
+        "Classification": "",
+        "BirthDate": None,
+        "Title": "Mr.",
+        "ISDCode": "",
+        "Mobile": str(r.get("contact_phone") or "").strip(),
+        "CompanyCode": "",
+        "GuestStatusID": "",
+        "GuestStatusCode": "",
+        "DesignationName": "",
+        "IsReservationLetterAllowed": False,
+        "IsReservationPhoneAllowed": False,
+        "IsReservationMailAllowed": False,
+        "IsReservationSMSAllowed": False,
+        "IsInvoiceLetterAllowed": False,
+        "IsInvoicePhoneAllowed": False,
+        "IsInvoiceSMSAllowed": False,
+        "IsInvoiceMailAllowed": False,
+        "IsAdvtLetterAllowed": False,
+        "IsAdvtPhoneAllowed": False,
+        "IsAdvtMailAllowed": False,
+        "IsAdvtSMSAllowed": False,
+        "FilePath": "",
+        "FileName": "",
+        "IsDefaultProfile": True,
+        "ProfileName": "Default",
+        "MedicalDisorderCode": "",
+        "PreferredLanguages": "",
+        "GuestAddresses": [
+            {"Type": "Permanent",   "Address": "", "State": "", "Country": "", "City": "", "Zip": "",
+             "AddressMultilingual": "", "StateMultilingual": "", "CountryMultilingual": "",
+             "CityMultilingual": "", "ZipMultilingual": ""},
+            {"Type": "Residential", "Address": "", "State": "", "Country": "", "City": "", "Zip": "",
+             "AddressMultilingual": "", "StateMultilingual": "", "CountryMultilingual": "",
+             "CityMultilingual": "", "ZipMultilingual": ""},
+            {"Type": "Business",    "Address": "", "State": "", "Country": "", "City": "", "Zip": "",
+             "AddressMultilingual": "", "StateMultilingual": "", "CountryMultilingual": "",
+             "CityMultilingual": "", "ZipMultilingual": ""},
+        ],
+        "LoginID": "jayeetra.uk@gmail.com",
+        "PropertyGroupCode": "42938",
+    }
+
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    try:
+        resp = _req.post(IDS_GUEST_PROFILE_URL, headers=headers, json=payload, timeout=30)
+        rj = resp.json()
+        # Response → Data → code
+        if isinstance(rj, dict):
+            status = str(rj.get("Response") or rj.get("Status") or "").strip()
+            data   = rj.get("Data") or {}
+            if isinstance(data, dict):
+                code = str(data.get("code") or "").strip()
+                if code and code != "0":
+                    return code, first_name, last_name
+    except Exception:
+        pass
+    return None, first_name, last_name
+def ids_send_single(r, token):
+    """Send one reservation to IDS.
+    Returns (success: bool, ids_reservation_no: str, http_status: int, full_response: dict/str).
+    IDS returns 200 even on logical errors — we check the response body for error flags.
+    """
+    import requests as _req, json as _json
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    # Step 1: Create guest profile in IDS and retrieve the assigned guest code
+    guest_code, first_name, last_name = ids_create_guest(r, token)
+    guest_code = guest_code or IDS_DEFAULT_GUEST_CODE
+    # Step 2: Build reservation payload and inject the real guest code
+    payload = ids_build_payload(r)
+    detail  = payload["BulkReservationDetail"][0]
+    detail["GuestCode"]              = guest_code
+    detail["ContactPersonGuestCode"] = guest_code
+    for gd in detail.get("BulkReservationGuestDetail", []):
+        gd["FXGuestCode"]      = guest_code
+        gd["GuestFirstName"]   = r.get("_first_name") or first_name
+        gd["GuestLastName"]    = r.get("_last_name")  or last_name
+    # Patch FXGuestCode inside the guest detail list
+    for gd in detail.get("BulkReservationGuestDetail", []):
+        gd["FXGuestCode"] = guest_code
+    try:
+        resp = _req.post(IDS_API_URL, headers=headers, json=payload, timeout=30)
+        http_code = resp.status_code
+        try:
+            rj = resp.json()
+        except Exception:
+            rj = resp.text
+
+        # IDS always returns HTTP 200 — must inspect the body for real success/failure
+        ids_res_no = ""
+        success = False
+        if http_code == 200:
+            if isinstance(rj, dict):
+                # IDS failure response: {"Status":"Failure","StatusCode":"FCEX001","StatusDescription":"..."}
+                ids_status      = str(rj.get("Status") or "").strip().lower()
+                ids_status_desc = str(rj.get("StatusDescription") or "")
+                ids_status_code = str(rj.get("StatusCode") or "")
+
+                # Extract from actual IDS response structure
+                # Response → ReservationResponse[0] → Reservation / RoomReservation
+                ids_res_no      = ""
+                ids_room_res_no = ""
+                try:
+                    resp_data = rj.get("Response") or {}
+                    res_list  = resp_data.get("ReservationResponse") or []
+                    if res_list:
+                        first = res_list[0]
+                        ids_res_no      = str(first.get("Reservation") or "")
+                        ids_room_res_no = str(first.get("RoomReservation") or "")
+                except Exception:
+                    ids_res_no = ""
+                # Fallback for other IDS response formats
+                if not ids_res_no:
+                    ids_res_no = str(
+                        rj.get("ReservationNumber") or
+                        rj.get("reservationNumber") or
+                        rj.get("ReservationNo") or ""
+                    )
+
+                if ids_status == "success" or ids_status_code.startswith("FCS"):
+                    success = True   # explicit IDS success
+                elif ids_status == "failure" or ids_status_code.startswith("FCE"):
+                    success = False  # explicit IDS failure — show StatusDescription
+                else:
+                    # No Status field — check error flags
+                    error_flag = rj.get("IsError") or rj.get("isError") or rj.get("HasError")
+                    success = not bool(error_flag)
+            elif isinstance(rj, list) and len(rj) > 0:
+                success = True
+            else:
+                success = bool(rj)
+
+        _rid = r.get("id")
+        if _rid:
+            try:
+                import pymongo
+                from bson.objectid import ObjectId
+                from datetime import datetime as _dt_log
+                mclient = pymongo.MongoClient("mongodb+srv://jayeetrab:mGhnfdMwFeFZwx6L@cohortconnect.lcpylgn.mongodb.net/")
+                db_mongo = mclient["Reservations"]
+                
+                db_mongo.reservations.update_one(
+                    {"_id": ObjectId(_rid)},
+                    {"$set": {
+                        "ids_synced": success,
+                        "ids_reservation_no": ids_res_no,
+                        "ids_room_reservation_no": ids_room_res_no,
+                        "ids_last_sync": _dt_log.now().isoformat(),
+                        "ids_http_code": http_code
+                    }}
+                )
+                
+                db_mongo.ids_sync_logs.insert_one({
+                    "reservation_id": _rid,
+                    "guest_name": f"{r.get('_first_name', '')} {r.get('_last_name', '')}".strip(),
+                    "success": success,
+                    "http_code": http_code,
+                    "ids_reservation_no": ids_res_no,
+                    "response": rj,
+                    "timestamp": _dt_log.now()
+                })
+            except Exception as db_e:
+                import logging
+                logging.error(f"Failed to update MongoDB sync logs: {db_e}")
+
+        return success, ids_res_no, ids_room_res_no, http_code, rj
+
+    except Exception as e:
+        return False, "", "", 0, str(e)
+
+
+def page_ids_sync():
+    import io as _io, json as _json
+
+    st.header("📤 IDS Next — Reservation Sync")
+    st.caption("Push reservations from your database directly into IDS Next.")
+
+    # ── Sync History Banner ────────────────────────────────────────
+    synced = st.session_state.get("ids_synced", {})
+    if synced:
+        with st.expander(f"🟢 {len(synced)} reservation(s) synced this session — click to view history"):
+            import json as _jh
+            history_rows = []
+            for rid, info in synced.items():
+                history_rows.append({
+                    "DB ID":       rid,
+                    "IDS Res No":  info.get("ids_res_no") or "—",
+                    "Room Res No": info.get("ids_room_res_no") or "—",
+                    "HTTP":        info.get("http"),
+                    "Synced At":   info.get("synced_at"),
+                    "Response (preview)": str(info.get("response",""))[:120],
+                })
+            st.dataframe(pd.DataFrame(history_rows), use_container_width=True)
+
+    # ── Bearer token ──────────────────────────────────────────────
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("**🔐 IDS API Token**")
+        ids_token = st.text_input("Bearer Token", type="password",
+                                  key="ids_bearer_token",
+                                  placeholder="Paste token here")
+        if ids_token:
+            st.success("Token set ✓")
+        else:
+            st.warning("Token required to send")
+
+    if "ids_results" not in st.session_state:
+        st.session_state.ids_results = []
+
+    def clear_ids_rows():
+        if "ids_loaded_rows" in st.session_state:
+            st.session_state.ids_loaded_rows = []
+
+    # ── Step 1: Date range ────────────────────────────────────────
+    st.subheader("① Select Date Range")
+    range_mode = st.radio(
+        "Range type",
+        ["Single Day", "This Month", "Custom Range"],
+        horizontal=True,
+        key="ids_range_mode",
+        on_change=clear_ids_rows
+    )
+
+    today = date.today()
+    if range_mode == "Single Day":
+        selected_day = st.date_input("Arrival date", value=today, key="ids_single_day", on_change=clear_ids_rows)
+        date_from, date_to = selected_day, selected_day
+    elif range_mode == "This Month":
+        first_of_month = today.replace(day=1)
+        import calendar
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        last_of_month = today.replace(day=last_day)
+        date_from, date_to = first_of_month, last_of_month
+        st.info(f"Range: **{date_from}** → **{date_to}**")
+    else:
+        col_a, col_b = st.columns(2)
+        with col_a:
+            date_from = st.date_input("From", value=today, key="ids_date_from", on_change=clear_ids_rows)
+        with col_b:
+            date_to = st.date_input("To", value=today + timedelta(days=7), key="ids_date_to", on_change=clear_ids_rows)
+
+    # ── Step 2: Load reservations ─────────────────────────────────
+    st.markdown("---")
+    st.subheader("② Review & Edit Reservations")
+
+    if st.button("🔍 Load Reservations", type="primary", use_container_width=False):
+        import pymongo
+        mongo_client = pymongo.MongoClient("mongodb+srv://jayeetrab:mGhnfdMwFeFZwx6L@cohortconnect.lcpylgn.mongodb.net/")
+        db = mongo_client["Reservations"]
+        
+        str_from = str(date_from)
+        str_to = str(date_to)
+        
+        cursor = db.reservations.find({
+            "arrival_date": {"$gte": str_from, "$lte": str_to},
+            "reservation_status": {"$not": {"$regex": "(?i)cancelled"}}
+        }).sort([("arrival_date", 1), ("guest_name", 1)])
+        
+        rows = list(cursor)
+        for r in rows:
+            r["id"] = str(r.get("_id", ""))
+
+        if not rows:
+            st.warning("No confirmed reservations found for this date range.")
+            st.session_state.ids_loaded_rows = []
+        else:
+            # Add helper fields
+            for r in rows:
+                r["_ids_rate"] = 100.0
+                r["_ids_selected"] = True
+                fn, ln = ids_parse_name(r.get("guest_name") or "")
+                r["_first_name"] = fn
+                r["_last_name"]  = ln
+                r["_ids_room_type"] = ids_map_room_type(r.get("room_type_code") or "")
+                r["_ids_rate_code"], _ = ids_get_rate_info(r.get("meal_plan") or "RO")
+            st.session_state.ids_loaded_rows = rows
+            st.success(f"Loaded **{len(rows)}** reservation(s)")
+
+    rows = st.session_state.get("ids_loaded_rows", [])
+
+    if rows:
+        st.caption(f"Showing {len(rows)} reservation(s) — tick to include, expand to edit before sending.")
+
+        # Select all / deselect all
+        col_sel_all, col_desel_all, col_count = st.columns([1, 1, 3])
+        if col_sel_all.button("✅ Select All", use_container_width=True):
+            for r in rows:
+                r["_ids_selected"] = True
+        if col_desel_all.button("☐ Deselect All", use_container_width=True):
+            for r in rows:
+                r["_ids_selected"] = False
+
+        selected_count = sum(1 for r in rows if r.get("_ids_selected"))
+        col_count.markdown(f"**{selected_count} selected** out of {len(rows)}")
+
+        st.markdown("---")
+
+        # Reservation cards
+        for idx, r in enumerate(rows):
+            fn, ln = r["_first_name"], r["_last_name"]
+            arrival = r.get("arrival_date", "")
+            depart  = r.get("depart_date", "")
+            nights  = r.get("nights", 1)
+            adults  = r.get("adults", 1)
+            rt      = r["_ids_room_type"]
+            rc      = r["_ids_rate_code"]
+            mp      = r.get("meal_plan") or "RO"
+            mp_display = "Bed and Breakfast" if str(mp).strip().upper() == "BB" else "Room Only"
+            client  = r.get("main_client") or ""
+            status  = (r.get("reservation_status") or "CONFIRMED").upper()
+
+            card_label = f"{'✅' if r['_ids_selected'] else '☐'}  {fn} {ln}  ·  {arrival}  ·  {rt}  ·  {mp_display}  ·  {adults} adult(s)  ·  {nights} night(s)"
+            if status == "CANCELLED":
+                card_label = f"❌ {card_label} [CANCELLED]"
+
+            with st.expander(card_label, expanded=False):
+                c_sel, c_status = st.columns([1, 3])
+                with c_sel:
+                    r["_ids_selected"] = st.checkbox(
+                        "Include in sync",
+                        value=r["_ids_selected"],
+                        key=f"ids_sel_{idx}"
+                    )
+                with c_status:
+                    st.caption(f"Status: {status}  ·  Channel: {r.get('channel') or '—'}  ·  Client: {client}")
+
+                st.markdown("**Edit before sending:**")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    r["_first_name"] = st.text_input("First name", value=fn, key=f"ids_fn_{idx}")
+                    r["_last_name"]  = st.text_input("Last name",  value=ln, key=f"ids_ln_{idx}")
+                with col2:
+                    r["arrival_date"] = str(st.date_input(
+                        "Arrival", value=pd.to_datetime(arrival).date(), key=f"ids_arr_{idx}"))
+                    r["depart_date"]  = str(st.date_input(
+                        "Departure", value=pd.to_datetime(depart).date(), key=f"ids_dep_{idx}"))
+                with col3:
+                    r["adults"] = st.number_input("Adults", min_value=1,
+                                                   value=int(adults), key=f"ids_ad_{idx}")
+                    r["_ids_rate"] = st.number_input("Rate/night (£)", min_value=0.0,
+                                                      value=float(r.get("_ids_rate") or 100.0),
+                                                      step=10.0, key=f"ids_rate_{idx}")
+
+                col4, col5 = st.columns(2)
+                with col4:
+                    mp_options = ["Room Only", "Bed and Breakfast"]
+                    mp_idx = 1 if str(mp).strip().upper() == "BB" else 0
+                    new_mp_display = st.selectbox("Meal plan", mp_options,
+                                          index=mp_idx, key=f"ids_mp_{idx}")
+                    actual_mp = "BB" if new_mp_display == "Bed and Breakfast" else "RO"
+                    r["meal_plan"] = actual_mp
+                    r["_ids_rate_code"], _ = ids_get_rate_info(actual_mp)
+
+                    rt_options = sorted(set(IDS_ROOM_TYPE_MAP.values()))
+                    rt_idx = rt_options.index(rt) if rt in rt_options else 0
+                    r["_ids_room_type"] = st.selectbox("Room type (IDS)", rt_options,
+                                                        index=rt_idx, key=f"ids_rt_{idx}")
+                with col5:
+                    r["main_remark"] = st.text_area(
+                        "Instruction / Remark",
+                        value=r.get("main_remark") or "",
+                        height=80, key=f"ids_rem_{idx}"
+                    )
+
+                # Override room_type_code so payload uses edited value
+                r["room_type_code"] = r["_ids_room_type"]
+
+                # Single send button per card
+                if st.button(f"📤 Send to IDS",
+                              key=f"ids_send_one_{idx}", use_container_width=True,
+                              type="primary"):
+                    if not ids_token:
+                        st.error("⚠️ Please enter your Bearer Token in the sidebar first.")
+                    else:
+                        with st.spinner(f"Sending {r.get('_first_name','')} {r.get('_last_name','')} to IDS…"):
+                            ok, ids_res_no, ids_room_res_no, http_code, resp_body = ids_send_single(r, ids_token)
+                        import json as _j
+                        resp_str = _j.dumps(resp_body, indent=2) if isinstance(resp_body, dict) else str(resp_body)
+                        if ok:
+                            st.session_state.setdefault("ids_synced", {})[str(r.get("id",""))] = {
+                                "ids_res_no": ids_res_no,
+                                "http": http_code,
+                                "synced_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "response": resp_str[:500],
+                            }
+                            st.success(f"✅ Reservation created in IDS!")
+                            c1, c2, c3, c4 = st.columns(4)
+                            c1.metric("HTTP Status",     http_code)
+                            c2.metric("IDS Res No",      ids_res_no or "—")
+                            c3.metric("Room Res No",     ids_room_res_no or "—")
+                            c4.metric("Status",          "SUCCESS")
+                            st.code(resp_str, language="json")
+                        else:
+                            err_code = resp_body.get("StatusCode","") if isinstance(resp_body, dict) else ""
+                            err_desc = resp_body.get("StatusDescription","") if isinstance(resp_body, dict) else str(resp_body)
+                            st.error(f"❌ Reservation FAILED in IDS")
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("HTTP Status", http_code)
+                            c2.metric("IDS Error Code", err_code or "—")
+                            c3.metric("Status", "FAILED")
+                            st.warning(f"**Error Description:** {err_desc}")
+                            st.code(resp_str, language="json")
+
+                # Show if already synced this session
+                synced_info = st.session_state.get("ids_synced", {}).get(str(r.get("id","")))
+                if synced_info:
+                    st.info(f"🟢 Already synced at {synced_info['synced_at']} | IDS Res No: **{synced_info['ids_res_no'] or '—'}** | Room Res No: **{synced_info.get('ids_room_res_no') or '—'}** | HTTP {synced_info['http']}")
+
+        # ── Step 3: Bulk send ──────────────────────────────────────
+        st.markdown("---")
+        st.subheader("③ Send to IDS")
+
+        selected_rows = [r for r in rows if r.get("_ids_selected")]
+        st.markdown(f"**{len(selected_rows)} reservation(s) selected** will be sent.")
+
+        if st.button(f"🚀 Send {len(selected_rows)} Reservation(s) to IDS",
+                     type="primary", use_container_width=True, disabled=(len(selected_rows) == 0)):
+            if not ids_token:
+                st.error("Please enter your Bearer Token in the sidebar first.")
+            else:
+                results = []
+                progress = st.progress(0, text="Starting…")
+                log_box  = st.container()
+                total    = len(selected_rows)
+
+                import json as _j
+                for i, r in enumerate(selected_rows):
+                    fn = r["_first_name"]
+                    ln = r["_last_name"]
+                    progress.progress(i / total,
+                                      text=f"Sending {i+1}/{total}: {fn} {ln}")
+
+                    ok, ids_res_no, ids_room_res_no, http_code, resp_body = ids_send_single(r, ids_token)
+                    resp_str = _j.dumps(resp_body, indent=2) if isinstance(resp_body, dict) else str(resp_body)
+
+                    with log_box:
+                        if ok:
+                            st.success(f"✅ {fn} {ln}  ·  {r.get('arrival_date')}  ·  HTTP {http_code}  ·  IDS Res No: **{ids_res_no or '—'}**  ·  Room Res No: **{ids_room_res_no or '—'}**")
+                            st.code(resp_str[:800], language="json")
+                        else:
+                            err_code = resp_body.get("StatusCode","") if isinstance(resp_body, dict) else ""
+                            err_desc = resp_body.get("StatusDescription","") if isinstance(resp_body, dict) else str(resp_body)
+                            st.error(f"❌ {fn} {ln}  ·  {r.get('arrival_date')}  ·  HTTP {http_code}  ·  {err_code}")
+                            st.warning(f"**Reason:** {err_desc[:300]}")
+                            st.code(resp_str[:800], language="json")
+
+                    # Store synced state
+                    st.session_state.setdefault("ids_synced", {})[str(r.get("id",""))] = {
+                        "ids_res_no":      ids_res_no,
+                        "ids_room_res_no": ids_room_res_no,
+                        "http":            http_code,
+                        "synced_at":       datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "response":        resp_str[:500],
+                    }
+
+                    results.append({
+                        "Guest":           f"{fn} {ln}",
+                        "Arrival":         r.get("arrival_date"),
+                        "Departure":       r.get("depart_date"),
+                        "Room Type":       r["_ids_room_type"],
+                        "Rate Code":       r["_ids_rate_code"],
+                        "Meal Plan":       r.get("meal_plan"),
+                        "Adults":          r.get("adults"),
+                        "Rate/Night (£)":  r.get("_ids_rate"),
+                        "HTTP Status":     http_code,
+                        "IDS Res No":      ids_res_no,
+                        "Room Res No":     ids_room_res_no,
+                        "Status":          "SUCCESS" if ok else "FAILED",
+                        "Full Response":   resp_str[:500],
+                        "Synced At":       datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    })
+                    time.sleep(0.4)
+
+                progress.progress(1.0, text="Done!")
+                st.session_state.ids_results = results
+
+                ok_count  = sum(1 for r in results if r["Status"] == "SUCCESS")
+                bad_count = len(results) - ok_count
+                c1, c2, c3 = st.columns(3)
+                c1.metric("✅ Sent",   ok_count)
+                c2.metric("❌ Failed", bad_count)
+                c3.metric("📋 Total",  len(results))
+
+    # ── Download log ───────────────────────────────────────────────
+    if st.session_state.ids_results:
+        st.markdown("---")
+        log_df  = pd.DataFrame(st.session_state.ids_results)
+        csv_buf = _io.BytesIO()
+        log_df.to_csv(csv_buf, index=False)
+        csv_buf.seek(0)
+        st.download_button(
+            "⬇️ Download Results Log (CSV)",
+            data=csv_buf,
+            file_name=f"ids_sync_{datetime.today().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+
+def page_admin_upload():
+    st.header("Admin: Upload Database Data")
+    
+    # Add password protection
+    password = st.text_input("Admin Password", type="password")
+    if password != st.secrets.get("ADMIN_PASSWORD", "Raddison2025#"):
+        st.warning("Enter admin password to access this page")
+        return
+    
+    tab1, tab2, tab3 = st.tabs(["Upload Full DB", "Upload Stays CSV", "Download DB"])
+    
+    with tab1:
+        st.subheader("Replace Entire Database")
+        st.warning("⚠️ This will replace the entire database file")
+        
+        uploaded_db = st.file_uploader("Upload SQLite database (.db)", type=['db'], key="db_upload")
+        
+        if uploaded_db:
+            st.info(f"File size: {uploaded_db.size / 1024:.1f} KB")
+            
+            if st.button("Replace Database", type="primary"):
+                try:
+                    # Backup current DB first
+                    import shutil
+                    backup_path = DBPATH + ".backup"
+                    shutil.copy2(DBPATH, backup_path)
+                    
+                    # Replace with uploaded
+                    with open(DBPATH, 'wb') as f:
+                        f.write(uploaded_db.getbuffer())
+                    
+                    st.success("✅ Database replaced successfully!")
+                    st.info("Reloading app...")
+                    time.sleep(1)
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+    
+    with tab2:
+        st.subheader("Import Stays from CSV")
+        
+        uploaded_csv = st.file_uploader("Upload stays CSV", type=['csv'], key="csv_upload")
+        
+        if uploaded_csv:
+            import pandas as pd
+            df = pd.read_csv(uploaded_csv)
+            
+            st.write(f"**Preview:** {len(df)} rows")
+            st.dataframe(df.head(10))
+            
+            st.write("**Expected columns:** `id, reservation_id, room_number, status, checkin_planned, checkout_planned, checkin_actual, checkout_actual, parking_space, parking_plate, parking_notes`")
+            
+            if st.button("Import Stays", type="primary"):
+                try:
+                    with st.spinner("Importing stays..."):
+                        count = 0
+                        for _, row in df.iterrows():
+                            db.execute(
+                                """
+                                INSERT OR REPLACE INTO stays (
+                                    id, reservation_id, room_number, status,
+                                    checkin_planned, checkout_planned,
+                                    checkin_actual, checkout_actual,
+                                    parking_space, parking_plate, parking_notes
+                                )
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    row.get("id"),
+                                    row.get("reservation_id"),
+                                    row.get("room_number"),
+                                    row.get("status", "CHECKED_IN"),
+                                    row.get("checkin_planned"),
+                                    row.get("checkout_planned"),
+                                    row.get("checkin_actual"),
+                                    row.get("checkout_actual"),
+                                    row.get("parking_space", ""),
+                                    row.get("parking_plate", ""),
+                                    row.get("parking_notes", ""),
+                                ),
+                            )
+                            count += 1
+                        
+                        st.success(f"✅ Imported {count} stays")
+                    
+                    # 1. Update room statuses based on stays
+                    with st.spinner("Syncing room statuses..."):
+                        db.sync_room_status_from_stays()
+                        st.success("✅ Room statuses synced")
+                    
+                    # 2. Verify linkage between stays and reservations
+                    with st.spinner("Verifying data linkage..."):
+                        orphaned = db.fetch_one("""
+                            SELECT COUNT(*) as cnt FROM stays s
+                            LEFT JOIN reservations r ON s.reservation_id = r.id
+                            WHERE r.id IS NULL
+                        """)
+                        
+                        if orphaned['cnt'] > 0:
+                            st.warning(f"⚠️ Found {orphaned['cnt']} stays without matching reservations")
+                        else:
+                            st.success("✅ All stays linked to reservations")
+                    
+                    # 3. Show summary by status
+                    with st.spinner("Verifying data..."):
+                        checked_in = db.fetch_one(
+                            "SELECT COUNT(*) as cnt FROM stays WHERE status = 'CHECKED_IN'"
+                        )
+                        checked_out = db.fetch_one(
+                            "SELECT COUNT(*) as cnt FROM stays WHERE status = 'CHECKED_OUT'"
+                        )
+                        occupied = db.fetch_one(
+                            "SELECT COUNT(*) as cnt FROM rooms WHERE status = 'OCCUPIED'"
+                        )
+                        
+                        # Check departures for today
+                        today = date.today()
+                        departures_today = db.fetch_one(
+                            """
+                            SELECT COUNT(*) as cnt
+                            FROM reservations r
+                            LEFT JOIN stays s ON s.reservation_id = r.id
+                            WHERE date(r.depart_date) = date(?)
+                            AND (s.status IS NULL OR s.status != 'CHECKED_OUT')
+                            """,
+                            (today.isoformat(),)
+                        )
+                        
+                        st.info(f"""
+                        **Data Summary:**
+                        - Checked-in guests: {checked_in['cnt']}
+                        - Already checked out: {checked_out['cnt']}
+                        - Occupied rooms: {occupied['cnt']}
+                        - Departures today: {departures_today['cnt']}
+                        """)
+                    
+                    st.success("🎉 Stays imported successfully!")
+                    time.sleep(2)
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error importing: {str(e)}")
+                    st.exception(e)
+    with tab3:
+        st.subheader("Download Live Database")
+        st.info("Downloads a ZIP file containing the database file and CSV exports of all tables")
+        
+        if st.button("Generate Download Package", type="primary"):
+            try:
+                import zipfile
+                import io
+                import pandas as pd
+                
+                with st.spinner("Creating download package..."):
+                    zip_buffer = io.BytesIO()
+                    
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        # 1. Add database file
+                        with open(DBPATH, 'rb') as db_file:
+                            zip_file.writestr("hotelfo.db", db_file.read())
+                        
+                        # 2. Export tables to CSV
+                        tables = ['reservations', 'stays', 'rooms', 'no_shows', 'spare_rooms', 'tasks']
+                        
+                        for table_name in tables:
+                            try:
+                                rows = db.fetch_all(f"SELECT * FROM {table_name}")
+                                
+                                if rows:
+                                    df = pd.DataFrame([dict(row) for row in rows])
+                                    csv_buffer = io.StringIO()
+                                    df.to_csv(csv_buffer, index=False)
+                                    zip_file.writestr(f"{table_name}.csv", csv_buffer.getvalue())
+                                    st.success(f"✅ Exported {table_name}: {len(rows)} rows")
+                                else:
+                                    st.info(f"ℹ️ {table_name}: empty")
+                                    
+                            except Exception as e:
+                                st.warning(f"⚠️ Could not export {table_name}: {str(e)}")
+                    
+                    zip_buffer.seek(0)
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"hotelfo_backup_{timestamp}.zip"
+                    
+                    st.download_button(
+                        label="⬇️ Download Database Package",
+                        data=zip_buffer,
+                        file_name=filename,
+                        mime="application/zip",
+                        use_container_width=True,
+                    )
+                    
+                    st.success("🎉 Download package ready!")
+                    
+            except Exception as e:
+                st.error(f"❌ Error creating download: {str(e)}")
+                st.exception(e)
+        st.divider()
+        st.subheader("Database Viewer")
+        page_db_viewer()
+
+
+
+def main():
+    st.set_page_config(
+        page_title="Not-Radisson",
+        page_icon="🏨",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+    menu_options = {
+    "Arrivals": page_arrivals,
+    "In-House List": page_inhouse_list,
+    "Checkout List": page_checkout_list,
+    # ... other pages
+    "Admin Upload": page_admin_upload,  # Add this
+}
+
+    # Initialize database here (after set_page_config)
+    global db
+    db = FrontOfficeDB(DBPATH)
+
+
+
+
+    with st.sidebar:
+        st.title("YesWeCan! Bristol")
+        mode = "NEW LIVE MODE"
+        st.markdown(f"**{mode}**")
+        page = st.radio(
+            "Navigate",
+            [
+                "Arrivals",
+                "In-House List",
+                "Check-out List",
+                "Add Reservation",
+                "Housekeeping Task-List",
+                "Breakfast List",
+                "Search",
+                "Handover",
+                "No Shows",
+                "Room list",
+                "Spare Twin rooms",
+                "Parking",
+                "Payments",
+                "Invoices", 
+                "Revenue Report",       # ← ADD THIS
+                "IDS Sync",
+                "Admin",
+            ],
+        )
+
+
+
+
+
+        st.markdown("---")
+        st.caption("Sponsored by **TwoTable.**")
+        st.caption("www.twotable.co.uk and www.jayeetra-bhattacharjee.co.uk")
+
+    if page == "Arrivals":
+        page_arrivals()
+    elif page == "In-House List":
+        page_inhouse_list()
+    elif page == "Check-out List":
+        page_checkout_list()
+    elif page == "Housekeeping Task-List":
+        page_housekeeping()
+    elif page == "Breakfast List":
+        page_breakfast()
+    elif page == "Search":
+        page_search()
+    elif page == "Add Reservation":
+        page_add_reservation()
+    elif page == "Handover":
+        page_tasks_handover()
+    elif page == "Payments":
+        page_payments()
+    elif page == "Invoices":
+        page_invoices()
+    elif page == "Daily Revenue":
+        page_daily_revenue()
+    elif page == "Revenue Report":
+        page_revenue_multi()
+
+
+    elif page == "No Shows":
+        page_no_shows()
+    elif page == "Room list":
+        page_room_list()
+    elif page == "Spare Twin rooms":
+        page_spare_rooms()
+    elif page == "Parking":
+        page_parking()
+    elif page == "IDS Sync":
+        page_ids_sync()
+    elif page == "Admin":
+        page_admin_upload()
+
+
+if __name__ == "__main__":
+    inject_base_css()
+
+    main()
