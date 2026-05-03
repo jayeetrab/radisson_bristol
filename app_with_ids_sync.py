@@ -5782,11 +5782,11 @@ def page_ids_sync():
         # Select all / deselect all
         col_sel_all, col_desel_all, col_count = st.columns([1, 1, 3])
         if col_sel_all.button("✅ Select All", use_container_width=True):
-            for idx in range(len(rows)):
-                st.session_state[f"ids_sel_{idx}"] = True
+            for r in rows:
+                st.session_state[f"ids_sel_{r['id']}"] = True
         if col_desel_all.button("☐ Deselect All", use_container_width=True):
-            for idx in range(len(rows)):
-                st.session_state[f"ids_sel_{idx}"] = False
+            for r in rows:
+                st.session_state[f"ids_sel_{r['id']}"] = False
 
         count_placeholder = col_count.empty()
 
@@ -5794,6 +5794,7 @@ def page_ids_sync():
 
         # Reservation cards
         for idx, r in enumerate(rows):
+            _id = r.get("id", str(idx))
             fn, ln = r["_first_name"], r["_last_name"]
             arrival = r.get("arrival_date", "")
             depart  = r.get("depart_date", "")
@@ -5823,7 +5824,7 @@ def page_ids_sync():
                     r["_ids_selected"] = st.checkbox(
                         "Include in sync",
                         value=r["_ids_selected"],
-                        key=f"ids_sel_{idx}"
+                        key=f"ids_sel_{_id}"
                     )
                 with c_status:
                     st.caption(f"Status: {status}  ·  Channel: {r.get('channel') or '—'}  ·  Client: {client}")
@@ -5831,26 +5832,26 @@ def page_ids_sync():
                 st.markdown("**Edit before sending:**")
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    r["_first_name"] = st.text_input("First name", value=fn, key=f"ids_fn_{idx}")
-                    r["_last_name"]  = st.text_input("Last name",  value=ln, key=f"ids_ln_{idx}")
+                    r["_first_name"] = st.text_input("First name", value=fn, key=f"ids_fn_{_id}")
+                    r["_last_name"]  = st.text_input("Last name",  value=ln, key=f"ids_ln_{_id}")
                 with col2:
                     r["arrival_date"] = str(st.date_input(
-                        "Arrival", value=pd.to_datetime(arrival).date(), key=f"ids_arr_{idx}"))
+                        "Arrival", value=pd.to_datetime(arrival).date(), key=f"ids_arr_{_id}"))
                     r["depart_date"]  = str(st.date_input(
-                        "Departure", value=pd.to_datetime(depart).date(), key=f"ids_dep_{idx}"))
+                        "Departure", value=pd.to_datetime(depart).date(), key=f"ids_dep_{_id}"))
                 with col3:
                     r["adults"] = st.number_input("Adults", min_value=1,
-                                                   value=int(adults), key=f"ids_ad_{idx}")
+                                                   value=int(adults), key=f"ids_ad_{_id}")
                     r["_ids_rate"] = st.number_input("Rate/night (£)", min_value=0.0,
                                                       value=float(r.get("_ids_rate") or 100.0),
-                                                      step=10.0, key=f"ids_rate_{idx}")
+                                                      step=10.0, key=f"ids_rate_{_id}")
 
                 col4, col5 = st.columns(2)
                 with col4:
                     mp_options = ["Room Only", "Bed and Breakfast"]
                     mp_idx = 1 if str(mp).strip().upper() == "BB" else 0
                     new_mp_display = st.selectbox("Meal plan", mp_options,
-                                          index=mp_idx, key=f"ids_mp_{idx}")
+                                          index=mp_idx, key=f"ids_mp_{_id}")
                     actual_mp = "BB" if new_mp_display == "Bed and Breakfast" else "RO"
                     r["meal_plan"] = actual_mp
                     r["_ids_rate_code"], _ = ids_get_rate_info(actual_mp)
@@ -5858,12 +5859,12 @@ def page_ids_sync():
                     rt_options = sorted(set(IDS_ROOM_TYPE_MAP.values()))
                     rt_idx = rt_options.index(rt) if rt in rt_options else 0
                     r["_ids_room_type"] = st.selectbox("Room type (IDS)", rt_options,
-                                                        index=rt_idx, key=f"ids_rt_{idx}")
+                                                        index=rt_idx, key=f"ids_rt_{_id}")
                 with col5:
                     r["main_remark"] = st.text_area(
                         "Instruction / Remark",
                         value=r.get("main_remark") or "",
-                        height=80, key=f"ids_rem_{idx}"
+                        height=80, key=f"ids_rem_{_id}"
                     )
 
                 # Override room_type_code so payload uses edited value
@@ -5871,7 +5872,7 @@ def page_ids_sync():
 
                 # Single send button per card
                 if st.button(f"📤 Send to IDS",
-                              key=f"ids_send_one_{idx}", use_container_width=True,
+                              key=f"ids_send_one_{_id}", use_container_width=True,
                               type="primary"):
                     if not ids_token:
                         st.error("⚠️ Please enter your Bearer Token in the sidebar first.")
