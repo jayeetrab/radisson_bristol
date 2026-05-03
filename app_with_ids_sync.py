@@ -5719,7 +5719,13 @@ def page_ids_sync():
         fetched_rows = list(cursor)
         for r in fetched_rows:
             r["id"] = str(r.get("_id", ""))
-            r["_ids_rate"] = 100.0
+            
+            try:
+                db_rate = r.get("rate")
+                r["_ids_rate"] = float(db_rate) if (db_rate is not None and str(db_rate).strip() != "") else 100.0
+            except (ValueError, TypeError):
+                r["_ids_rate"] = 100.0
+                
             r["_ids_selected"] = True
             fn, ln = ids_parse_name(r.get("guest_name") or "")
             r["_first_name"] = fn
@@ -6049,7 +6055,12 @@ def page_admin_upload():
                     "departure": "depart_date",
                     "depart": "depart_date",
                     "room_type": "room_type_code",
-                    "rate": "rate_code",
+                    "comments": "main_remark",
+                    "comment": "main_remark",
+                    "remarks": "main_remark",
+                    "remark": "main_remark",
+                    "notes": "main_remark",
+                    "note": "main_remark",
                 }
                 df.rename(columns=col_map, inplace=True)
                 
