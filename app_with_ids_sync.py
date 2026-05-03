@@ -5739,7 +5739,8 @@ def page_ids_sync():
 
     today = date.today()
     if range_mode == "Single Day":
-        selected_day = st.date_input("Arrival date", value=today, key="ids_single_day", on_change=load_reservations_from_db)
+        val_single = st.session_state.get("ids_single_day", today)
+        selected_day = st.date_input("Arrival date", value=val_single, key="ids_single_day", on_change=load_reservations_from_db)
         date_from, date_to = selected_day, selected_day
     elif range_mode == "This Month":
         first_of_month = today.replace(day=1)
@@ -5754,9 +5755,11 @@ def page_ids_sync():
     else:
         col_a, col_b = st.columns(2)
         with col_a:
-            date_from = st.date_input("From", value=today, key="ids_date_from", on_change=load_reservations_from_db)
+            val_from = st.session_state.get("ids_date_from", today)
+            date_from = st.date_input("From", value=val_from, key="ids_date_from", on_change=load_reservations_from_db)
         with col_b:
-            date_to = st.date_input("To", value=today + timedelta(days=7), key="ids_date_to", on_change=load_reservations_from_db)
+            val_to = st.session_state.get("ids_date_to", today + timedelta(days=7))
+            date_to = st.date_input("To", value=val_to, key="ids_date_to", on_change=load_reservations_from_db)
 
     # ── Step 2: Load reservations ─────────────────────────────────
     st.markdown("---")
