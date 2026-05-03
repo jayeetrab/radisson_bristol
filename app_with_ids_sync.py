@@ -5607,6 +5607,14 @@ def ids_send_single(r, token):
                 db_mongo.reservations.update_one(
                     {"_id": ObjectId(_rid)},
                     {"$set": {
+                        "guest_name": f"{r.get('_first_name', '')} {r.get('_last_name', '')}".strip(),
+                        "first_name": r.get("_first_name"),
+                        "last_name": r.get("_last_name"),
+                        "arrival_date": r.get("arrival_date"),
+                        "depart_date": r.get("depart_date"),
+                        "adults": int(r.get("adults") or 1),
+                        "meal_plan": r.get("meal_plan"),
+                        "room_type_code": r.get("_ids_room_type"),
                         "ids_synced": success,
                         "ids_reservation_no": ids_res_no,
                         "ids_room_reservation_no": ids_room_res_no,
@@ -5641,21 +5649,27 @@ def page_ids_sync():
     st.caption("Push reservations from your database directly into IDS Next.")
 
     # ── Sync History Banner ────────────────────────────────────────
-    synced = st.session_state.get("ids_synced", {})
-    if synced:
-        with st.expander(f"🟢 {len(synced)} reservation(s) synced this session — click to view history"):
-            import json as _jh
-            history_rows = []
-            for rid, info in synced.items():
-                history_rows.append({
-                    "DB ID":       rid,
-                    "IDS Res No":  info.get("ids_res_no") or "—",
-                    "Room Res No": info.get("ids_room_res_no") or "—",
-                    "HTTP":        info.get("http"),
-                    "Synced At":   info.get("synced_at"),
-                    "Response (preview)": str(info.get("response",""))[:120],
-                })
-            st.dataframe(pd.DataFrame(history_rows), use_container_width=True)
+    try:
+        import pymongo
+        mongo_client = pymongo.MongoClient("mongodb+srv://jayeetrab:mGhnfdMwFeFZwx6L@cohortconnect.lcpylgn.mongodb.net/")
+        db_mongo = mongo_client["Reservations"]
+        logs = list(db_mongo.ids_sync_logs.find().sort("timestamp", -1).limit(50))
+        if logs:
+            with st.expander(f"📊 Recent Sync Logs ({len(logs)}) — click to view history"):
+                import pandas as pd
+                history_rows = []
+                for log in logs:
+                    history_rows.append({
+                        "Time": log.get("timestamp").strftime("%Y-%m-%d %H:%M") if log.get("timestamp") else "—",
+                        "Guest": log.get("guest_name"),
+                        "Status": "✅ SUCCESS" if log.get("success") else "❌ FAILED",
+                        "IDS Res No": log.get("ids_reservation_no") or "—",
+                        "HTTP": log.get("http_code"),
+                        "Response (preview)": str(log.get("response",""))[:120],
+                    })
+                st.dataframe(pd.DataFrame(history_rows), use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not load sync logs: {e}")
 
     # ── Bearer token ──────────────────────────────────────────────
     with st.sidebar:
@@ -5749,14 +5763,15 @@ def page_ids_sync():
         # Select all / deselect all
         col_sel_all, col_desel_all, col_count = st.columns([1, 1, 3])
         if col_sel_all.button("✅ Select All", use_container_width=True):
-            for r in rows:
-                r["_ids_selected"] = True
+            for idx in range(len(rows)):
+                st.session_state[f"ids_sel_{idx}"] = True
+            st.rerun()
         if col_desel_all.button("☐ Deselect All", use_container_width=True):
-            for r in rows:
-                r["_ids_selected"] = False
+            for idx in range(len(rows)):
+                st.session_state[f"ids_sel_{idx}"] = False
+            st.rerun()
 
-        selected_count = sum(1 for r in rows if r.get("_ids_selected"))
-        col_count.markdown(f"**{selected_count} selected** out of {len(rows)}")
+        count_placeholder = col_count.empty()
 
         st.markdown("---")
 
@@ -5870,6 +5885,9 @@ def page_ids_sync():
                 synced_info = st.session_state.get("ids_synced", {}).get(str(r.get("id","")))
                 if synced_info:
                     st.info(f"🟢 Already synced at {synced_info['synced_at']} | IDS Res No: **{synced_info['ids_res_no'] or '—'}** | Room Res No: **{synced_info.get('ids_room_res_no') or '—'}** | HTTP {synced_info['http']}")
+
+        selected_count = sum(1 for r in rows if r.get("_ids_selected"))
+        count_placeholder.markdown(f"**{selected_count} selected** out of {len(rows)}")
 
         # ── Step 3: Bulk send ──────────────────────────────────────
         st.markdown("---")
