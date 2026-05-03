@@ -5080,6 +5080,8 @@ IDS_DEFAULT_GUEST_CODE = "0"
 
 def ids_map_room_type(raw):
     raw = str(raw).strip()
+    if raw in IDS_ROOM_TYPE_MAP.values():
+        return raw
     if raw in IDS_ROOM_TYPE_MAP:
         return IDS_ROOM_TYPE_MAP[raw]
     for key, val in IDS_ROOM_TYPE_MAP.items():
@@ -5804,11 +5806,18 @@ def page_ids_sync():
             client  = r.get("main_client") or ""
             status  = (r.get("reservation_status") or "CONFIRMED").upper()
 
-            card_label = f"{'✅' if r['_ids_selected'] else '☐'}  {fn} {ln}  ·  {arrival}  ·  {rt}  ·  {mp_display}  ·  {adults} adult(s)  ·  {nights} night(s)"
+            # Use completely static original DB values for the label.
+            # If the label string changes dynamically during a UI interaction, Streamlit destroys and recreates the expander, forcing it closed.
+            orig_name = r.get("guest_name", "Guest").strip()
+            orig_arr  = r.get("arrival_date", arrival)
+            orig_nights = r.get("nights", nights)
+            orig_adults = r.get("adults", adults)
+            
+            card_label = f"👤 {orig_name}  ·  {orig_arr}  ·  {orig_adults} adult(s)  ·  {orig_nights} night(s)"
             if status == "CANCELLED":
                 card_label = f"❌ {card_label} [CANCELLED]"
 
-            with st.expander(card_label, expanded=False):
+            with st.expander(card_label):
                 c_sel, c_status = st.columns([1, 3])
                 with c_sel:
                     r["_ids_selected"] = st.checkbox(
