@@ -6089,12 +6089,23 @@ def page_admin_upload():
                             for k, v in row.to_dict().items():
                                 if pd.isna(v):
                                     doc[k] = None
-                                elif isinstance(v, (datetime.datetime, datetime.date, datetime.time, pd.Timestamp)):
+                                elif isinstance(v, (datetime.datetime, datetime.date, pd.Timestamp)):
+                                    # Force YYYY-MM-DD for dates to match UI query
+                                    doc[k] = v.strftime("%Y-%m-%d")
+                                elif isinstance(v, datetime.time):
                                     doc[k] = str(v)
                                 else:
                                     doc[k] = v
-                            # Ensure reservation_no is treated as string for matching
-                            res_no = str(doc.get("reservation_no") or "").strip()
+                                    
+                            # Ensure reservation_no is a clean string (strip .0 if it's a float-string)
+                            res_no_raw = doc.get("reservation_no")
+                            if res_no_raw is not None:
+                                res_no = str(res_no_raw).strip()
+                                if res_no.endswith(".0"):
+                                    res_no = res_no[:-2]
+                                doc["reservation_no"] = res_no
+                            else:
+                                res_no = ""
                             
                             if res_no and res_no != "nan" and res_no != "None":
                                 # Upsert based on reservation_no
