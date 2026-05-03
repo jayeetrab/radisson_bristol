@@ -6038,8 +6038,8 @@ def page_admin_upload():
                 else:
                     df = pd.read_excel(uploaded_file)
                 
-                # Basic column standardization (lowercase, replace spaces with underscores)
-                df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+                # Basic column standardization (lowercase, replace spaces with underscores, strip dots to prevent MongoDB nesting errors)
+                df.columns = [str(c).strip().lower().replace(" ", "_").replace(".", "") for c in df.columns]
                 
                 st.write(f"**Preview:** {len(df)} rows")
                 st.dataframe(df.head(10))
@@ -6047,7 +6047,8 @@ def page_admin_upload():
                 # Map common excel names to our schema
                 col_map = {
                     "res_no": "reservation_no",
-                    "reservation_no.": "reservation_no",
+                    "res_number": "reservation_no",
+                    "reservation_number": "reservation_no",
                     "booking_id": "reservation_no",
                     "guest": "guest_name",
                     "name": "guest_name",
@@ -6057,7 +6058,7 @@ def page_admin_upload():
                     "depart": "depart_date",
                     "room_type": "room_type_code",
                     "ad": "adults",
-                    "main_rem.": "main_remark",
+                    "main_rem": "main_remark",
                     "all_remarks": "main_remark",
                     "comments": "main_remark",
                     "comment": "main_remark",
@@ -6065,6 +6066,7 @@ def page_admin_upload():
                     "remark": "main_remark",
                     "notes": "main_remark",
                     "note": "main_remark",
+                    "rate1": "rate",
                 }
                 df.rename(columns=col_map, inplace=True)
                 
@@ -6106,23 +6108,8 @@ def page_admin_upload():
                                 else:
                                     count_updated += 1
                             else:
-                                # Fallback: Insert if no Res No (or try to match by name+date)
-                                gname = str(doc.get("guest_name", ""))
-                                arr = str(doc.get("arrival_date", ""))
-                                if gname and arr:
-                                    result = collection.update_one(
-                                        {"guest_name": gname, "arrival_date": arr},
-                                        {"$set": doc},
-                                        upsert=True
-                                    )
-                                    if result.upserted_id:
-                                        count_inserted += 1
-                                    else:
-                                        count_updated += 1
-                                else:
-                                    # Just insert
-                                    collection.insert_one(doc)
-                                    count_inserted += 1
+                                # Skip completely if no Reservation No
+                                continue
                                     
                             progress.progress((i + 1) / total, text=f"Processed {i+1}/{total}")
                             
