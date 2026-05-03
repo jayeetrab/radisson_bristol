@@ -5765,11 +5765,9 @@ def page_ids_sync():
         if col_sel_all.button("✅ Select All", use_container_width=True):
             for idx in range(len(rows)):
                 st.session_state[f"ids_sel_{idx}"] = True
-            st.rerun()
         if col_desel_all.button("☐ Deselect All", use_container_width=True):
             for idx in range(len(rows)):
                 st.session_state[f"ids_sel_{idx}"] = False
-            st.rerun()
 
         count_placeholder = col_count.empty()
 
