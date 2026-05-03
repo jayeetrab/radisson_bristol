@@ -6014,198 +6014,116 @@ def page_admin_upload():
         st.warning("Enter admin password to access this page")
         return
     
-    tab1, tab2, tab3 = st.tabs(["Upload Full DB", "Upload Stays CSV", "Download DB"])
+    tab1, tab2 = st.tabs(["Upload Reservations (Excel/CSV)", "Database Status"])
     
     with tab1:
-        st.subheader("Replace Entire Database")
-        st.warning("⚠️ This will replace the entire database file")
+        st.subheader("Import Reservations to MongoDB")
+        st.warning("⚠️ This will insert new reservations and update existing ones (matched by Reservation No)")
         
-        uploaded_db = st.file_uploader("Upload SQLite database (.db)", type=['db'], key="db_upload")
+        uploaded_file = st.file_uploader("Upload reservations file (.xlsx, .csv)", type=['xlsx', 'csv'], key="res_upload")
         
-        if uploaded_db:
-            st.info(f"File size: {uploaded_db.size / 1024:.1f} KB")
-            
-            if st.button("Replace Database", type="primary"):
-                try:
-                    # Backup current DB first
-                    import shutil
-                    backup_path = DBPATH + ".backup"
-                    shutil.copy2(DBPATH, backup_path)
-                    
-                    # Replace with uploaded
-                    with open(DBPATH, 'wb') as f:
-                        f.write(uploaded_db.getbuffer())
-                    
-                    st.success("✅ Database replaced successfully!")
-                    st.info("Reloading app...")
-                    time.sleep(1)
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
-    
-    with tab2:
-        st.subheader("Import Stays from CSV")
-        
-        uploaded_csv = st.file_uploader("Upload stays CSV", type=['csv'], key="csv_upload")
-        
-        if uploaded_csv:
+        if uploaded_file:
             import pandas as pd
-            df = pd.read_csv(uploaded_csv)
+            import pymongo
+            from datetime import datetime as dt
             
-            st.write(f"**Preview:** {len(df)} rows")
-            st.dataframe(df.head(10))
-            
-            st.write("**Expected columns:** `id, reservation_id, room_number, status, checkin_planned, checkout_planned, checkin_actual, checkout_actual, parking_space, parking_plate, parking_notes`")
-            
-            if st.button("Import Stays", type="primary"):
-                try:
-                    with st.spinner("Importing stays..."):
-                        count = 0
-                        for _, row in df.iterrows():
-                            db.execute(
-                                """
-                                INSERT OR REPLACE INTO stays (
-                                    id, reservation_id, room_number, status,
-                                    checkin_planned, checkout_planned,
-                                    checkin_actual, checkout_actual,
-                                    parking_space, parking_plate, parking_notes
-                                )
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """,
-                                (
-                                    row.get("id"),
-                                    row.get("reservation_id"),
-                                    row.get("room_number"),
-                                    row.get("status", "CHECKED_IN"),
-                                    row.get("checkin_planned"),
-                                    row.get("checkout_planned"),
-                                    row.get("checkin_actual"),
-                                    row.get("checkout_actual"),
-                                    row.get("parking_space", ""),
-                                    row.get("parking_plate", ""),
-                                    row.get("parking_notes", ""),
-                                ),
-                            )
-                            count += 1
-                        
-                        st.success(f"✅ Imported {count} stays")
-                    
-                    # 1. Update room statuses based on stays
-                    with st.spinner("Syncing room statuses..."):
-                        db.sync_room_status_from_stays()
-                        st.success("✅ Room statuses synced")
-                    
-                    # 2. Verify linkage between stays and reservations
-                    with st.spinner("Verifying data linkage..."):
-                        orphaned = db.fetch_one("""
-                            SELECT COUNT(*) as cnt FROM stays s
-                            LEFT JOIN reservations r ON s.reservation_id = r.id
-                            WHERE r.id IS NULL
-                        """)
-                        
-                        if orphaned['cnt'] > 0:
-                            st.warning(f"⚠️ Found {orphaned['cnt']} stays without matching reservations")
-                        else:
-                            st.success("✅ All stays linked to reservations")
-                    
-                    # 3. Show summary by status
-                    with st.spinner("Verifying data..."):
-                        checked_in = db.fetch_one(
-                            "SELECT COUNT(*) as cnt FROM stays WHERE status = 'CHECKED_IN'"
-                        )
-                        checked_out = db.fetch_one(
-                            "SELECT COUNT(*) as cnt FROM stays WHERE status = 'CHECKED_OUT'"
-                        )
-                        occupied = db.fetch_one(
-                            "SELECT COUNT(*) as cnt FROM rooms WHERE status = 'OCCUPIED'"
-                        )
-                        
-                        # Check departures for today
-                        today = date.today()
-                        departures_today = db.fetch_one(
-                            """
-                            SELECT COUNT(*) as cnt
-                            FROM reservations r
-                            LEFT JOIN stays s ON s.reservation_id = r.id
-                            WHERE date(r.depart_date) = date(?)
-                            AND (s.status IS NULL OR s.status != 'CHECKED_OUT')
-                            """,
-                            (today.isoformat(),)
-                        )
-                        
-                        st.info(f"""
-                        **Data Summary:**
-                        - Checked-in guests: {checked_in['cnt']}
-                        - Already checked out: {checked_out['cnt']}
-                        - Occupied rooms: {occupied['cnt']}
-                        - Departures today: {departures_today['cnt']}
-                        """)
-                    
-                    st.success("🎉 Stays imported successfully!")
-                    time.sleep(2)
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Error importing: {str(e)}")
-                    st.exception(e)
-    with tab3:
-        st.subheader("Download Live Database")
-        st.info("Downloads a ZIP file containing the database file and CSV exports of all tables")
-        
-        if st.button("Generate Download Package", type="primary"):
             try:
-                import zipfile
-                import io
-                import pandas as pd
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file)
+                else:
+                    df = pd.read_excel(uploaded_file)
                 
-                with st.spinner("Creating download package..."):
-                    zip_buffer = io.BytesIO()
-                    
-                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                        # 1. Add database file
-                        with open(DBPATH, 'rb') as db_file:
-                            zip_file.writestr("hotelfo.db", db_file.read())
+                # Basic column standardization (lowercase, replace spaces with underscores)
+                df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+                
+                st.write(f"**Preview:** {len(df)} rows")
+                st.dataframe(df.head(10))
+                
+                # Map common excel names to our schema
+                # e.g., 'res_no' -> 'reservation_no', 'guest' -> 'guest_name'
+                col_map = {
+                    "res_no": "reservation_no",
+                    "res_number": "reservation_no",
+                    "reservation_number": "reservation_no",
+                    "guest": "guest_name",
+                    "name": "guest_name",
+                    "arrival": "arrival_date",
+                    "departure": "depart_date",
+                    "depart": "depart_date",
+                    "room_type": "room_type_code",
+                    "rate": "rate_code",
+                }
+                df.rename(columns=col_map, inplace=True)
+                
+                if st.button("Import Reservations", type="primary"):
+                    with st.spinner("Connecting to MongoDB..."):
+                        mongo_client = pymongo.MongoClient("mongodb+srv://jayeetrab:mGhnfdMwFeFZwx6L@cohortconnect.lcpylgn.mongodb.net/")
+                        db_mongo = mongo_client["Reservations"]
+                        collection = db_mongo.reservations
                         
-                        # 2. Export tables to CSV
-                        tables = ['reservations', 'stays', 'rooms', 'no_shows', 'spare_rooms', 'tasks']
+                        count_inserted = 0
+                        count_updated = 0
                         
-                        for table_name in tables:
-                            try:
-                                rows = db.fetch_all(f"SELECT * FROM {table_name}")
-                                
-                                if rows:
-                                    df = pd.DataFrame([dict(row) for row in rows])
-                                    csv_buffer = io.StringIO()
-                                    df.to_csv(csv_buffer, index=False)
-                                    zip_file.writestr(f"{table_name}.csv", csv_buffer.getvalue())
-                                    st.success(f"✅ Exported {table_name}: {len(rows)} rows")
+                        progress = st.progress(0, text="Starting import...")
+                        total = len(df)
+                        
+                        for i, row in df.iterrows():
+                            # Clean row data
+                            doc = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
+                            
+                            # Ensure reservation_no is treated as string for matching
+                            res_no = str(doc.get("reservation_no") or "").strip()
+                            
+                            if res_no and res_no != "nan" and res_no != "None":
+                                # Upsert based on reservation_no
+                                result = collection.update_one(
+                                    {"reservation_no": res_no},
+                                    {"$set": doc},
+                                    upsert=True
+                                )
+                                if result.upserted_id:
+                                    count_inserted += 1
                                 else:
-                                    st.info(f"ℹ️ {table_name}: empty")
+                                    count_updated += 1
+                            else:
+                                # Fallback: Insert if no Res No (or try to match by name+date)
+                                gname = str(doc.get("guest_name", ""))
+                                arr = str(doc.get("arrival_date", ""))
+                                if gname and arr:
+                                    result = collection.update_one(
+                                        {"guest_name": gname, "arrival_date": arr},
+                                        {"$set": doc},
+                                        upsert=True
+                                    )
+                                    if result.upserted_id:
+                                        count_inserted += 1
+                                    else:
+                                        count_updated += 1
+                                else:
+                                    # Just insert
+                                    collection.insert_one(doc)
+                                    count_inserted += 1
                                     
-                            except Exception as e:
-                                st.warning(f"⚠️ Could not export {table_name}: {str(e)}")
-                    
-                    zip_buffer.seek(0)
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"hotelfo_backup_{timestamp}.zip"
-                    
-                    st.download_button(
-                        label="⬇️ Download Database Package",
-                        data=zip_buffer,
-                        file_name=filename,
-                        mime="application/zip",
-                        use_container_width=True,
-                    )
-                    
-                    st.success("🎉 Download package ready!")
-                    
+                            progress.progress((i + 1) / total, text=f"Processed {i+1}/{total}")
+                            
+                        progress.progress(1.0, text="Import complete!")
+                        st.success(f"✅ Import Successful! Inserted: **{count_inserted}** | Updated: **{count_updated}**")
+                        
             except Exception as e:
-                st.error(f"❌ Error creating download: {str(e)}")
+                st.error(f"❌ Error processing file: {str(e)}")
                 st.exception(e)
-        st.divider()
-        st.subheader("Database Viewer")
-        page_db_viewer()
+                
+    with tab2:
+        st.subheader("MongoDB Status")
+        if st.button("Check Connection"):
+            try:
+                import pymongo
+                mongo_client = pymongo.MongoClient("mongodb+srv://jayeetrab:mGhnfdMwFeFZwx6L@cohortconnect.lcpylgn.mongodb.net/")
+                db_mongo = mongo_client["Reservations"]
+                count = db_mongo.reservations.count_documents({})
+                st.success(f"✅ Connected! Found **{count}** reservations in the database.")
+            except Exception as e:
+                st.error(f"Failed to connect: {e}")
 
 
 
