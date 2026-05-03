@@ -5686,9 +5686,46 @@ def page_ids_sync():
     if "ids_results" not in st.session_state:
         st.session_state.ids_results = []
 
-    def clear_ids_rows():
-        if "ids_loaded_rows" in st.session_state:
-            st.session_state.ids_loaded_rows = []
+    def load_reservations_from_db():
+        import pymongo
+        from datetime import date, timedelta
+        import calendar
+        
+        mongo_client = pymongo.MongoClient("mongodb+srv://jayeetrab:mGhnfdMwFeFZwx6L@cohortconnect.lcpylgn.mongodb.net/")
+        db = mongo_client["Reservations"]
+        
+        rmode = st.session_state.get("ids_range_mode", "Single Day")
+        today = date.today()
+        
+        if rmode == "Single Day":
+            df = st.session_state.get("ids_single_day", today)
+            dt = df
+        elif rmode == "This Month":
+            first_of_month = today.replace(day=1)
+            last_day = calendar.monthrange(today.year, today.month)[1]
+            last_of_month = today.replace(day=last_day)
+            df, dt = first_of_month, last_of_month
+        else:
+            df = st.session_state.get("ids_date_from", today)
+            dt = st.session_state.get("ids_date_to", today + timedelta(days=7))
+            
+        cursor = db.reservations.find({
+            "arrival_date": {"$gte": str(df), "$lte": str(dt)},
+            "reservation_status": {"$not": {"$regex": "(?i)cancelled"}}
+        }).sort([("arrival_date", 1), ("guest_name", 1)])
+        
+        fetched_rows = list(cursor)
+        for r in fetched_rows:
+            r["id"] = str(r.get("_id", ""))
+            r["_ids_rate"] = 100.0
+            r["_ids_selected"] = True
+            fn, ln = ids_parse_name(r.get("guest_name") or "")
+            r["_first_name"] = fn
+            r["_last_name"]  = ln
+            r["_ids_room_type"] = ids_map_room_type(r.get("room_type_code") or "")
+            r["_ids_rate_code"], _ = ids_get_rate_info(r.get("meal_plan") or "RO")
+            
+        st.session_state.ids_loaded_rows = fetched_rows
 
     # ── Step 1: Date range ────────────────────────────────────────
     st.subheader("① Select Date Range")
@@ -5697,12 +5734,12 @@ def page_ids_sync():
         ["Single Day", "This Month", "Custom Range"],
         horizontal=True,
         key="ids_range_mode",
-        on_change=clear_ids_rows
+        on_change=load_reservations_from_db
     )
 
     today = date.today()
     if range_mode == "Single Day":
-        selected_day = st.date_input("Arrival date", value=today, key="ids_single_day", on_change=clear_ids_rows)
+        selected_day = st.date_input("Arrival date", value=today, key="ids_single_day", on_change=load_reservations_from_db)
         date_from, date_to = selected_day, selected_day
     elif range_mode == "This Month":
         first_of_month = today.replace(day=1)
@@ -5711,49 +5748,26 @@ def page_ids_sync():
         last_of_month = today.replace(day=last_day)
         date_from, date_to = first_of_month, last_of_month
         st.info(f"Range: **{date_from}** → **{date_to}**")
+        # Automatically load for "This Month" if not loaded yet
+        if "ids_loaded_rows" not in st.session_state:
+            load_reservations_from_db()
     else:
         col_a, col_b = st.columns(2)
         with col_a:
-            date_from = st.date_input("From", value=today, key="ids_date_from", on_change=clear_ids_rows)
+            date_from = st.date_input("From", value=today, key="ids_date_from", on_change=load_reservations_from_db)
         with col_b:
-            date_to = st.date_input("To", value=today + timedelta(days=7), key="ids_date_to", on_change=clear_ids_rows)
+            date_to = st.date_input("To", value=today + timedelta(days=7), key="ids_date_to", on_change=load_reservations_from_db)
 
     # ── Step 2: Load reservations ─────────────────────────────────
     st.markdown("---")
     st.subheader("② Review & Edit Reservations")
 
     if st.button("🔍 Load Reservations", type="primary", use_container_width=False):
-        import pymongo
-        mongo_client = pymongo.MongoClient("mongodb+srv://jayeetrab:mGhnfdMwFeFZwx6L@cohortconnect.lcpylgn.mongodb.net/")
-        db = mongo_client["Reservations"]
-        
-        str_from = str(date_from)
-        str_to = str(date_to)
-        
-        cursor = db.reservations.find({
-            "arrival_date": {"$gte": str_from, "$lte": str_to},
-            "reservation_status": {"$not": {"$regex": "(?i)cancelled"}}
-        }).sort([("arrival_date", 1), ("guest_name", 1)])
-        
-        rows = list(cursor)
-        for r in rows:
-            r["id"] = str(r.get("_id", ""))
-
-        if not rows:
+        load_reservations_from_db()
+        if not st.session_state.ids_loaded_rows:
             st.warning("No confirmed reservations found for this date range.")
-            st.session_state.ids_loaded_rows = []
         else:
-            # Add helper fields
-            for r in rows:
-                r["_ids_rate"] = 100.0
-                r["_ids_selected"] = True
-                fn, ln = ids_parse_name(r.get("guest_name") or "")
-                r["_first_name"] = fn
-                r["_last_name"]  = ln
-                r["_ids_room_type"] = ids_map_room_type(r.get("room_type_code") or "")
-                r["_ids_rate_code"], _ = ids_get_rate_info(r.get("meal_plan") or "RO")
-            st.session_state.ids_loaded_rows = rows
-            st.success(f"Loaded **{len(rows)}** reservation(s)")
+            st.success(f"Loaded **{len(st.session_state.ids_loaded_rows)}** reservation(s)")
 
     rows = st.session_state.get("ids_loaded_rows", [])
 
