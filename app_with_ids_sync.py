@@ -6076,10 +6076,17 @@ def page_admin_upload():
                         progress = st.progress(0, text="Starting import...")
                         total = len(df)
                         
+                        import datetime
                         for i, row in df.iterrows():
                             # Clean row data
-                            doc = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
-                            
+                            doc = {}
+                            for k, v in row.to_dict().items():
+                                if pd.isna(v):
+                                    doc[k] = None
+                                elif isinstance(v, (datetime.datetime, datetime.date, datetime.time, pd.Timestamp)):
+                                    doc[k] = str(v)
+                                else:
+                                    doc[k] = v
                             # Ensure reservation_no is treated as string for matching
                             res_no = str(doc.get("reservation_no") or "").strip()
                             
