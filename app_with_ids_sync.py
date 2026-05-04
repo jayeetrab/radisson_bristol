@@ -5576,6 +5576,7 @@ def ids_send_single(r, token):
                         ids_room_res_no = str(first.get("RoomReservation") or "")
                 except Exception:
                     ids_res_no = ""
+                    ids_room_res_no = "" 
                 # Fallback for other IDS response formats
                 if not ids_res_no:
                     ids_res_no = str(
