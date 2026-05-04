@@ -18,7 +18,7 @@ from datetime import datetime
 mclient = pymongo.MongoClient(
     "mongodb+srv://jayeetrab:mGhnfdMwFeFZwx6L@cohortconnect.lcpylgn.mongodb.net/"
 )
-db = mclient["Reservations"]  # Change if your DB name is different
+db = mclient["Reservations"]
 
 reservations_col = db["reservations"]
 deposits_col     = db["previous_deposits"]
@@ -106,6 +106,7 @@ all_reservations = list(reservations_col.find({}, {
     "reservation_no": 1,
     "main_client": 1,
     "channel": 1,
+    "nights": 1,
 }))
 
 print(f"  Total reservations in DB : {len(all_reservations)}")
@@ -131,13 +132,24 @@ for res in all_reservations:
     if amount is not None and amount > 0:
         # ── FOUND: reservation has a deposit ──────────────────────────────
         matched += 1
-        amount_str = f"£{amount:,.2f}".rstrip("0").rstrip(".")
+
+        # Calculate rate per night
+        try:
+            nights = float(res.get("nights") or 1)
+            if nights <= 0:
+                nights = 1
+        except (ValueError, TypeError):
+            nights = 1
+
+        rate_per_night = round(amount / nights, 2)
+        total_str      = f"£{amount:,.2f}".rstrip("0").rstrip(".")
+
         reservations_col.update_one(
             {"_id": res["_id"]},
             {
                 "$set": {
-                    "rate"        : amount,          # New Rate field
-                    "main_remark" : f"Already paid {amount_str}",
+                    "rate"        : rate_per_night,  # Rate PER NIGHT
+                    "main_remark" : f"Already paid {total_str}",
                     "updated_at"  : datetime.utcnow().isoformat(),
                 }
             }
