@@ -1441,13 +1441,13 @@
                 `"${(t.comment || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`
             ]);
 
-            const csvContent = "data:text/csv;charset=utf-8," +
-                headers.join(",") + "\\n" +
-                rows.map(e => e.join(",")).join("\\n");
+            const csvContent = headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
 
-            const encodedUri = encodeURI(csvContent);
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            
             const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
+            link.setAttribute("href", url);
 
             const downloadDate = datePickerInput.value || new Date().toISOString().split('T')[0];
             link.setAttribute("download", `Handover_Report_${downloadDate}.csv`);
