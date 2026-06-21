@@ -6,10 +6,11 @@
     <meta name="viewport" content="width=1200">
     <title>Handover Dashboard</title>
     <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='5' y='5' width='90' height='90' fill='white' stroke='%231a1a1a' stroke-width='8'/><text x='50' y='76' font-family='Georgia, serif' font-size='72' font-weight='bold' fill='%231a1a1a' text-anchor='middle'>M</text></svg>">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='5' y='5' width='90' height='90' fill='white' stroke='%231a1a1a' stroke-width='8'/><text x='50' y='76' font-family='Georgia, serif' font-size='72' font-weight='bold' fill='%231a1a1a' text-anchor='middle'>M</text></svg>">
     <!-- Import both Inter and League Spartan from Google Fonts -->
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=League+Spartan:wght@400;500;600;700;800&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=League+Spartan:wght@400;500;600;700;800&family=Great+Vibes&display=swap"
         rel="stylesheet">
 
     <!-- Flatpickr for Modern Calendar UI -->
@@ -479,7 +480,7 @@
             box-shadow: var(--shadow-sm);
             cursor: pointer;
         }
-        
+
         .task-card .task-details {
             cursor: default;
         }
@@ -766,8 +767,12 @@
                     fill="#666666" text-anchor="middle">HOTELS</text>
             </svg>
             <div style="width: 2px; height: 36px; background: var(--border); margin: 0 12px; border-radius: 1px;"></div>
-            <h1 style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); font-family: var(--font-display);">
-                Handover Dashboard</h1>
+            <h1
+                style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); font-family: var(--font-display); display: flex; align-items: baseline; gap: 10px;">
+                <span
+                    style="font-family: 'Above the Beyond Script', 'Great Vibes', cursive; font-size: 1.8rem; font-weight: 400; background: linear-gradient(90deg, #5de0e6, #004aad); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Handover</span>
+                Dashboard
+            </h1>
         </div>
         <div class="header-controls">
             <div class="date-wrapper">
@@ -785,9 +790,15 @@
                 </svg>
                 CSV Export
             </button>
-            <button class="btn-secondary" onclick="openNotifications()" style="position: relative; padding: 10px;" title="Activity Feed">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
-                <span id="notifBadge" style="display: none; position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; font-size: 0.7rem; font-weight: 700; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">0</span>
+            <button class="btn-secondary" onclick="openNotifications()" style="position: relative; padding: 10px;"
+                title="Activity Feed">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9">
+                    </path>
+                </svg>
+                <span id="notifBadge"
+                    style="display: none; position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; font-size: 0.7rem; font-weight: 700; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">0</span>
             </button>
             <button class="btn-add" onclick="openModal()">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -864,7 +875,12 @@
                     <div class="form-group full">
                         <label>Date of Task</label>
                         <div class="modal-date-wrapper" style="position: relative; display: flex; align-items: center;">
-                            <svg style="position: absolute; left: 14px; width: 20px; height: 20px; color: var(--text-muted); pointer-events: none; z-index: 2;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            <svg style="position: absolute; left: 14px; width: 20px; height: 20px; color: var(--text-muted); pointer-events: none; z-index: 2;"
+                                fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
+                                </path>
+                            </svg>
                             <input type="text" id="newTaskDate" required style="padding-left: 44px; cursor: pointer;">
                         </div>
                     </div>
@@ -964,7 +980,7 @@
 
         // Initialize Flatpickr for the Modal "Date of Task"
         let modalFp;
-        document.addEventListener("DOMContentLoaded", function() {
+        document.addEventListener("DOMContentLoaded", function () {
             modalFp = flatpickr(document.getElementById('newTaskDate'), {
                 dateFormat: "Y-m-d",
                 altInput: true,
@@ -1113,7 +1129,7 @@
                 const hasDescription = task.comment && task.comment.trim() !== '';
                 const totalNotes = commentsCount + (hasDescription ? 1 : 0);
                 const hasActivity = totalNotes > 0;
-                
+
                 const commentsHtml = (task.comments || []).map(c => `
                     <div style="background: #f9fafb; padding: 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); position: relative;">
                         <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">${c.author} <span style="font-weight: 400; font-size: 0.8rem;">• ${new Date(c.timestamp).toLocaleString()}</span></div>
@@ -1224,7 +1240,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ author, text })
                 });
-                
+
                 if (res.ok) {
                     textInput.value = '';
                     showToast('Comment added!');
@@ -1245,12 +1261,12 @@
 
         async function deleteComment(taskId, timestamp) {
             if (!confirm("Are you sure you want to delete this comment?")) return;
-            
+
             try {
                 const res = await fetch(`/api/handovers/${taskId}/comments/${timestamp}`, {
                     method: 'DELETE'
                 });
-                
+
                 if (res.ok) {
                     showToast('Comment deleted');
                     // Refresh while keeping details open
@@ -1276,10 +1292,10 @@
             if (task) {
                 document.getElementById('modalTitle').innerText = 'Edit Task';
                 document.getElementById('taskId').value = task.id;
-                
+
                 if (modalFp) modalFp.setDate(task.task_date || new Date().toISOString().split('T')[0]);
                 else document.getElementById('newTaskDate').value = task.task_date || new Date().toISOString().split('T')[0];
-                
+
                 document.getElementById('taskTitle').value = task.title;
                 document.getElementById('taskDept').value = task.department || 'Other';
                 document.getElementById('taskStatus').value = task.status || 'Pending';
@@ -1296,10 +1312,10 @@
             } else {
                 document.getElementById('modalTitle').innerText = 'New Handover';
                 document.getElementById('taskId').value = '';
-                
+
                 if (modalFp) modalFp.setDate(new Date().toISOString().split('T')[0]);
                 else document.getElementById('newTaskDate').value = new Date().toISOString().split('T')[0];
-                
+
                 document.getElementById('deleteBtn').style.display = 'none';
             }
         }
@@ -1399,7 +1415,7 @@
         document.getElementById('modalOverlay').addEventListener('click', (e) => {
             if (e.target === document.getElementById('modalOverlay')) closeModal();
         });
-        
+
         document.getElementById('notifOverlay').addEventListener('click', (e) => {
             if (e.target === document.getElementById('notifOverlay')) closeNotifications();
         });
@@ -1440,7 +1456,7 @@
                         showToast(`New reply from ${n.author}!`);
                     });
                 }
-                
+
                 // Track highest seen timestamp
                 if (notifs[0].timestamp > lastPoppedUpTime) {
                     lastPoppedUpTime = notifs[0].timestamp;
@@ -1453,18 +1469,18 @@
         async function openNotifications() {
             document.getElementById('notifOverlay').classList.add('open');
             const notifs = window.latestNotifs;
-            
+
             if (notifs.length > 0) {
                 lastSeenNotifTime = notifs[0].timestamp;
                 localStorage.setItem('lastSeenNotifTime', lastSeenNotifTime);
                 document.getElementById('notifBadge').style.display = 'none';
             }
-            
+
             if (notifs.length === 0) {
                 document.getElementById('notifList').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No recent activity.</div>';
                 return;
             }
-            
+
             document.getElementById('notifList').innerHTML = notifs.map(n => `
                 <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; background: ${n.timestamp > localStorage.getItem('lastSeenNotifTime') ? 'var(--surface-hover)' : 'transparent'};">
                     <div style="font-size: 0.9rem;">
@@ -1491,7 +1507,7 @@
             }
 
             const clickedCard = e.target.closest('.task-card');
-            
+
             // Close all open cards that are NOT the one we just clicked
             document.querySelectorAll('.task-details.open').forEach(el => {
                 const card = el.closest('.task-card');
@@ -1516,7 +1532,7 @@
         setInterval(() => {
             const isModalOpen = document.getElementById('modalOverlay').classList.contains('open');
             const isAnyCardOpen = document.querySelector('.task-details.open') !== null;
-            
+
             if (!isModalOpen && !isAnyCardOpen) {
                 const date = datePickerInput.value || new Date().toISOString().split('T')[0];
                 fetchHandovers(date, true);
