@@ -232,6 +232,9 @@ class FrontOfficeDB:
                         created_by TEXT,
                         assigned_to TEXT,
                         comment TEXT,
+                        department TEXT,
+                        status TEXT DEFAULT 'Pending',
+                        completed_by TEXT,
                         created_at TEXT DEFAULT (datetime('now'))
                     )
                 """)
@@ -3483,56 +3486,6 @@ def page_checkout_list():
 
 
 
-def page_tasks_handover():
-    st.header("Handover")
-    d = st.date_input("Date", value=date.today(), key="tasks_date")
-
-    st.subheader("Add task")
-    col1, col2 = st.columns(2)
-    title = col1.text_input("Task")
-    created_by = col2.text_input("By")
-    assigned_to = col1.text_input("To")
-    comment = col2.text_input("Comment")
-    if st.button("Add Handover"):
-        if title:
-            db.add_task(d, title, created_by, assigned_to, comment)
-            st.success("Handover added.")
-        else:
-            st.error("Handover title required.")
-
-        st.subheader("Handover for this date")
-    rows = db.get_tasks_for_date(d)
-    df = pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
-    if df.empty:
-        st.info("No Handovers.")
-    else:
-        df_edit = st.data_editor(
-            df[["id", "task_date", "title", "created_by", "assigned_to", "comment"]],
-            hide_index=True,
-            disabled=["id", "task_date"],
-            use_container_width=True,
-        )
-
-        if st.button("Save changes", type="primary"):
-            for _, row in df_edit.iterrows():
-                db.execute(
-                    """
-                    UPDATE tasks
-                    SET title = ?, created_by = ?, assigned_to = ?, comment = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        row["title"],
-                        row["created_by"],
-                        row["assigned_to"],
-                        row["comment"],
-                        row["id"],
-                    ),
-                )
-            st.success("Handover updated.")
-            st.rerun()
-
-
 def page_no_shows():
     st.header("No Shows")
     d = st.date_input("Arrival date", value=date.today(), key="no_show_date")
@@ -5299,7 +5252,6 @@ def main():
                 "Housekeeping Task-List",
                 "Breakfast List",
                 "Search",
-                "Handover",
                 "No Shows",
                 "Room list",
                 "Spare Twin rooms",
@@ -5333,8 +5285,6 @@ def main():
         page_search()
     elif page == "Add Reservation":
         page_add_reservation()
-    elif page == "Handover":
-        page_tasks_handover()
     elif page == "Payments":
         page_payments()
     elif page == "Invoices":
