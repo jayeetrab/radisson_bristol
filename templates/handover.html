@@ -477,6 +477,11 @@
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             border: 1px solid var(--border);
             box-shadow: var(--shadow-sm);
+            cursor: pointer;
+        }
+        
+        .task-card .task-details {
+            cursor: default;
         }
 
         .task-card:hover {
@@ -1479,9 +1484,40 @@
             document.getElementById('notifOverlay').classList.remove('open');
         }
 
+        // Accordion Card Logic
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('#modalOverlay') || e.target.closest('#notifOverlay') || e.target.closest('.toast-container')) {
+                return;
+            }
+
+            const clickedCard = e.target.closest('.task-card');
+            
+            // Close all open cards that are NOT the one we just clicked
+            document.querySelectorAll('.task-details.open').forEach(el => {
+                const card = el.closest('.task-card');
+                if (card !== clickedCard) {
+                    el.classList.remove('open');
+                }
+            });
+
+            // If we clicked a card, open it
+            if (clickedCard) {
+                const isInteractive = e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' || e.target.closest('button') || e.target.closest('.task-details');
+                if (!isInteractive) {
+                    const details = clickedCard.querySelector('.task-details');
+                    if (details) {
+                        details.classList.add('open');
+                    }
+                }
+            }
+        });
+
         // Auto-refresh the dashboard and poll notifications
         setInterval(() => {
-            if (!document.getElementById('modalOverlay').classList.contains('open')) {
+            const isModalOpen = document.getElementById('modalOverlay').classList.contains('open');
+            const isAnyCardOpen = document.querySelector('.task-details.open') !== null;
+            
+            if (!isModalOpen && !isAnyCardOpen) {
                 const date = datePickerInput.value || new Date().toISOString().split('T')[0];
                 fetchHandovers(date, true);
             }
