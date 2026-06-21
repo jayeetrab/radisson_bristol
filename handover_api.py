@@ -83,6 +83,7 @@ def add_handover():
             "created_by": data.get("created_by"),
             "completed_by": data.get("completed_by"),
             "comment": data.get("comment"),
+            "photo": data.get("photo"),
             "comments": [],
             "created_at": datetime.utcnow()
         }
@@ -187,7 +188,7 @@ def update_handover(task_id):
         query_id = get_mongo_id(task_id)
         
     update_data = {}
-    for field in ['title', 'created_by', 'assigned_to', 'comment', 'department', 'status', 'priority', 'completed_by']:
+    for field in ['title', 'created_by', 'assigned_to', 'comment', 'department', 'status', 'priority', 'completed_by', 'photo']:
         if field in data:
             update_data[field] = data[field]
             
