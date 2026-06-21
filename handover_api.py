@@ -124,6 +124,29 @@ def add_comment(task_id):
         logger.error(f"Error adding comment: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/handovers/<task_id>/comments/<timestamp>', methods=['DELETE'])
+def delete_comment(task_id, timestamp):
+    if mongo_tasks is None: return jsonify({"error": "DB not connected"}), 500
+    try:
+        try:
+            obj_id = ObjectId(task_id)
+        except:
+            try:
+                obj_id = int(task_id)
+            except:
+                obj_id = task_id
+                
+        result = mongo_tasks.update_one(
+            {"_id": obj_id},
+            {"$pull": {"comments": {"timestamp": timestamp}}}
+        )
+        if result.modified_count > 0:
+            return jsonify({"success": True}), 200
+        return jsonify({"error": "Comment not found"}), 404
+    except Exception as e:
+        logger.error(f"Error deleting comment: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/notifications', methods=['GET'])
 def get_notifications():
     if mongo_tasks is None:
