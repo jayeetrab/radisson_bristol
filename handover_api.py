@@ -68,29 +68,86 @@ def add_handover():
     department = data.get('department', 'Other')
     status = data.get('status', 'Pending')
     priority = data.get('priority', 'Normal')
-    completed_by = data.get('completed_by', '')
     
     if not title:
         return jsonify({"error": "Title is required"}), 400
         
     try:
-        result = mongo_tasks.insert_one({
-            "task_date": task_date,
-            "title": title,
-            "created_by": created_by,
-            "assigned_to": assigned_to,
-            "comment": comment,
-            "department": department,
-            "status": status,
-            "priority": priority,
-            "completed_by": completed_by,
-            "created_at": datetime.now().isoformat()
-        })
+        task = {
+            "task_date": data.get("task_date"),
+            "title": data.get("title"),
+            "department": data.get("department"),
+            "priority": data.get("priority", "Normal"),
+            "status": data.get("status", "Pending"),
+            "assigned_to": data.get("assigned_to"),
+            "created_by": data.get("created_by"),
+            "completed_by": data.get("completed_by"),
+            "comment": data.get("comment"),
+            "comments": [],
+            "created_at": datetime.utcnow()
+        }
+        result = mongo_tasks.insert_one(task)
         task_id = str(result.inserted_id)
         return jsonify({"success": True, "id": task_id})
     except Exception as e:
-        logger.error(f"MongoDB Insert Error: {e}")
-        return jsonify({"error": "Failed to insert task"}), 500
+        logger.error(f"Error inserting task: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/handovers/<task_id>/comments', methods=['POST'])
+def add_comment(task_id):
+    if mongo_tasks is None: return jsonify({"error": "DB not connected"}), 500
+    try:
+        data = request.json
+        if not data or not data.get("author") or not data.get("text"):
+            return jsonify({"error": "Author and text are required"}), 400
+        
+        try:
+            obj_id = ObjectId(task_id)
+        except:
+            try:
+                obj_id = int(task_id)
+            except:
+                obj_id = task_id
+        
+        new_comment = {
+            "author": data["author"],
+            "text": data["text"],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        mongo_tasks.update_one(
+            {"_id": obj_id},
+            {"$push": {"comments": new_comment}}
+        )
+        return jsonify(new_comment), 201
+    except Exception as e:
+        logger.error(f"Error adding comment: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/notifications', methods=['GET'])
+def get_notifications():
+    if mongo_tasks is None:
+        return jsonify([])
+    try:
+        pipeline = [
+            {"$unwind": "$comments"},
+            {"$sort": {"comments.timestamp": -1}},
+            {"$limit": 30},
+            {"$project": {
+                "_id": 0,
+                "task_id": {"$toString": "$_id"},
+                "title": 1,
+                "task_date": 1,
+                "author": "$comments.author",
+                "text": "$comments.text",
+                "timestamp": "$comments.timestamp"
+            }}
+        ]
+        notifications = list(mongo_tasks.aggregate(pipeline))
+        return jsonify(notifications)
+    except Exception as e:
+        logger.error(f"Error fetching notifications: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/handovers/<task_id>', methods=['PUT'])
 def update_handover(task_id):

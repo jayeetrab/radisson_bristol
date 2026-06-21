@@ -780,6 +780,10 @@
                 </svg>
                 CSV Export
             </button>
+            <button class="btn-secondary" onclick="openNotifications()" style="position: relative; padding: 10px;" title="Activity Feed">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                <span id="notifBadge" style="display: none; position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; font-size: 0.7rem; font-weight: 700; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">0</span>
+            </button>
             <button class="btn-add" onclick="openModal()">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
@@ -902,7 +906,7 @@
                         <input type="text" id="taskAssignedTo" placeholder="Assignee name">
                     </div>
                     <div class="form-group full">
-                        <label>Notes</label>
+                        <label>Description</label>
                         <textarea id="taskComment" rows="4"
                             placeholder="Any additional details or context..."></textarea>
                     </div>
@@ -917,7 +921,19 @@
         </div>
     </div>
 
-    <!-- Toast Container -->
+    <!-- Notifications Modal -->
+    <div class="modal-overlay" id="notifOverlay">
+        <div class="modal" style="max-width: 500px; max-height: 80vh; overflow-y: auto;">
+            <h2>Recent Activity</h2>
+            <div id="notifList">
+                <div style="text-align: center; color: var(--text-muted); padding: 20px;">Loading...</div>
+            </div>
+            <div class="modal-actions" style="margin-top: 20px;">
+                <button type="button" class="btn" onclick="closeNotifications()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div class="toast-container" id="toastContainer"></div>
 
     <!-- Flatpickr JS -->
@@ -968,10 +984,12 @@
             }, 3000);
         }
 
-        async function fetchHandovers(dateOverride = null) {
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('tasksGrid').innerHTML = '';
-            document.getElementById('emptyState').style.display = 'none';
+        async function fetchHandovers(dateOverride = null, silent = false) {
+            if (!silent) {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('tasksGrid').innerHTML = '';
+                document.getElementById('emptyState').style.display = 'none';
+            }
 
             const date = dateOverride || datePickerInput.value || new Date().toISOString().split('T')[0];
             try {
@@ -980,7 +998,7 @@
                 updateDashboard();
                 renderTasks();
             } catch (err) {
-                showToast('Failed to fetch tasks.');
+                if (!silent) showToast('Failed to fetch tasks.');
             } finally {
                 document.getElementById('loading').style.display = 'none';
             }
@@ -1086,16 +1104,29 @@
 
                 const card = document.createElement('div');
                 card.className = 'task-card';
+                const commentsCount = (task.comments || []).length;
+                const hasDescription = task.comment && task.comment.trim() !== '';
+                const totalNotes = commentsCount + (hasDescription ? 1 : 0);
+                const hasActivity = totalNotes > 0;
+                
+                const commentsHtml = (task.comments || []).map(c => `
+                    <div style="background: #f9fafb; padding: 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border);">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">${c.author} <span style="font-weight: 400; font-size: 0.8rem;">• ${new Date(c.timestamp).toLocaleString()}</span></div>
+                        <div style="color: var(--text-main); font-size: 0.95rem;">${c.text}</div>
+                    </div>
+                `).join('');
+
                 card.innerHTML = `
                     <div class="task-header">
                         <div>
                             <div class="task-title">
                                 ${task.title}
-                                ${task.priority === 'High' ? '<span class="badge priority-high">🔥 URGENT</span>' : ''}
+                                ${task.priority === 'High' ? '<span class="badge priority-high">URGENT</span>' : ''}
                             </div>
                             <div class="task-meta">
                                 <span class="badge dept-${deptClass}">${task.department || 'Other'}</span>
-                                <span>${task.created_by || 'Unknown'} ➔ ${task.assigned_to || 'Unassigned'}</span>
+                                <span>For: ${task.task_date}</span>
+                                <span>Assignee: ${task.assigned_to || 'Unassigned'}</span>
                             </div>
                         </div>
                         <div>
@@ -1106,20 +1137,31 @@
                             </select>
                         </div>
                     </div>
-                    ${task.status === 'Completed' && task.completed_by ? `
-                        <div class="completed-text">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
-                            Completed by ${task.completed_by}
-                        </div>` : ''}
+                    
+                    ${task.status === 'Completed' && task.completed_by ? `<div class="completed-text"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Completed by ${task.completed_by}</div>` : ''}
                     
                     <div class="task-details" id="details-${task.id}">
-                        <strong>Notes</strong><br/>
-                        ${task.comment ? task.comment.replace(/\\n/g, '<br>') : '<span style="color:var(--text-muted)">No additional notes.</span>'}
+                        ${hasDescription ? `<div style="margin-bottom: 16px;"><strong>Description:</strong><br>${task.comment}</div>` : ''}
+                        
+                        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
+                            <strong style="display: block; margin-bottom: 12px;">Discussion</strong>
+                            <div id="comments-list-${task.id}">
+                                ${commentsCount > 0 ? commentsHtml : '<div style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px;">No comments yet.</div>'}
+                            </div>
+                            
+                            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                                <input type="text" id="replyAuthor-${task.id}" placeholder="Your Name" value="" style="width: 140px; padding: 8px 12px; height: 38px;">
+                                <input type="text" id="replyText-${task.id}" placeholder="Type a reply..." style="flex: 1; padding: 8px 12px; height: 38px;" onkeypress="if(event.key === 'Enter') addComment('${task.id}')">
+                                <button class="btn-primary" onclick="addComment('${task.id}')" style="padding: 0 16px; height: 38px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer;">Reply</button>
+                            </div>
+                        </div>
                     </div>
-                    
+
                     <div class="task-footer">
-                        <button class="toggle-btn" onclick="toggleDetails('${task.id}')">View Notes</button>
-                        <button class="btn" style="padding: 6px 16px;" onclick='openModal(${JSON.stringify(task).replace(/'/g, "&#39;")})'>Edit</button>
+                        <button class="toggle-btn" onclick="toggleDetails('${task.id}')" style="${hasActivity ? 'color: white; font-weight: 700; background: var(--danger); padding: 4px 12px; border-radius: 16px;' : ''}">
+                            ${hasActivity ? `${totalNotes} Note${totalNotes > 1 ? 's' : ''}` : 'Add Note'}
+                        </button>
+                        <button class="btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick='openModal(${JSON.stringify(task).replace(/'/g, "&#39;")})'>Edit</button>
                     </div>
                 `;
                 fragment.appendChild(card);
@@ -1148,6 +1190,48 @@
                 renderTasks();
             } catch (err) {
                 showToast('Failed to update status');
+            }
+        }
+
+        async function addComment(taskId) {
+            const authorInput = document.getElementById(`replyAuthor-${taskId}`);
+            const textInput = document.getElementById(`replyText-${taskId}`);
+            const author = authorInput.value.trim();
+            const text = textInput.value.trim();
+
+            if (!author) {
+                showToast('Please enter your name');
+                authorInput.focus();
+                return;
+            }
+            if (!text) {
+                showToast('Please enter a reply');
+                textInput.focus();
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/handovers/${taskId}/comments`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ author, text })
+                });
+                
+                if (res.ok) {
+                    textInput.value = '';
+                    showToast('Comment added!');
+                    // Keep details open by refreshing silently and passing the open state
+                    const detailsState = document.getElementById(`details-${taskId}`).classList.contains('open');
+                    await fetchHandovers(null, true);
+                    if (detailsState) {
+                        const newDetails = document.getElementById(`details-${taskId}`);
+                        if (newDetails) newDetails.classList.add('open');
+                    }
+                } else {
+                    showToast('Failed to add comment');
+                }
+            } catch (err) {
+                showToast('Failed to add comment');
             }
         }
 
@@ -1282,9 +1366,103 @@
         document.getElementById('modalOverlay').addEventListener('click', (e) => {
             if (e.target === document.getElementById('modalOverlay')) closeModal();
         });
+        
+        document.getElementById('notifOverlay').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('notifOverlay')) closeNotifications();
+        });
+
+        // Notifications Feature
+        let lastSeenNotifTime = localStorage.getItem('lastSeenNotifTime') || '1970-01-01T00:00:00Z';
+        let lastPoppedUpTime = lastSeenNotifTime; // Prevent spamming popups on page load
+        window.latestNotifs = [];
+
+        async function pollNotifications() {
+            try {
+                const res = await fetch('/api/notifications');
+                const notifs = await res.json();
+                window.latestNotifs = notifs;
+
+                if (notifs.length === 0) return;
+
+                let newCount = 0;
+                let newlyArrived = [];
+
+                notifs.forEach(n => {
+                    if (n.timestamp > lastSeenNotifTime) newCount++;
+                    if (n.timestamp > lastPoppedUpTime) newlyArrived.push(n);
+                });
+
+                // Update Badge UI
+                const badge = document.getElementById('notifBadge');
+                if (newCount > 0) {
+                    badge.style.display = 'flex';
+                    badge.innerText = newCount;
+                } else {
+                    badge.style.display = 'none';
+                }
+
+                // Show toast popups for newly arrived (if page was already open)
+                if (lastPoppedUpTime !== '1970-01-01T00:00:00Z') {
+                    newlyArrived.forEach(n => {
+                        showToast(`New reply from ${n.author}!`);
+                    });
+                }
+                
+                // Track highest seen timestamp
+                if (notifs[0].timestamp > lastPoppedUpTime) {
+                    lastPoppedUpTime = notifs[0].timestamp;
+                }
+            } catch (err) {
+                console.error("Failed to poll notifications");
+            }
+        }
+
+        async function openNotifications() {
+            document.getElementById('notifOverlay').classList.add('open');
+            const notifs = window.latestNotifs;
+            
+            if (notifs.length > 0) {
+                lastSeenNotifTime = notifs[0].timestamp;
+                localStorage.setItem('lastSeenNotifTime', lastSeenNotifTime);
+                document.getElementById('notifBadge').style.display = 'none';
+            }
+            
+            if (notifs.length === 0) {
+                document.getElementById('notifList').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No recent activity.</div>';
+                return;
+            }
+            
+            document.getElementById('notifList').innerHTML = notifs.map(n => `
+                <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; background: ${n.timestamp > localStorage.getItem('lastSeenNotifTime') ? 'var(--surface-hover)' : 'transparent'};">
+                    <div style="font-size: 0.9rem;">
+                        <strong>${n.author}</strong> replied on <span style="font-weight: 600; color: var(--primary); cursor: pointer;" onclick="closeNotifications(); document.getElementById('datePicker')._flatpickr.setDate('${n.task_date}'); fetchHandovers('${n.task_date}')">${n.title}</span>
+                    </div>
+                    <div style="font-size: 0.95rem; color: var(--text-main); background: var(--surface); padding: 8px 12px; border-radius: 8px;">
+                        ${n.text}
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">
+                        ${new Date(n.timestamp).toLocaleString()} • For ${n.task_date}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function closeNotifications() {
+            document.getElementById('notifOverlay').classList.remove('open');
+        }
+
+        // Auto-refresh the dashboard and poll notifications
+        setInterval(() => {
+            if (!document.getElementById('modalOverlay').classList.contains('open')) {
+                const date = datePickerInput.value || new Date().toISOString().split('T')[0];
+                fetchHandovers(date, true);
+            }
+            pollNotifications();
+        }, 15000);
 
         // Init
         fetchHandovers();
+        pollNotifications();
     </script>
 </body>
 
