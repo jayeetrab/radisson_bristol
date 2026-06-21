@@ -187,6 +187,10 @@
             border-color: #d4d4d4;
         }
 
+        .modal-date-wrapper input {
+            padding-left: 44px !important;
+        }
+
         /* Buttons */
         .btn-add {
             background: var(--primary);
@@ -850,7 +854,10 @@
                 <div class="form-grid">
                     <div class="form-group full">
                         <label>Date of Task</label>
-                        <input type="date" id="newTaskDate" required>
+                        <div class="modal-date-wrapper" style="position: relative; display: flex; align-items: center;">
+                            <svg style="position: absolute; left: 14px; width: 20px; height: 20px; color: var(--text-muted); pointer-events: none; z-index: 2;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            <input type="text" id="newTaskDate" required style="padding-left: 44px; cursor: pointer;">
+                        </div>
                     </div>
                     <div class="form-group full">
                         <label>Title</label>
@@ -932,6 +939,16 @@
             onChange: function (selectedDates, dateStr, instance) {
                 fetchHandovers(dateStr);
             }
+        });
+
+        // Initialize Flatpickr for the Modal "Date of Task"
+        let modalFp;
+        document.addEventListener("DOMContentLoaded", function() {
+            modalFp = flatpickr(document.getElementById('newTaskDate'), {
+                dateFormat: "Y-m-d",
+                altInput: true,
+                altFormat: "F j, Y"
+            });
         });
 
         document.getElementById('taskStatus').addEventListener('change', function (e) {
@@ -1142,7 +1159,10 @@
             if (task) {
                 document.getElementById('modalTitle').innerText = 'Edit Task';
                 document.getElementById('taskId').value = task.id;
-                document.getElementById('newTaskDate').value = task.task_date || new Date().toISOString().split('T')[0];
+                
+                if (modalFp) modalFp.setDate(task.task_date || new Date().toISOString().split('T')[0]);
+                else document.getElementById('newTaskDate').value = task.task_date || new Date().toISOString().split('T')[0];
+                
                 document.getElementById('taskTitle').value = task.title;
                 document.getElementById('taskDept').value = task.department || 'Other';
                 document.getElementById('taskStatus').value = task.status || 'Pending';
@@ -1159,7 +1179,10 @@
             } else {
                 document.getElementById('modalTitle').innerText = 'New Handover';
                 document.getElementById('taskId').value = '';
-                document.getElementById('newTaskDate').value = new Date().toISOString().split('T')[0];
+                
+                if (modalFp) modalFp.setDate(new Date().toISOString().split('T')[0]);
+                else document.getElementById('newTaskDate').value = new Date().toISOString().split('T')[0];
+                
                 document.getElementById('deleteBtn').style.display = 'none';
             }
         }
