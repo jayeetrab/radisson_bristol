@@ -988,6 +988,7 @@
         let modalFp;
         document.addEventListener("DOMContentLoaded", function () {
             modalFp = flatpickr(document.getElementById('newTaskDate'), {
+                mode: "range",
                 dateFormat: "Y-m-d",
                 altInput: true,
                 altFormat: "F j, Y"

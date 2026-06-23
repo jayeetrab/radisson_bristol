@@ -37,10 +37,22 @@ def get_handovers():
     
     try:
         if " to " in task_date_str:
-            start_date, end_date = task_date_str.split(" to ")
-            query = {"task_date": {"$gte": start_date, "$lte": end_date}}
+            query_start, query_end = task_date_str.split(" to ")
         else:
-            query = {"task_date": task_date_str}
+            query_start = task_date_str
+            query_end = task_date_str
+            
+        query = {
+            "$or": [
+                {
+                    "start_date": {"$lte": query_end},
+                    "end_date": {"$gte": query_start}
+                },
+                {
+                    "task_date": {"$gte": query_start, "$lte": query_end} if " to " in task_date_str else task_date_str
+                }
+            ]
+        }
 
         tasks_cursor = mongo_tasks.find(query).sort("created_at", -1)
         tasks = []
@@ -69,12 +81,20 @@ def add_handover():
     status = data.get('status', 'Pending')
     priority = data.get('priority', 'Normal')
     
+    if " to " in task_date:
+        start_date, end_date = task_date.split(" to ")
+    else:
+        start_date = task_date
+        end_date = task_date
+
     if not title:
         return jsonify({"error": "Title is required"}), 400
         
     try:
         task = {
             "task_date": data.get("task_date"),
+            "start_date": start_date,
+            "end_date": end_date,
             "title": data.get("title"),
             "department": data.get("department"),
             "priority": data.get("priority", "Normal"),
@@ -188,9 +208,15 @@ def update_handover(task_id):
         query_id = get_mongo_id(task_id)
         
     update_data = {}
-    for field in ['title', 'created_by', 'assigned_to', 'comment', 'department', 'status', 'priority', 'completed_by', 'photo']:
+    for field in ['task_date', 'title', 'created_by', 'assigned_to', 'comment', 'department', 'status', 'priority', 'completed_by', 'photo']:
         if field in data:
             update_data[field] = data[field]
+            if field == 'task_date':
+                if " to " in data[field]:
+                    update_data['start_date'], update_data['end_date'] = data[field].split(" to ")
+                else:
+                    update_data['start_date'] = data[field]
+                    update_data['end_date'] = data[field]
             
     if not update_data:
         return jsonify({"success": True})
