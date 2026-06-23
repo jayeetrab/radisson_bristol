@@ -1156,7 +1156,7 @@
                             </div>
                             <div class="task-meta">
                                 <span class="badge dept-${deptClass}">${task.department || 'Other'}</span>
-                                <span>For: ${task.task_date}</span>
+                                <span>${(task.task_date || '').includes(' to ') ? 'From ' + task.task_date.replace(' to ', ' to ') : 'For: ' + task.task_date}</span>
                                 <span>${task.created_by || 'Unknown'} ➔ ${task.assigned_to || 'Unassigned'}</span>
                                 <span>Created: ${task.created_at ? new Date(task.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown'}</span>
                             </div>
