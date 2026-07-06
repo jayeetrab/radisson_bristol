@@ -202,7 +202,8 @@ with st.expander("➕ Add New Handover", expanded=False):
     with st.form("add_handover_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         title = col1.text_input("Task / Title*", placeholder="e.g. Broken AC in Room 102")
-        department = col2.selectbox("Department", ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "Other"])
+        department_list = col2.multiselect("Department", ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "Other"], default=["Other"])
+        department = ", ".join(department_list) if department_list else "Other"
         
         col3, col4 = st.columns(2)
         created_by = col3.text_input("Created By", placeholder="e.g. John Doe")
@@ -237,7 +238,7 @@ else:
             if dept_name == "All":
                 filtered_rows = rows
             else:
-                filtered_rows = [r for r in rows if (r["department"] == dept_name) or (dept_name == "Other" and r["department"] not in departments)]
+                filtered_rows = [r for r in rows if (r["department"] and dept_name in r["department"]) or (dept_name == "Other" and not any(d in (r["department"] or "") for d in departments if d != "All" and d != "Other"))]
             
             if not filtered_rows:
                 st.caption(f"No handovers for {dept_name}.")
@@ -245,9 +246,12 @@ else:
                 for row in filtered_rows:
                     row_dict = dict(row)
                     dept_display = row_dict["department"] or "Other"
-                    dept_class = dept_display.replace(" ", "")
-                    if dept_class not in ["Maintenance", "Housekeeping", "FrontOffice", "Management", "F&B", "Finance"]:
-                        dept_class = "Other"
+                    dept_badges = ""
+                    for d in dept_display.split(", "):
+                        d_class = d.replace(" ", "")
+                        if d_class not in ["Maintenance", "Housekeeping", "FrontOffice", "Management", "F&B", "Finance"]:
+                            d_class = "Other"
+                        dept_badges += f'<span class="dept-badge dept-{d_class}">{d}</span> '
                     
                     status_val = row_dict.get("status") or "Pending"
                     status_class = status_val.replace(" ", "")
@@ -257,7 +261,7 @@ else:
                         c_main, c_stat = st.columns([3, 1])
                         with c_main:
                             st.markdown(f"**{row['title']}**")
-                            st.markdown(f"<span class='dept-badge dept-{dept_class}'>{dept_display}</span>", unsafe_allow_html=True)
+                            st.markdown(f"{dept_badges}", unsafe_allow_html=True)
                             if completed_by_text:
                                 st.markdown(f"<small style='color:green;'>{completed_by_text}</small>", unsafe_allow_html=True)
                         

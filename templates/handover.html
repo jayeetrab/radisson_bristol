@@ -892,7 +892,7 @@
                     </div>
                     <div class="form-group">
                         <label>Department</label>
-                        <select id="taskDept">
+                        <select id="taskDept" multiple style="height: 120px;">
                             <option>Maintenance</option>
                             <option>Housekeeping</option>
                             <option>Front Office</option>
@@ -1042,8 +1042,10 @@
             const people = {};
 
             tasks.forEach(t => {
-                const d = t.department || 'Other';
-                depts[d] = (depts[d] || 0) + 1;
+                const deptsArr = Array.isArray(t.department) ? t.department : [t.department || 'Other'];
+                deptsArr.forEach(d => {
+                    depts[d] = (depts[d] || 0) + 1;
+                });
                 const p = t.assigned_to ? t.assigned_to.trim() : 'Unassigned';
                 people[p] = (people[p] || 0) + 1;
             });
@@ -1101,7 +1103,10 @@
                         filtered = tasks.filter(t => t.status === 'Completed');
                     }
                 } else if (activeFilter.type === 'department') {
-                    filtered = tasks.filter(t => (t.department || 'Other') === activeFilter.value);
+                    filtered = tasks.filter(t => {
+                        const deptsArr = Array.isArray(t.department) ? t.department : [t.department || 'Other'];
+                        return deptsArr.includes(activeFilter.value);
+                    });
                 } else if (activeFilter.type === 'assigned_to') {
                     filtered = tasks.filter(t => {
                         const p = t.assigned_to ? t.assigned_to.trim() : 'Unassigned';
@@ -1128,7 +1133,11 @@
             const fragment = document.createDocumentFragment();
 
             filtered.forEach(task => {
-                const deptClass = task.department ? task.department.replace(' ', '') : 'Other';
+                const deptsArr = Array.isArray(task.department) ? task.department : [task.department || 'Other'];
+                const deptBadges = deptsArr.map(d => {
+                    const deptClass = d.replace(' ', '');
+                    return `<span class="badge dept-${deptClass}">${d}</span>`;
+                }).join(' ');
 
                 const card = document.createElement('div');
                 card.className = 'task-card';
@@ -1155,7 +1164,7 @@
                                 ${task.priority === 'High' ? '<span class="badge priority-high">URGENT</span>' : ''}
                             </div>
                             <div class="task-meta">
-                                <span class="badge dept-${deptClass}">${task.department || 'Other'}</span>
+                                ${deptBadges}
                                 <span>${(task.task_date || '').includes(' to ') ? 'From ' + task.task_date.replace(' to ', ' to ') : 'For: ' + task.task_date}</span>
                                 <span>${task.created_by || 'Unknown'} ➔ ${task.assigned_to || 'Unassigned'}</span>
                                 <span>Created: ${task.created_at ? new Date(task.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown'}</span>
@@ -1307,7 +1316,11 @@
                 else document.getElementById('newTaskDate').value = task.task_date || new Date().toISOString().split('T')[0];
 
                 document.getElementById('taskTitle').value = task.title;
-                document.getElementById('taskDept').value = task.department || 'Other';
+                const deptSelect = document.getElementById('taskDept');
+                const taskDepts = Array.isArray(task.department) ? task.department : [task.department || 'Other'];
+                Array.from(deptSelect.options).forEach(opt => {
+                    opt.selected = taskDepts.includes(opt.value);
+                });
                 document.getElementById('taskStatus').value = task.status || 'Pending';
                 document.getElementById('taskPriority').value = task.priority || 'Normal';
                 document.getElementById('taskCreatedBy').value = task.created_by || '';
@@ -1365,10 +1378,13 @@
             e.preventDefault();
 
             const taskDateValue = document.getElementById('newTaskDate').value;
+            const deptSelect = document.getElementById('taskDept');
+            const selectedDepts = Array.from(deptSelect.selectedOptions).map(opt => opt.value);
+
             const payload = {
                 task_date: taskDateValue,
                 title: document.getElementById('taskTitle').value,
-                department: document.getElementById('taskDept').value,
+                department: selectedDepts,
                 status: document.getElementById('taskStatus').value,
                 priority: document.getElementById('taskPriority').value,
                 created_by: document.getElementById('taskCreatedBy').value,
@@ -1435,7 +1451,7 @@
                 t.task_date,
                 t.priority || 'Normal',
                 t.status || 'Pending',
-                t.department || 'Other',
+                Array.isArray(t.department) ? t.department.join('; ') : (t.department || 'Other'),
                 `"${(t.title || '').replace(/"/g, '""')}"`,
                 `"${(t.assigned_to || '').replace(/"/g, '""')}"`,
                 `"${(t.created_by || '').replace(/"/g, '""')}"`,
