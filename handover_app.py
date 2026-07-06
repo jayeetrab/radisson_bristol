@@ -63,6 +63,8 @@ st.markdown("""
     .dept-Housekeeping { background-color: #e0e7ff; color: #3730a3; }
     .dept-FrontOffice { background-color: #dcfce3; color: #166534; }
     .dept-Management { background-color: #fef3c7; color: #92400e; }
+    .dept-FB { background-color: #fef3c7; color: #92400e; }
+    .dept-Finance { background-color: #fef3c7; color: #92400e; }
     .dept-Other { background-color: #f1f5f9; color: #475569; }
     
     .status-badge {
@@ -192,7 +194,7 @@ def delete_handover(task_id):
             logger.error(f"MongoDB Sync Error (Delete): {e}")
 
 st.title("🤝 Handover Dashboard")
-st.markdown("Modern Handover Management for Maintenance, Housekeeping, and Front Office.")
+st.markdown("Modern Handover Management for Maintenance, Housekeeping, Front Office, F&B, Finance, and Management.")
 
 d = st.date_input("Select Date", value=date.today())
 
@@ -200,7 +202,7 @@ with st.expander("➕ Add New Handover", expanded=False):
     with st.form("add_handover_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         title = col1.text_input("Task / Title*", placeholder="e.g. Broken AC in Room 102")
-        department = col2.selectbox("Department", ["Maintenance", "Housekeeping", "Front Office", "Management", "Other"])
+        department = col2.selectbox("Department", ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "Other"])
         
         col3, col4 = st.columns(2)
         created_by = col3.text_input("Created By", placeholder="e.g. John Doe")
@@ -226,7 +228,7 @@ if not rows:
     st.info("No handovers found for this date.")
 else:
     # Separate by department
-    departments = ["All", "Maintenance", "Housekeeping", "Front Office", "Management", "Other"]
+    departments = ["All", "Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "Other"]
     tabs = st.tabs(departments)
     
     for i, tab in enumerate(tabs):
@@ -244,7 +246,7 @@ else:
                     row_dict = dict(row)
                     dept_display = row_dict["department"] or "Other"
                     dept_class = dept_display.replace(" ", "")
-                    if dept_class not in ["Maintenance", "Housekeeping", "FrontOffice", "Management"]:
+                    if dept_class not in ["Maintenance", "Housekeeping", "FrontOffice", "Management", "F&B", "Finance"]:
                         dept_class = "Other"
                     
                     status_val = row_dict.get("status") or "Pending"
@@ -287,7 +289,7 @@ else:
                                 edit_title = st.text_input("Title", value=row["title"])
                                 
                                 # Safely find index for selectbox
-                                dept_options = ["Maintenance", "Housekeeping", "Front Office", "Management", "Other"]
+                                dept_options = ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "Other"]
                                 try:
                                     default_idx = dept_options.index(row["department"]) if row["department"] else 4
                                 except ValueError:
