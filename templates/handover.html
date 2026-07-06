@@ -578,6 +578,37 @@
             border-radius: 8px;
         }
 
+        .dept-tiles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .dept-tile {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+            background: var(--surface);
+            color: var(--text-main);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .dept-tile:hover {
+            border-color: #d4d4d4;
+            background: #f8fafc;
+        }
+
+        .dept-tile.selected {
+            border-color: var(--primary);
+            background: rgba(0, 0, 0, 0.04);
+            color: var(--primary);
+        }
+
         .status-select:hover {
             border-color: #d4d4d4;
         }
@@ -892,13 +923,15 @@
                     </div>
                     <div class="form-group">
                         <label>Department</label>
-                        <select id="taskDept" multiple style="height: 120px;">
-                            <option>Maintenance</option>
-                            <option>Housekeeping</option>
-                            <option>Front Office</option>
-                            <option>Management</option>
-                            <option>Other</option>
-                        </select>
+                        <div class="dept-tiles" id="taskDeptTiles">
+                            <div class="dept-tile" data-value="Maintenance">Maintenance</div>
+                            <div class="dept-tile" data-value="Housekeeping">Housekeeping</div>
+                            <div class="dept-tile" data-value="Front Office">Front Office</div>
+                            <div class="dept-tile" data-value="Management">Management</div>
+                            <div class="dept-tile" data-value="F&B">F&B</div>
+                            <div class="dept-tile" data-value="Finance">Finance</div>
+                            <div class="dept-tile" data-value="Other">Other</div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Priority</label>
@@ -997,6 +1030,12 @@
 
         document.getElementById('taskStatus').addEventListener('change', function (e) {
             document.getElementById('completedByGroup').style.display = e.target.value === 'Completed' ? 'block' : 'none';
+        });
+
+        document.getElementById('taskDeptTiles').addEventListener('click', function(e) {
+            if (e.target.classList.contains('dept-tile')) {
+                e.target.classList.toggle('selected');
+            }
         });
 
         function showToast(message) {
@@ -1307,6 +1346,7 @@
             document.getElementById('taskPhoto').value = '';
             document.getElementById('handoverForm').reset();
             document.getElementById('completedByGroup').style.display = 'none';
+            document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => tile.classList.remove('selected'));
 
             if (task) {
                 document.getElementById('modalTitle').innerText = 'Edit Task';
@@ -1316,10 +1356,13 @@
                 else document.getElementById('newTaskDate').value = task.task_date || new Date().toISOString().split('T')[0];
 
                 document.getElementById('taskTitle').value = task.title;
-                const deptSelect = document.getElementById('taskDept');
                 const taskDepts = Array.isArray(task.department) ? task.department : [task.department || 'Other'];
-                Array.from(deptSelect.options).forEach(opt => {
-                    opt.selected = taskDepts.includes(opt.value);
+                document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => {
+                    if (taskDepts.includes(tile.dataset.value)) {
+                        tile.classList.add('selected');
+                    } else {
+                        tile.classList.remove('selected');
+                    }
                 });
                 document.getElementById('taskStatus').value = task.status || 'Pending';
                 document.getElementById('taskPriority').value = task.priority || 'Normal';
@@ -1378,8 +1421,9 @@
             e.preventDefault();
 
             const taskDateValue = document.getElementById('newTaskDate').value;
-            const deptSelect = document.getElementById('taskDept');
-            const selectedDepts = Array.from(deptSelect.selectedOptions).map(opt => opt.value);
+            const selectedDepts = Array.from(document.querySelectorAll('#taskDeptTiles .dept-tile.selected'))
+                                      .map(tile => tile.dataset.value);
+            if (selectedDepts.length === 0) selectedDepts.push('Other');
 
             const payload = {
                 task_date: taskDateValue,
