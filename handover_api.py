@@ -34,6 +34,7 @@ def get_handovers():
         return jsonify({"error": "Database connection failed"}), 500
 
     task_date_str = request.args.get('date', date.today().isoformat())
+    include_overdue = request.args.get('include_overdue', 'false').lower() == 'true'
     
     try:
         if " to " in task_date_str:
@@ -42,7 +43,7 @@ def get_handovers():
             query_start = task_date_str
             query_end = task_date_str
             
-        query = {
+        base_query = {
             "$or": [
                 {
                     "start_date": {"$lte": query_end},
@@ -54,12 +55,30 @@ def get_handovers():
             ]
         }
 
+        if include_overdue:
+            overdue_query = {
+                "status": {"$ne": "Completed"},
+                "$or": [
+                    {"end_date": {"$lt": query_start}},
+                    {"task_date": {"$lt": query_start}, "end_date": {"$exists": False}}
+                ]
+            }
+            query = {"$or": [base_query, overdue_query]}
+        else:
+            query = base_query
+
         tasks_cursor = mongo_tasks.find(query).sort("created_at", -1)
         tasks = []
         for t in tasks_cursor:
             # Map ObjectId to string
             t["id"] = str(t["_id"])
             t.pop("_id", None)
+            
+            # Determine if overdue
+            t_end = t.get("end_date") or t.get("task_date", "")
+            # Only consider overdue if it's strictly before query_start and not completed
+            t["is_overdue"] = (t_end < query_start) and (t.get("status") != "Completed")
+            
             tasks.append(t)
         return jsonify(tasks)
     except Exception as e:

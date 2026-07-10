@@ -1072,8 +1072,18 @@
 
             const date = dateOverride || datePickerInput.value || new Date().toISOString().split('T')[0];
             try {
-                const res = await fetch(`/api/handovers?date=${date}`);
+                const res = await fetch(`/api/handovers?date=${date}&include_overdue=true`);
                 tasks = await res.json();
+                
+                // Sort tasks: Pending/In Progress first, Completed last, then by created_at descending
+                tasks.sort((a, b) => {
+                    if (a.status === 'Completed' && b.status !== 'Completed') return 1;
+                    if (a.status !== 'Completed' && b.status === 'Completed') return -1;
+                    const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+                    const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+                    return dateB - dateA;
+                });
+
                 updateDashboard();
                 renderTasks();
             } catch (err) {
@@ -1212,6 +1222,7 @@
                         <div>
                             <div class="task-title">
                                 ${task.title}
+                                ${task.is_overdue ? '<span class="badge priority-high" style="background:#ef4444; color:white; border-color:#dc2626;">OVERDUE</span>' : ''}
                                 ${task.priority === 'High' ? '<span class="badge priority-high">URGENT</span>' : ''}
                             </div>
                             <div class="task-meta">

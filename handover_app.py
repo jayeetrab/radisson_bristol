@@ -141,9 +141,16 @@ def add_handover(task_date, title, created_by, assigned_to, comment, department,
 def get_handovers(task_date):
     with get_db_connection() as conn:
         cursor = conn.execute("""
-            SELECT * FROM tasks WHERE task_date = ? ORDER BY id DESC
-        """, (task_date.isoformat(),))
-        return cursor.fetchall()
+            SELECT * FROM tasks 
+            WHERE task_date = ? OR (task_date < ? AND status != 'Completed')
+            ORDER BY id DESC
+        """, (task_date.isoformat(), task_date.isoformat()))
+        rows = cursor.fetchall()
+        
+        # Sort: pending/in progress first, completed last
+        def sort_key(row):
+            return 1 if row["status"] == "Completed" else 0
+        return sorted(rows, key=sort_key)
 
 def update_handover(task_id, title, created_by, assigned_to, comment, department, status, completed_by):
     with get_db_connection() as conn:
@@ -261,7 +268,10 @@ else:
                         c_main, c_stat = st.columns([3, 1])
                         with c_main:
                             title_md = f"~~**{row['title']}**~~" if status_val == "Completed" else f"**{row['title']}**"
-                            st.markdown(title_md)
+                            is_overdue = row["task_date"] < d.isoformat() and status_val != "Completed"
+                            if is_overdue:
+                                title_md += " <span style='background:#ef4444; color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;'>OVERDUE</span>"
+                            st.markdown(title_md, unsafe_allow_html=True)
                             st.markdown(f"{dept_badges}", unsafe_allow_html=True)
                             if completed_by_text:
                                 st.markdown(f"<small style='color:green;'>{completed_by_text}</small>", unsafe_allow_html=True)
