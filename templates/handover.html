@@ -486,9 +486,19 @@
         }
 
         .task-card:hover {
-            transform: translateY(-3px);
-            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.1);
             border-color: #d4d4d4;
+        }
+
+        .task-completed {
+            opacity: 0.65;
+            background-color: #f8fafc;
+        }
+
+        .task-completed .task-title {
+            text-decoration: line-through;
+            color: var(--text-muted);
         }
 
         .task-header {
@@ -1181,7 +1191,7 @@
                 }).join(' ');
 
                 const card = document.createElement('div');
-                card.className = 'task-card';
+                card.className = 'task-card' + (task.status === 'Completed' ? ' task-completed' : '');
                 const commentsCount = (task.comments || []).length;
                 const hasDescription = task.comment && task.comment.trim() !== '';
                 const totalNotes = commentsCount + (hasDescription ? 1 : 0);

@@ -260,7 +260,8 @@ else:
                     with st.container(border=True):
                         c_main, c_stat = st.columns([3, 1])
                         with c_main:
-                            st.markdown(f"**{row['title']}**")
+                            title_md = f"~~**{row['title']}**~~" if status_val == "Completed" else f"**{row['title']}**"
+                            st.markdown(title_md)
                             st.markdown(f"{dept_badges}", unsafe_allow_html=True)
                             if completed_by_text:
                                 st.markdown(f"<small style='color:green;'>{completed_by_text}</small>", unsafe_allow_html=True)
