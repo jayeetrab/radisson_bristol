@@ -33,21 +33,27 @@ ROLE_RANK = {"normal": 1, "supervisor": 2, "manager": 3, "admin": 4}
 
 
 def ensure_seed_admin():
-    """Create a bootstrap admin the first time the app runs against an empty users collection."""
+    """Ensure the admin account defined by ADMIN_USERNAME / ADMIN_PASSWORD exists.
+    Creates it if that username is missing; never overwrites an existing account, so a
+    password changed in-app is preserved across deploys. Set these two vars in Vercel
+    to control the super-admin login (the password is supplied by you via env, never
+    stored in the codebase)."""
     if mongo_users is None:
         return
     try:
-        if mongo_users.count_documents({}) == 0:
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin").strip().lower()
+        if mongo_users.find_one({"username": admin_username}) is None:
             mongo_users.insert_one({
-                "username": os.environ.get("ADMIN_USERNAME", "admin").strip().lower(),
-                "name": "Administrator",
+                "username": admin_username,
+                "name": os.environ.get("ADMIN_NAME", "Administrator"),
                 "password_hash": generate_password_hash(os.environ.get("ADMIN_PASSWORD", "admin123")),
                 "role": "admin",
                 "departments": ["Management"],
                 "active": True,
+                "must_change_password": False,
                 "created_at": datetime.utcnow(),
             })
-            logger.info("Seeded bootstrap admin user.")
+            logger.info(f"Seeded admin account '{admin_username}'.")
     except Exception as e:
         logger.error(f"Failed to seed admin: {e}")
 
@@ -174,6 +180,7 @@ def api_login():
     session["username"] = user["username"]
     session["role"] = user["role"]
     session["departments"] = user.get("departments", [])
+    session["must_change"] = user.get("must_change_password", False)
     log_activity("login", target_type="session", detail="Signed in")
     return jsonify({"success": True})
 
@@ -192,6 +199,7 @@ def api_me():
     u["departments_all"] = DEPARTMENTS
     u["can_view_activity"] = u["role"] in ("admin", "manager")
     u["can_manage_users"] = u["role"] in ("admin", "manager")
+    u["must_change_password"] = session.get("must_change", False)
     return jsonify(u)
 
 
@@ -280,7 +288,9 @@ def api_change_own_password():
     user = mongo_users.find_one({"_id": ObjectId(session["uid"])})
     if not user or not check_password_hash(user.get("password_hash", ""), current):
         return jsonify({"error": "Current password is incorrect"}), 400
-    mongo_users.update_one({"_id": user["_id"]}, {"$set": {"password_hash": generate_password_hash(new)}})
+    mongo_users.update_one({"_id": user["_id"]},
+                           {"$set": {"password_hash": generate_password_hash(new), "must_change_password": False}})
+    session["must_change"] = False
     log_activity("change_password", target_type="user", target_title=user.get("username"),
                  task_departments=user.get("departments", []), detail="Changed own password")
     return jsonify({"success": True})
@@ -333,6 +343,7 @@ def api_create_user():
         "role": role,
         "departments": departments,
         "active": True,
+        "must_change_password": True,   # staff must replace the handed-out password on first login
         "created_at": datetime.utcnow(),
     })
     log_activity("create_user", target_type="user", target_title=username,
@@ -368,6 +379,10 @@ def api_update_user(user_id):
 
     if data.get("password"):
         update["password_hash"] = generate_password_hash(data["password"])
+        # A reset password is temporary: the user must set their own on next login
+        # (unless an admin is resetting their own account).
+        if user_id != session.get("uid"):
+            update["must_change_password"] = True
 
     # Guard against demoting / disabling yourself out of admin.
     if (update.get("role") and update["role"] != "admin") or (update.get("active") is False):

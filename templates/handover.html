@@ -1156,6 +1156,9 @@
     <div class="modal-overlay" id="pwOverlay">
         <div class="modal" style="max-width: 440px;">
             <h2>Change Password</h2>
+            <p id="pwForcedNote" style="display:none; background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 14px; border-radius:10px; font-size:0.88rem; margin-bottom:18px;">
+                Welcome! For security, please set your own password before continuing. Enter the temporary password you were given, then choose a new one.
+            </p>
             <div class="form-group" style="margin-bottom:16px;">
                 <label>Current Password</label>
                 <div class="pw-wrap">
@@ -1171,7 +1174,7 @@
                 </div>
             </div>
             <div class="modal-actions" style="margin-top:8px;">
-                <button type="button" class="btn" onclick="closeChangePassword()">Cancel</button>
+                <button type="button" class="btn" id="pwCancelBtn" onclick="closeChangePassword()">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="saveOwnPassword()">Update Password</button>
             </div>
         </div>
@@ -1231,6 +1234,10 @@
                         <div class="pw-wrap">
                             <input type="password" id="userPassword" placeholder="Set a password" autocomplete="new-password">
                             <button type="button" class="pw-toggle" onclick="togglePw(this)" aria-label="Show password"></button>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                            <button type="button" class="btn" style="padding:4px 12px; font-size:0.78rem;" onclick="generatePassword()">Generate strong password</button>
+                            <span style="font-size:0.72rem; color:var(--text-muted);">Shown once — share it with the staff member. They'll set their own on first login.</span>
                         </div>
                     </div>
                     <div class="form-group full">
@@ -1326,6 +1333,10 @@
             }
             initPwToggles();
 
+            if (currentUser.must_change_password) {
+                openChangePassword(true);
+            }
+
             await loadUserList();
             await fetchHandovers();
             pollNotifications();
@@ -1357,13 +1368,18 @@
             else { inp.type = 'password'; btn.innerHTML = EYE_SVG; }
         }
 
-        // ---- Self-service change password ----
-        function openChangePassword() {
+        // ---- Self-service change password (also used to force a first-login change) ----
+        let pwForced = false;
+        function openChangePassword(forced = false) {
+            pwForced = forced;
             document.getElementById('pwOverlay').classList.add('open');
             document.getElementById('pwCurrent').value = '';
             document.getElementById('pwNew').value = '';
+            document.getElementById('pwForcedNote').style.display = forced ? 'block' : 'none';
+            document.getElementById('pwCancelBtn').style.display = forced ? 'none' : 'inline-flex';
         }
         function closeChangePassword() {
+            if (pwForced) return; // a forced first-login change can't be dismissed
             document.getElementById('pwOverlay').classList.remove('open');
         }
         async function saveOwnPassword() {
@@ -1376,9 +1392,29 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ current_password: current, new_password: nw })
                 });
-                if (res.ok) { showToast('Password updated'); closeChangePassword(); }
-                else { const d = await res.json().catch(() => ({})); showToast(d.error || 'Failed to update password'); }
+                if (res.ok) {
+                    showToast('Password updated');
+                    if (pwForced) { pwForced = false; location.reload(); return; }
+                    document.getElementById('pwOverlay').classList.remove('open');
+                } else { const d = await res.json().catch(() => ({})); showToast(d.error || 'Failed to update password'); }
             } catch (_) { showToast('Failed to update password'); }
+        }
+
+        // Generate a strong password for a new/reset staff account and reveal it so the
+        // manager can hand it over. Nothing is stored plaintext — it's hashed on save.
+        function generatePassword() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+            const specials = '!@#$%&*';
+            const arr = new Uint32Array(11);
+            crypto.getRandomValues(arr);
+            let pw = '';
+            for (let i = 0; i < 10; i++) pw += chars[arr[i] % chars.length];
+            pw += specials[arr[10] % specials.length];
+            const inp = document.getElementById('userPassword');
+            inp.value = pw;
+            inp.type = 'text';
+            const toggle = inp.parentElement.querySelector('.pw-toggle');
+            if (toggle) toggle.innerHTML = EYE_OFF_SVG;
         }
 
         function filterMyDept() {
