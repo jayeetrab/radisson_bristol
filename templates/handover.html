@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1200">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Handover Dashboard</title>
     <!-- Favicon -->
     <link rel="icon"
@@ -18,34 +18,37 @@
 
     <style>
         :root {
-            /* TwoTable Theme Variables */
-            --font-display: 'League Spartan', sans-serif;
-            --font-body: 'Inter', sans-serif;
+            /* Apple-inspired theme */
+            --font-display: 'League Spartan', -apple-system, sans-serif;
+            --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, 'Segoe UI', sans-serif;
 
             --bg: #ffffff;
-            --surface: #f5f5f5;
-            /* secondary color from twotable */
-            --surface-hover: #ebebeb;
-            --border: #e5e5e5;
+            --surface: #f5f5f7;
+            /* Apple system gray */
+            --surface-hover: #ececf0;
+            --border: rgba(0, 0, 0, 0.09);
 
-            --text-main: #1a1a1a;
-            /* 0 0% 10% */
-            --text-muted: #666666;
-            /* 0 0% 40% */
+            --text-main: #1d1d1f;
+            /* Apple near-black */
+            --text-muted: #6e6e73;
+            /* Apple secondary label */
 
-            --primary: hsl(360, 89%, 38%);
-            --primary-hover: hsl(360, 89%, 32%);
-            --primary-light: hsl(360, 89%, 98%);
+            --primary: hsl(360, 84%, 42%);
+            --primary-hover: hsl(360, 84%, 36%);
+            --primary-light: hsl(360, 89%, 97%);
+
+            --accent: #0071e3;
+            /* Apple blue for focus/interaction */
 
             --danger: hsl(0, 84%, 60%);
 
-            --radius-sm: 8px;
-            --radius-md: 16px;
-            --radius-lg: 24px;
+            --radius-sm: 10px;
+            --radius-md: 18px;
+            --radius-lg: 22px;
 
-            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+            --shadow-md: 0 6px 20px -6px rgba(0, 0, 0, 0.12);
+            --shadow-lg: 0 22px 48px -14px rgba(0, 0, 0, 0.20);
         }
 
         /* Custom Flatpickr Theme to match TwoTable */
@@ -130,9 +133,9 @@
             top: 0;
             z-index: 40;
             border-bottom: 1px solid var(--border);
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
         }
 
         .header-left {
@@ -213,8 +216,15 @@
 
         .btn-add:hover {
             background: var(--primary-hover);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(182, 11, 11, 0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(182, 11, 11, 0.28);
+        }
+
+        .btn-add:active,
+        .btn-primary:active,
+        .btn:active,
+        .btn-secondary:active {
+            transform: scale(0.97);
         }
 
         .btn-add svg {
@@ -298,8 +308,41 @@
         input:focus,
         select:focus,
         textarea:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px var(--primary-light);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.15);
+        }
+
+        .pw-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .pw-wrap input {
+            padding-right: 46px;
+        }
+
+        .pw-toggle {
+            position: absolute;
+            right: 6px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            border-radius: 8px;
+        }
+
+        .pw-toggle:hover {
+            color: var(--text-main);
+            background: var(--surface);
+        }
+
+        .pw-toggle svg {
+            width: 20px;
+            height: 20px;
         }
 
         .container {
@@ -486,9 +529,9 @@
         }
 
         .task-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.1);
-            border-color: #d4d4d4;
+            transform: translateY(-1px);
+            box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.15);
+            border-color: rgba(0, 0, 0, 0.12);
         }
 
         .task-completed {
@@ -695,13 +738,13 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.32);
             display: none;
             align-items: center;
             justify-content: center;
             z-index: 50;
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
         }
 
         .modal-overlay.open {
@@ -793,6 +836,70 @@
             opacity: 1;
             transform: translateY(0);
         }
+
+        /* ---- Responsive: phones & small tablets (housekeeping/maintenance on mobile) ---- */
+        @media (max-width: 820px) {
+            .header {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+                padding: 12px 16px;
+            }
+
+            .header-left { justify-content: flex-start; }
+
+            .header-controls {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .date-wrapper { flex: 1 1 100%; }
+
+            .date-wrapper input {
+                min-width: 0;
+                width: 100%;
+            }
+
+            #userChip {
+                margin-left: auto;
+                padding-left: 12px;
+            }
+
+            .container {
+                padding: 0 16px;
+                margin: 20px auto;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+                margin-bottom: 28px;
+            }
+
+            .big-number { font-size: 2.75rem; }
+
+            .filter-bar { align-items: flex-start; }
+
+            .search-wrapper { width: 100%; }
+
+            .form-grid { grid-template-columns: 1fr; }
+
+            .form-group.full { grid-column: span 1; }
+
+            .modal { padding: 24px; }
+
+            .modal h2 { font-size: 1.6rem; margin-bottom: 20px; }
+
+            .modal-actions { flex-wrap: wrap; }
+
+            .task-card { padding: 20px; }
+
+            .task-header { flex-direction: column; gap: 12px; }
+
+            .task-meta { flex-wrap: wrap; gap: 8px; }
+
+            .status-select { width: 100%; }
+        }
     </style>
 </head>
 
@@ -845,12 +952,44 @@
                 <span id="notifBadge"
                     style="display: none; position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; font-size: 0.7rem; font-weight: 700; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">0</span>
             </button>
+            <button class="btn-secondary" id="activityBtn" onclick="openActivity()" style="display:none;" title="Activity log">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                </svg>
+                Activity
+            </button>
+            <button class="btn-secondary" id="usersBtn" onclick="openUsers()" style="display:none;" title="Manage users">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z"></path>
+                </svg>
+                Users
+            </button>
             <button class="btn-add" onclick="openModal()">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
                 </svg>
                 New Handover
             </button>
+            <div id="userChip" style="display:flex; align-items:center; gap:10px; padding-left:14px; margin-left:2px; border-left:1px solid var(--border);">
+                <div style="display:flex; flex-direction:column; line-height:1.15; text-align:right;">
+                    <span id="meName" style="font-weight:700; font-size:0.9rem;"></span>
+                    <span id="meRole" style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;"></span>
+                </div>
+                <button class="btn-secondary" onclick="openChangePassword()" title="Change password" style="padding:10px;">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:18px; height:18px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                    </svg>
+                </button>
+                <button class="btn-secondary" onclick="logout()" title="Log out" style="padding:10px;">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:18px; height:18px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                    </svg>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -862,6 +1001,10 @@
                 <div class="big-stat" style="cursor: pointer;" onclick="setFilter('status', 'Pending')">
                     <span class="big-number" id="countPending">0</span>
                     <span class="big-label">Pending</span>
+                </div>
+                <div class="big-stat" style="cursor: pointer;" onclick="setFilter('status', 'In Progress')">
+                    <span class="big-number" id="countInProgress" style="color: #2563eb;">0</span>
+                    <span class="big-label">In Progress</span>
                 </div>
                 <div class="big-stat" style="cursor: pointer;" onclick="setFilter('status', 'Completed')">
                     <span class="big-number" id="countCompleted" style="color: #059669;">0</span>
@@ -887,8 +1030,13 @@
         </div>
 
         <div class="filter-bar">
-            <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                 <div class="filter-title" id="gridTitle">All Tasks</div>
+                <button class="btn-secondary" id="assignedMeBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('assigned_to_me', 'Assigned to me')">Assigned to me</button>
+                <button class="btn-secondary" id="overdueBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('overdue', 'Overdue')">Overdue <span id="overdueCount"></span></button>
+                <button class="btn-secondary" id="highBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('high', 'High priority')">High priority <span id="highCount"></span></button>
+                <button class="btn-secondary" id="myDeptBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem;" onclick="filterMyDept()">My Department</button>
+                <button class="btn-secondary" id="deleteReqBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem; color:var(--danger); border-color:#fecaca;" onclick="setFilter('delete_requested', 'Delete Requests')">Delete Requests <span id="deleteReqCount"></span></button>
                 <div class="clear-filter" id="clearFilterBtn" onclick="clearFilters()">Clear Filters ✕</div>
             </div>
             <div class="search-wrapper">
@@ -965,13 +1113,11 @@
                         <label>Completed By</label>
                         <input type="text" id="taskCompletedBy" placeholder="Name of person who completed it">
                     </div>
-                    <div class="form-group">
-                        <label>Created By</label>
-                        <input type="text" id="taskCreatedBy" placeholder="Your name">
-                    </div>
-                    <div class="form-group">
-                        <label>Assigned To</label>
-                        <input type="text" id="taskAssignedTo" placeholder="Assignee name">
+                    <div class="form-group full">
+                        <label>Assign To</label>
+                        <select id="taskAssignedTo">
+                            <option value="">— Unassigned —</option>
+                        </select>
                     </div>
                     <div class="form-group full">
                         <label>Photo (Optional)</label>
@@ -1006,6 +1152,114 @@
         </div>
     </div>
 
+    <!-- Change Password Modal (self-service, any user) -->
+    <div class="modal-overlay" id="pwOverlay">
+        <div class="modal" style="max-width: 440px;">
+            <h2>Change Password</h2>
+            <div class="form-group" style="margin-bottom:16px;">
+                <label>Current Password</label>
+                <div class="pw-wrap">
+                    <input type="password" id="pwCurrent" autocomplete="current-password">
+                    <button type="button" class="pw-toggle" onclick="togglePw(this)" aria-label="Show password"></button>
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:16px;">
+                <label>New Password</label>
+                <div class="pw-wrap">
+                    <input type="password" id="pwNew" autocomplete="new-password" placeholder="At least 6 characters">
+                    <button type="button" class="pw-toggle" onclick="togglePw(this)" aria-label="Show password"></button>
+                </div>
+            </div>
+            <div class="modal-actions" style="margin-top:8px;">
+                <button type="button" class="btn" onclick="closeChangePassword()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveOwnPassword()">Update Password</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Log Modal (manager sees own department; admin sees all) -->
+    <div class="modal-overlay" id="activityOverlay">
+        <div class="modal" style="max-width: 720px;">
+            <h2>Activity Log</h2>
+            <p id="activityScopeNote" style="color:var(--text-muted); font-size:0.9rem; margin-bottom:16px;"></p>
+            <div class="search-wrapper" style="width:100%; margin-bottom:16px;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+                <input type="text" id="activitySearch" placeholder="Filter by person, action, or task…" onkeyup="renderActivity()">
+            </div>
+            <div id="activityList" style="display:flex; flex-direction:column; gap:2px; max-height:52vh; overflow-y:auto;"></div>
+            <div class="modal-actions" style="margin-top:20px;">
+                <button type="button" class="btn" onclick="closeActivity()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Management Modal (admin) -->
+    <div class="modal-overlay" id="usersOverlay">
+        <div class="modal" style="max-width: 760px;">
+            <h2>Users &amp; Access</h2>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <p id="usersScopeNote" style="color:var(--text-muted); font-size:0.9rem;">Create accounts and set roles &amp; departments.</p>
+                <button class="btn btn-primary" onclick="openUserForm()">+ Add User</button>
+            </div>
+
+            <!-- User add/edit form -->
+            <div id="userFormWrap" style="display:none; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px;">
+                <input type="hidden" id="userId">
+                <div class="form-grid" style="margin-bottom:16px;">
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" id="userName" placeholder="Jane Smith">
+                    </div>
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="userUsername" placeholder="jsmith">
+                    </div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select id="userRole">
+                            <option value="normal">Normal — create, comment, update status</option>
+                            <option value="supervisor">Supervisor — + edit/reassign any task</option>
+                            <option value="manager">Manager — + edit across all departments</option>
+                            <option value="admin">Admin — + user management &amp; delete</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label id="userPassLabel">Password</label>
+                        <div class="pw-wrap">
+                            <input type="password" id="userPassword" placeholder="Set a password" autocomplete="new-password">
+                            <button type="button" class="pw-toggle" onclick="togglePw(this)" aria-label="Show password"></button>
+                        </div>
+                    </div>
+                    <div class="form-group full">
+                        <label>Departments</label>
+                        <div class="dept-tiles" id="userDeptTiles">
+                            <div class="dept-tile" data-value="Maintenance">Maintenance</div>
+                            <div class="dept-tile" data-value="Housekeeping">Housekeeping</div>
+                            <div class="dept-tile" data-value="Front Office">Front Office</div>
+                            <div class="dept-tile" data-value="Management">Management</div>
+                            <div class="dept-tile" data-value="F&amp;B">F&amp;B</div>
+                            <div class="dept-tile" data-value="Finance">Finance</div>
+                            <div class="dept-tile" data-value="Other">Other</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:12px; justify-content:flex-end;">
+                    <button class="btn" onclick="closeUserForm()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveUser()">Save User</button>
+                </div>
+            </div>
+
+            <div id="usersList" style="display:flex; flex-direction:column; gap:8px; max-height:44vh; overflow-y:auto;"></div>
+
+            <div class="modal-actions" style="margin-top:20px;">
+                <button type="button" class="btn" onclick="closeUsers()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div class="toast-container" id="toastContainer"></div>
 
     <!-- Flatpickr JS -->
@@ -1014,8 +1268,127 @@
     <script>
         let tasks = [];
         let activeFilter = { type: null, value: null };
+        let currentUser = null;
+        let userList = [];
+        const ROLE_RANK = { normal: 1, supervisor: 2, manager: 3, admin: 4 };
 
         const datePickerInput = document.getElementById('datePicker');
+
+        function isAdmin() { return currentUser && currentUser.role === 'admin'; }
+        function canEditTask(task) {
+            if (!currentUser) return false;
+            if (ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) return true;
+            return task.created_by_id && task.created_by_id === currentUser.id;
+        }
+
+        // Escape user-supplied text before injecting into HTML (prevents broken
+        // layout from stray < & " and blocks stored XSS via titles/comments).
+        function esc(s) {
+            return (s == null ? '' : String(s)).replace(/[&<>"']/g, m => (
+                { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]
+            ));
+        }
+
+        // Any 401 means the session expired (or the server restarted) — send the
+        // user to the login page instead of surfacing confusing failure toasts.
+        async function authFetch(url, opts) {
+            const res = await fetch(url, opts);
+            if (res.status === 401) {
+                window.location.href = '/login';
+                throw new Error('Session expired');
+            }
+            return res;
+        }
+
+        async function init() {
+            try {
+                const res = await authFetch('/api/me');
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                currentUser = await res.json();
+            } catch (_) {
+                window.location.href = '/login';
+                return;
+            }
+
+            document.getElementById('meName').innerText = currentUser.name;
+            document.getElementById('meRole').innerText = currentUser.role;
+            if ((currentUser.departments || []).length) {
+                document.getElementById('myDeptBtn').style.display = 'inline-flex';
+            }
+            if (currentUser.can_view_activity) {
+                document.getElementById('activityBtn').style.display = 'inline-flex';
+            }
+            if (currentUser.can_manage_users) {
+                document.getElementById('usersBtn').style.display = 'inline-flex';
+            }
+            if (isAdmin()) {
+                document.getElementById('deleteReqBtn').style.display = 'inline-flex';
+            }
+            initPwToggles();
+
+            await loadUserList();
+            await fetchHandovers();
+            pollNotifications();
+        }
+
+        async function loadUserList() {
+            try {
+                const res = await authFetch('/api/users/list');
+                userList = res.ok ? await res.json() : [];
+            } catch (_) { userList = []; }
+        }
+
+        async function logout() {
+            await authFetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
+
+        // ---- Password show/hide toggle ----
+        const EYE_SVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>`;
+        const EYE_OFF_SVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>`;
+
+        function initPwToggles() {
+            document.querySelectorAll('.pw-toggle').forEach(b => { if (!b.innerHTML.trim()) b.innerHTML = EYE_SVG; });
+        }
+
+        function togglePw(btn) {
+            const inp = btn.parentElement.querySelector('input');
+            if (inp.type === 'password') { inp.type = 'text'; btn.innerHTML = EYE_OFF_SVG; }
+            else { inp.type = 'password'; btn.innerHTML = EYE_SVG; }
+        }
+
+        // ---- Self-service change password ----
+        function openChangePassword() {
+            document.getElementById('pwOverlay').classList.add('open');
+            document.getElementById('pwCurrent').value = '';
+            document.getElementById('pwNew').value = '';
+        }
+        function closeChangePassword() {
+            document.getElementById('pwOverlay').classList.remove('open');
+        }
+        async function saveOwnPassword() {
+            const current = document.getElementById('pwCurrent').value;
+            const nw = document.getElementById('pwNew').value;
+            if (nw.length < 6) { showToast('New password must be at least 6 characters'); return; }
+            try {
+                const res = await authFetch('/api/me/password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ current_password: current, new_password: nw })
+                });
+                if (res.ok) { showToast('Password updated'); closeChangePassword(); }
+                else { const d = await res.json().catch(() => ({})); showToast(d.error || 'Failed to update password'); }
+            } catch (_) { showToast('Failed to update password'); }
+        }
+
+        function filterMyDept() {
+            const depts = currentUser.departments || [];
+            if (!depts.length) return;
+            activeFilter = { type: 'my_dept', value: depts };
+            document.getElementById('gridTitle').innerText = 'My Department';
+            document.getElementById('clearFilterBtn').style.display = 'block';
+            renderTasks();
+        }
 
         // Initialize Flatpickr
         const fp = flatpickr(datePickerInput, {
@@ -1050,6 +1423,12 @@
             }
         });
 
+        document.getElementById('userDeptTiles').addEventListener('click', function(e) {
+            if (e.target.classList.contains('dept-tile')) {
+                e.target.classList.toggle('selected');
+            }
+        });
+
         function showToast(message) {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
@@ -1072,7 +1451,7 @@
 
             const date = dateOverride || datePickerInput.value || new Date().toISOString().split('T')[0];
             try {
-                const res = await fetch(`/api/handovers?date=${date}&include_overdue=true`);
+                const res = await authFetch(`/api/handovers?date=${date}&include_overdue=true`);
                 tasks = await res.json();
                 
                 // Sort tasks: Pending/In Progress first, Completed last, then by created_at descending
@@ -1094,10 +1473,22 @@
         }
 
         function updateDashboard() {
-            const pending = tasks.filter(t => t.status !== 'Completed').length;
+            const pending = tasks.filter(t => (t.status || 'Pending') === 'Pending').length;
+            const inProgress = tasks.filter(t => t.status === 'In Progress').length;
             const completed = tasks.filter(t => t.status === 'Completed').length;
+            const overdue = tasks.filter(t => t.is_overdue).length;
+            const high = tasks.filter(t => t.priority === 'High' && t.status !== 'Completed').length;
             document.getElementById('countPending').innerText = pending;
+            document.getElementById('countInProgress').innerText = inProgress;
             document.getElementById('countCompleted').innerText = completed;
+            document.getElementById('overdueCount').innerText = overdue ? `(${overdue})` : '';
+            document.getElementById('highCount').innerText = high ? `(${high})` : '';
+
+            if (isAdmin()) {
+                const dr = tasks.filter(t => t.delete_requested).length;
+                const drEl = document.getElementById('deleteReqCount');
+                if (drEl) drEl.innerText = dr ? `(${dr})` : '';
+            }
 
             const depts = {};
             const people = {};
@@ -1115,8 +1506,8 @@
             deptContainer.innerHTML = '';
             Object.entries(depts).sort((a, b) => b[1] - a[1]).forEach(([dept, count]) => {
                 deptContainer.innerHTML += `
-                    <div class="stat-row" onclick="setFilter('department', '${dept}')">
-                        <span class="stat-label">${dept}</span>
+                    <div class="stat-row" data-ftype="department" data-fvalue="${esc(dept)}">
+                        <span class="stat-label">${esc(dept)}</span>
                         <span class="stat-value">${count}</span>
                     </div>
                 `;
@@ -1126,17 +1517,29 @@
             personContainer.innerHTML = '';
             Object.entries(people).sort((a, b) => b[1] - a[1]).forEach(([person, count]) => {
                 personContainer.innerHTML += `
-                    <div class="stat-row" onclick="setFilter('assigned_to', '${person}')">
-                        <span class="stat-label">${person}</span>
+                    <div class="stat-row" data-ftype="assigned_to" data-fvalue="${esc(person)}">
+                        <span class="stat-label">${esc(person)}</span>
                         <span class="stat-value">${count}</span>
                     </div>
                 `;
             });
         }
 
+        // Delegated clicks for the dashboard stat rows (injection-safe vs inline onclick).
+        ['deptStats', 'personStats'].forEach(id => {
+            document.getElementById(id).addEventListener('click', e => {
+                const row = e.target.closest('.stat-row');
+                if (row) setFilter(row.dataset.ftype, row.dataset.fvalue);
+            });
+        });
+
         function setFilter(type, value) {
             activeFilter = { type, value };
-            document.getElementById('gridTitle').innerText = `${type === 'assigned_to' ? 'Assigned to' : type.charAt(0).toUpperCase() + type.slice(1)}: ${value}`;
+            let title;
+            if (type === 'assigned_to') title = `Assigned to: ${value}`;
+            else if (type === 'department') title = `Department: ${value}`;
+            else title = value; // already a friendly label (Pending, Overdue, High priority…)
+            document.getElementById('gridTitle').innerText = title;
             document.getElementById('clearFilterBtn').style.display = 'block';
             renderTasks();
         }
@@ -1158,11 +1561,13 @@
             let filtered = tasks;
             if (activeFilter.type) {
                 if (activeFilter.type === 'status') {
-                    if (activeFilter.value === 'Pending') {
-                        filtered = tasks.filter(t => t.status !== 'Completed');
-                    } else {
-                        filtered = tasks.filter(t => t.status === 'Completed');
-                    }
+                    filtered = tasks.filter(t => (t.status || 'Pending') === activeFilter.value);
+                } else if (activeFilter.type === 'overdue') {
+                    filtered = tasks.filter(t => t.is_overdue);
+                } else if (activeFilter.type === 'high') {
+                    filtered = tasks.filter(t => t.priority === 'High' && t.status !== 'Completed');
+                } else if (activeFilter.type === 'assigned_to_me') {
+                    filtered = tasks.filter(t => t.assigned_to && currentUser && t.assigned_to.trim() === currentUser.name);
                 } else if (activeFilter.type === 'department') {
                     filtered = tasks.filter(t => {
                         const deptsArr = Array.isArray(t.department) ? t.department : [t.department || 'Other'];
@@ -1173,6 +1578,13 @@
                         const p = t.assigned_to ? t.assigned_to.trim() : 'Unassigned';
                         return p === activeFilter.value;
                     });
+                } else if (activeFilter.type === 'my_dept') {
+                    filtered = tasks.filter(t => {
+                        const deptsArr = Array.isArray(t.department) ? t.department : [t.department || 'Other'];
+                        return deptsArr.some(d => activeFilter.value.includes(d));
+                    });
+                } else if (activeFilter.type === 'delete_requested') {
+                    filtered = tasks.filter(t => t.delete_requested);
                 }
             }
 
@@ -1196,8 +1608,8 @@
             filtered.forEach(task => {
                 const deptsArr = Array.isArray(task.department) ? task.department : [task.department || 'Other'];
                 const deptBadges = deptsArr.map(d => {
-                    const deptClass = d.replace(' ', '');
-                    return `<span class="badge dept-${deptClass}">${d}</span>`;
+                    const deptClass = String(d).replace(/[^A-Za-z]/g, '');
+                    return `<span class="badge dept-${deptClass}">${esc(d)}</span>`;
                 }).join(' ');
 
                 const card = document.createElement('div');
@@ -1207,28 +1619,30 @@
                 const totalNotes = commentsCount + (hasDescription ? 1 : 0);
                 const hasActivity = totalNotes > 0;
 
-                const commentsHtml = (task.comments || []).map(c => `
+                const commentsHtml = (task.comments || []).map(c => {
+                    const canDeleteComment = isAdmin() || (currentUser && c.author === currentUser.name);
+                    return `
                     <div style="background: #f9fafb; padding: 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); position: relative;">
-                        <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">${c.author} <span style="font-weight: 400; font-size: 0.8rem;">• ${new Date(c.timestamp).toLocaleString()}</span></div>
-                        <div style="color: var(--text-main); font-size: 0.95rem;">${c.text}</div>
-                        <button onclick="deleteComment('${task.id}', '${c.timestamp}')" style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: var(--danger); cursor: pointer; padding: 12px; display: flex; align-items: center; justify-content: center;" title="Delete Comment">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">${esc(c.author)} <span style="font-weight: 400; font-size: 0.8rem;">• ${new Date(c.timestamp).toLocaleString()}</span></div>
+                        <div style="color: var(--text-main); font-size: 0.95rem; white-space: pre-wrap;">${esc(c.text)}</div>
+                        ${canDeleteComment ? `<button onclick="deleteComment('${task.id}', '${c.timestamp}')" style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: var(--danger); cursor: pointer; padding: 12px; display: flex; align-items: center; justify-content: center;" title="Delete Comment">
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
+                        </button>` : ''}
                     </div>
-                `).join('');
+                `;}).join('');
 
                 card.innerHTML = `
                     <div class="task-header">
                         <div>
                             <div class="task-title">
-                                ${task.title}
+                                ${esc(task.title)}
                                 ${task.is_overdue ? '<span class="badge priority-high" style="background:#ef4444; color:white; border-color:#dc2626;">OVERDUE</span>' : ''}
                                 ${task.priority === 'High' ? '<span class="badge priority-high">URGENT</span>' : ''}
                             </div>
                             <div class="task-meta">
                                 ${deptBadges}
-                                <span>${(task.task_date || '').includes(' to ') ? 'From ' + task.task_date.replace(' to ', ' to ') : 'For: ' + task.task_date}</span>
-                                <span>${task.created_by || 'Unknown'} ➔ ${task.assigned_to || 'Unassigned'}</span>
+                                <span>${(task.task_date || '').includes(' to ') ? 'From ' + esc(task.task_date) : 'For: ' + esc(task.task_date)}</span>
+                                <span>${esc(task.created_by || 'Unknown')} ➔ ${esc(task.assigned_to || 'Unassigned')}</span>
                                 <span>Created: ${task.created_at ? new Date(task.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown'}</span>
                             </div>
                         </div>
@@ -1241,10 +1655,20 @@
                         </div>
                     </div>
                     
-                    ${task.status === 'Completed' && task.completed_by ? `<div class="completed-text"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Completed by ${task.completed_by}</div>` : ''}
-                    
+                    ${task.status === 'Completed' && task.completed_by ? `<div class="completed-text"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Completed by ${esc(task.completed_by)}</div>` : ''}
+
+                    ${task.delete_requested ? `<div style="margin-top: 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <div style="font-size:0.9rem; color:#991b1b; font-weight:600;">
+                            🗑️ Deletion requested by ${esc(task.delete_requested_by || 'someone')}${task.delete_requested_reason ? ` — <span style="font-weight:400;">${esc(task.delete_requested_reason)}</span>` : ''}
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            ${isAdmin() ? `<button class="btn btn-danger" style="padding:6px 12px; font-size:0.82rem;" onclick="approveDelete('${task.id}')">Delete now</button>` : ''}
+                            ${(isAdmin() || (currentUser && task.delete_requested_by === currentUser.name)) ? `<button class="btn" style="padding:6px 12px; font-size:0.82rem;" onclick="cancelDelete('${task.id}')">Dismiss</button>` : ''}
+                        </div>
+                    </div>` : ''}
+
                     <div class="task-details" id="details-${task.id}">
-                        ${hasDescription ? `<div style="margin-bottom: 16px;"><strong>Description:</strong><br>${task.comment}</div>` : ''}
+                        ${hasDescription ? `<div style="margin-bottom: 16px; white-space: pre-wrap;"><strong>Description:</strong><br>${esc(task.comment)}</div>` : ''}
                         ${task.photo ? `<div style="margin-bottom: 16px;"><strong>Photo:</strong><br><img src="${task.photo}" style="max-width: 100%; max-height: 400px; border-radius: 8px; margin-top: 8px; object-fit: contain; border: 1px solid var(--border);"></div>` : ''}
                         
                         <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
@@ -1254,8 +1678,7 @@
                             </div>
                             
                             <div style="display: flex; gap: 8px; margin-top: 12px;">
-                                <input type="text" id="replyAuthor-${task.id}" placeholder="Your Name" value="" style="width: 140px; padding: 8px 12px; height: 38px;">
-                                <input type="text" id="replyText-${task.id}" placeholder="Type a reply..." style="flex: 1; padding: 8px 12px; height: 38px;" onkeypress="if(event.key === 'Enter') addComment('${task.id}')">
+                                <input type="text" id="replyText-${task.id}" placeholder="Type a reply as ${esc(currentUser ? currentUser.name : 'you')}…" style="flex: 1; padding: 8px 12px; height: 38px;" onkeypress="if(event.key === 'Enter') addComment('${task.id}')">
                                 <button class="btn-primary" onclick="addComment('${task.id}')" style="padding: 0 16px; height: 38px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer;">Reply</button>
                             </div>
                         </div>
@@ -1265,7 +1688,11 @@
                         <button class="toggle-btn" onclick="toggleDetails('${task.id}')" style="${hasActivity ? 'color: white; font-weight: 700; background: var(--danger); padding: 4px 12px; border-radius: 16px;' : ''}">
                             ${hasActivity ? `${totalNotes} Note${totalNotes > 1 ? 's' : ''}` : 'Add Note'}
                         </button>
-                        <button class="btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick='openModal(${JSON.stringify(task).replace(/'/g, "&#39;")})'>Edit</button>
+                        ${canEditTask(task)
+                            ? `<button class="btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick='openModal(${JSON.stringify(task).replace(/'/g, "&#39;")})'>Edit</button>`
+                            : (task.delete_requested
+                                ? `<span style="font-size:0.82rem; color:var(--text-muted); font-weight:600;">Deletion pending</span>`
+                                : `<button class="btn" style="padding: 6px 12px; font-size: 0.85rem; color:var(--danger); border-color:#fecaca;" onclick="requestDelete('${task.id}')">Request Delete</button>`)}
                     </div>
                 `;
                 fragment.appendChild(card);
@@ -1284,30 +1711,23 @@
             task.status = newStatus;
 
             try {
-                await fetch(`/api/handovers/${id}`, {
+                await authFetch(`/api/handovers/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: newStatus })
                 });
                 showToast('Status updated');
-                updateDashboard();
-                renderTasks();
+                // Refetch so the server-stamped "Completed by" and counts reflect at once.
+                await fetchHandovers(null, true);
             } catch (err) {
                 showToast('Failed to update status');
             }
         }
 
         async function addComment(taskId) {
-            const authorInput = document.getElementById(`replyAuthor-${taskId}`);
             const textInput = document.getElementById(`replyText-${taskId}`);
-            const author = authorInput.value.trim();
             const text = textInput.value.trim();
 
-            if (!author) {
-                showToast('Please enter your name');
-                authorInput.focus();
-                return;
-            }
             if (!text) {
                 showToast('Please enter a reply');
                 textInput.focus();
@@ -1315,10 +1735,10 @@
             }
 
             try {
-                const res = await fetch(`/api/handovers/${taskId}/comments`, {
+                const res = await authFetch(`/api/handovers/${taskId}/comments`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ author, text })
+                    body: JSON.stringify({ text })
                 });
 
                 if (res.ok) {
@@ -1343,7 +1763,7 @@
             if (!confirm("Are you sure you want to delete this comment?")) return;
 
             try {
-                const res = await fetch(`/api/handovers/${taskId}/comments/${timestamp}`, {
+                const res = await authFetch(`/api/handovers/${taskId}/comments/${timestamp}`, {
                     method: 'DELETE'
                 });
 
@@ -1364,12 +1784,46 @@
             }
         }
 
+        function populateAssignees(selected = '') {
+            const sel = document.getElementById('taskAssignedTo');
+            sel.innerHTML = '<option value="">— Unassigned —</option>';
+            const names = userList.map(u => u.name);
+            // Keep any legacy free-text assignee that no longer maps to a user.
+            if (selected && !names.includes(selected)) names.push(selected);
+            names.forEach(n => {
+                const opt = document.createElement('option');
+                opt.value = n;
+                opt.textContent = n;
+                if (n === selected) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        function configureDeleteBtn(task) {
+            const btn = document.getElementById('deleteBtn');
+            if (!task) { btn.style.display = 'none'; return; }
+            btn.style.display = 'block';
+            if (isAdmin()) {
+                btn.innerText = 'Delete Task';
+                btn.onclick = deleteTask;
+            } else if (task.delete_requested) {
+                btn.innerText = 'Deletion pending';
+                btn.disabled = true;
+                btn.onclick = null;
+            } else {
+                btn.innerText = 'Request Delete';
+                btn.disabled = false;
+                btn.onclick = requestDeleteFromModal;
+            }
+        }
+
         function openModal(task = null) {
             document.getElementById('modalOverlay').classList.add('open');
             document.getElementById('taskPhoto').value = '';
             document.getElementById('handoverForm').reset();
             document.getElementById('completedByGroup').style.display = 'none';
             document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => tile.classList.remove('selected'));
+            document.getElementById('deleteBtn').disabled = false;
 
             if (task) {
                 document.getElementById('modalTitle').innerText = 'Edit Task';
@@ -1381,19 +1835,13 @@
                 document.getElementById('taskTitle').value = task.title;
                 const taskDepts = Array.isArray(task.department) ? task.department : [task.department || 'Other'];
                 document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => {
-                    if (taskDepts.includes(tile.dataset.value)) {
-                        tile.classList.add('selected');
-                    } else {
-                        tile.classList.remove('selected');
-                    }
+                    tile.classList.toggle('selected', taskDepts.includes(tile.dataset.value));
                 });
                 document.getElementById('taskStatus').value = task.status || 'Pending';
                 document.getElementById('taskPriority').value = task.priority || 'Normal';
-                document.getElementById('taskCreatedBy').value = task.created_by || '';
-                document.getElementById('taskAssignedTo').value = task.assigned_to || '';
+                populateAssignees(task.assigned_to || '');
                 document.getElementById('taskCompletedBy').value = task.completed_by || '';
                 document.getElementById('taskComment').value = task.comment || '';
-                document.getElementById('deleteBtn').style.display = 'block';
 
                 if (task.status === 'Completed') {
                     document.getElementById('completedByGroup').style.display = 'block';
@@ -1401,12 +1849,24 @@
             } else {
                 document.getElementById('modalTitle').innerText = 'New Handover';
                 document.getElementById('taskId').value = '';
+                populateAssignees('');
+
+                // Pre-select the creator's own department(s) for convenience.
+                const myDepts = (currentUser && currentUser.departments) || [];
+                document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => {
+                    tile.classList.toggle('selected', myDepts.includes(tile.dataset.value));
+                });
 
                 if (modalFp) modalFp.setDate(new Date().toISOString().split('T')[0]);
                 else document.getElementById('newTaskDate').value = new Date().toISOString().split('T')[0];
-
-                document.getElementById('deleteBtn').style.display = 'none';
             }
+            configureDeleteBtn(task);
+        }
+
+        async function requestDeleteFromModal() {
+            const id = document.getElementById('taskId').value;
+            closeModal();
+            await requestDelete(id);
         }
 
         function closeModal() {
@@ -1443,6 +1903,10 @@
         async function handleFormSubmit(e) {
             e.preventDefault();
 
+            // Guard against double-submit creating duplicate handovers.
+            const submitBtn = e.submitter || e.target.querySelector('button[type="submit"]');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = 'Saving…'; }
+
             const taskDateValue = document.getElementById('newTaskDate').value;
             const selectedDepts = Array.from(document.querySelectorAll('#taskDeptTiles .dept-tile.selected'))
                                       .map(tile => tile.dataset.value);
@@ -1454,7 +1918,6 @@
                 department: selectedDepts,
                 status: document.getElementById('taskStatus').value,
                 priority: document.getElementById('taskPriority').value,
-                created_by: document.getElementById('taskCreatedBy').value,
                 assigned_to: document.getElementById('taskAssignedTo').value,
                 completed_by: document.getElementById('taskCompletedBy').value,
                 comment: document.getElementById('taskComment').value,
@@ -1469,6 +1932,7 @@
                     console.error("Failed to process image", err);
                     showToast('Failed to process image.');
                     document.getElementById('loading').style.display = 'none';
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = 'Save Task'; }
                     return;
                 }
             }
@@ -1478,7 +1942,7 @@
             const url = id ? `/api/handovers/${id}` : '/api/handovers';
 
             try {
-                await fetch(url, {
+                await authFetch(url, {
                     method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1488,22 +1952,277 @@
                 fetchHandovers();
             } catch (err) {
                 showToast('Failed to save task.');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = 'Save Task'; }
             }
         }
 
         async function deleteTask() {
-            if (!confirm('Are you sure you want to delete this task?')) return;
+            if (!confirm('Are you sure you want to permanently delete this task?')) return;
             const id = document.getElementById('taskId').value;
 
             try {
-                await fetch(`/api/handovers/${id}`, { method: 'DELETE' });
+                await authFetch(`/api/handovers/${id}`, { method: 'DELETE' });
                 closeModal();
                 showToast('Task deleted');
-                const date = datePickerInput.value || new Date().toISOString().split('T')[0];
-                fetchHandovers(date);
+                fetchHandovers();
             } catch (err) {
                 showToast('Failed to delete task.');
             }
+        }
+
+        // ---- Delete request flow (non-admins) ----
+        async function requestDelete(id) {
+            const reason = prompt('Reason for deletion (optional):', '');
+            if (reason === null) return; // cancelled
+            try {
+                await authFetch(`/api/handovers/${id}/request-delete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                });
+                showToast('Delete request sent to admin');
+                fetchHandovers(null, true);
+            } catch (_) { showToast('Failed to send request'); }
+        }
+
+        async function approveDelete(id) {
+            if (!confirm('Permanently delete this task?')) return;
+            try {
+                await authFetch(`/api/handovers/${id}`, { method: 'DELETE' });
+                showToast('Task deleted');
+                fetchHandovers();
+            } catch (_) { showToast('Failed to delete'); }
+        }
+
+        async function cancelDelete(id) {
+            try {
+                await authFetch(`/api/handovers/${id}/cancel-delete`, { method: 'POST' });
+                showToast('Delete request dismissed');
+                fetchHandovers(null, true);
+            } catch (_) { showToast('Failed to dismiss'); }
+        }
+
+        // ---- User management (admin) ----
+        function openUsers() {
+            document.getElementById('usersOverlay').classList.add('open');
+            document.getElementById('usersScopeNote').innerText = isAdmin()
+                ? 'Create accounts and set roles & departments for anyone.'
+                : 'Manage the staff and passwords for your department(s).';
+            closeUserForm();
+            renderUsersList();
+        }
+        function closeUsers() {
+            document.getElementById('usersOverlay').classList.remove('open');
+        }
+
+        // ---- Activity log (admin: all; manager: their department + own) ----
+        const ACTION_META = {
+            login:          { icon: '→', color: '#64748b', label: 'signed in' },
+            logout:         { icon: '←', color: '#94a3b8', label: 'signed out' },
+            create_task:    { icon: '＋', color: '#059669', label: 'created' },
+            edit_task:      { icon: '✎', color: '#2563eb', label: 'edited' },
+            status_change:  { icon: '◐', color: '#7c3aed', label: 'status' },
+            comment:        { icon: '💬', color: '#0ea5e9', label: 'commented' },
+            request_delete: { icon: '🗑️', color: '#dc2626', label: 'requested delete' },
+            cancel_delete:  { icon: '↩', color: '#64748b', label: 'dismissed delete' },
+            delete_task:    { icon: '✕', color: '#b91c1c', label: 'deleted' },
+            create_user:    { icon: '👤', color: '#059669', label: 'created user' },
+            edit_user:      { icon: '👤', color: '#2563eb', label: 'updated user' },
+            delete_user:    { icon: '👤', color: '#b91c1c', label: 'deleted user' },
+        };
+
+        async function openActivity() {
+            document.getElementById('activityOverlay').classList.add('open');
+            document.getElementById('activityScopeNote').innerText = isAdmin()
+                ? 'Showing all activity across every department.'
+                : 'Showing activity for your department(s) and your own actions.';
+            const list = document.getElementById('activityList');
+            list.innerHTML = '<div style="color:var(--text-muted); padding:16px;">Loading…</div>';
+            try {
+                const res = await authFetch('/api/activity');
+                window._activity = res.ok ? await res.json() : [];
+            } catch (_) { window._activity = []; }
+            renderActivity();
+        }
+
+        function renderActivity() {
+            const list = document.getElementById('activityList');
+            const q = (document.getElementById('activitySearch').value || '').toLowerCase();
+            let entries = window._activity || [];
+            if (q) {
+                entries = entries.filter(e =>
+                    (e.user_name || '').toLowerCase().includes(q) ||
+                    (e.detail || '').toLowerCase().includes(q) ||
+                    (e.target_title || '').toLowerCase().includes(q) ||
+                    (e.action || '').toLowerCase().includes(q));
+            }
+            if (!entries.length) {
+                list.innerHTML = '<div style="color:var(--text-muted); padding:16px;">No activity yet.</div>';
+                return;
+            }
+            list.innerHTML = entries.map(e => {
+                const m = ACTION_META[e.action] || { icon: '•', color: '#64748b', label: e.action };
+                const depts = (e.task_departments && e.task_departments.length ? e.task_departments : e.user_departments) || [];
+                const deptTags = depts.map(d => `<span class="badge" style="font-size:0.68rem; padding:1px 7px; background:var(--surface); border-color:var(--border);">${esc(d)}</span>`).join(' ');
+                return `
+                <div style="display:flex; gap:12px; padding:12px 4px; border-bottom:1px solid var(--border);">
+                    <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${m.color}1a; color:${m.color}; display:flex; align-items:center; justify-content:center; font-size:0.8rem;">${m.icon}</div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:0.92rem;">
+                            <strong>${esc(e.user_name || 'Unknown')}</strong>
+                            <span style="font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">${esc(e.user_role || '')}</span>
+                            <span style="color:var(--text-main);"> ${esc(e.detail || m.label)}</span>
+                            ${e.target_title ? `<span style="color:var(--text-muted);"> — ${esc(e.target_title)}</span>` : ''}
+                        </div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:3px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <span>${e.ts ? new Date(e.ts).toLocaleString() : ''}</span>
+                            ${deptTags}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function closeActivity() {
+            document.getElementById('activityOverlay').classList.remove('open');
+        }
+
+        async function renderUsersList() {
+            const list = document.getElementById('usersList');
+            list.innerHTML = '<div style="color:var(--text-muted); padding:16px;">Loading…</div>';
+            let users = [];
+            try {
+                const res = await authFetch('/api/users');
+                users = res.ok ? await res.json() : [];
+            } catch (_) {}
+            if (!users.length) { list.innerHTML = '<div style="color:var(--text-muted); padding:16px;">No users.</div>'; return; }
+            list.innerHTML = users.map(u => `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; ${u.active ? '' : 'opacity:0.55;'}">
+                    <div>
+                        <div style="font-weight:700;">${esc(u.name)} <span style="font-weight:500; color:var(--text-muted); font-size:0.85rem;">@${esc(u.username)}</span>${u.id === currentUser.id ? ' <span style="font-size:0.7rem; color:var(--primary); font-weight:600;">(you)</span>' : ''}</div>
+                        <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+                            <span style="text-transform:uppercase; letter-spacing:0.04em; font-weight:600;">${esc(u.role)}</span>
+                            &nbsp;·&nbsp; ${esc((u.departments || []).join(', ')) || 'No department'}
+                            ${u.active ? '' : ' · <span style="color:var(--danger);">disabled</span>'}
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn" style="padding:6px 12px; font-size:0.82rem;" onclick='editUser(${esc(JSON.stringify(u))})'>Edit</button>
+                        ${u.id === currentUser.id ? '' : `<button class="btn btn-danger" style="padding:6px 12px; font-size:0.82rem;" onclick="deleteUser('${u.id}', this.dataset.n)" data-n="${esc(u.name)}">Delete</button>`}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function setUserDeptTiles(depts) {
+            document.querySelectorAll('#userDeptTiles .dept-tile').forEach(tile => {
+                tile.classList.toggle('selected', (depts || []).includes(tile.dataset.value));
+            });
+        }
+
+        // Managers may only mint normal/supervisor staff within their own department(s).
+        function applyUserFormScope() {
+            const admin = isAdmin();
+            const myDepts = (currentUser && currentUser.departments) || [];
+            document.querySelectorAll('#userRole option').forEach(opt => {
+                const restricted = (opt.value === 'manager' || opt.value === 'admin');
+                opt.hidden = !admin && restricted;
+                opt.disabled = !admin && restricted;
+            });
+            document.querySelectorAll('#userDeptTiles .dept-tile').forEach(tile => {
+                tile.style.display = (admin || myDepts.includes(tile.dataset.value)) ? '' : 'none';
+            });
+        }
+
+        function openUserForm() {
+            document.getElementById('userFormWrap').style.display = 'block';
+            document.getElementById('userId').value = '';
+            document.getElementById('userName').value = '';
+            document.getElementById('userUsername').value = '';
+            document.getElementById('userUsername').disabled = false;
+            document.getElementById('userPassword').value = '';
+            document.getElementById('userPassLabel').innerText = 'Password';
+            document.getElementById('userRole').value = 'normal';
+            applyUserFormScope();
+            // For a manager creating within a single department, pre-select it.
+            const myDepts = (currentUser && currentUser.departments) || [];
+            setUserDeptTiles(!isAdmin() && myDepts.length === 1 ? myDepts : []);
+        }
+
+        function editUser(u) {
+            document.getElementById('userFormWrap').style.display = 'block';
+            document.getElementById('userId').value = u.id;
+            document.getElementById('userName').value = u.name;
+            document.getElementById('userUsername').value = u.username;
+            document.getElementById('userUsername').disabled = true; // username is immutable
+            document.getElementById('userPassword').value = '';
+            document.getElementById('userPassLabel').innerText = 'New Password (leave blank to keep)';
+            document.getElementById('userRole').value = u.role;
+            applyUserFormScope();
+            setUserDeptTiles(u.departments || []);
+            document.getElementById('userFormWrap').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function closeUserForm() {
+            document.getElementById('userFormWrap').style.display = 'none';
+        }
+
+        async function saveUser() {
+            const id = document.getElementById('userId').value;
+            const departments = Array.from(document.querySelectorAll('#userDeptTiles .dept-tile.selected')).map(t => t.dataset.value);
+            const payload = {
+                name: document.getElementById('userName').value.trim(),
+                role: document.getElementById('userRole').value,
+                departments,
+            };
+            const password = document.getElementById('userPassword').value;
+            if (password) payload.password = password;
+
+            let url, method;
+            if (id) {
+                url = `/api/users/${id}`; method = 'PUT';
+            } else {
+                payload.username = document.getElementById('userUsername').value.trim();
+                if (!payload.username || !payload.name || !password) {
+                    showToast('Name, username and password are required');
+                    return;
+                }
+                url = '/api/users'; method = 'POST';
+            }
+
+            try {
+                const res = await authFetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    showToast(id ? 'User updated' : 'User created');
+                    closeUserForm();
+                    renderUsersList();
+                    loadUserList();
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    showToast(data.error || 'Failed to save user');
+                }
+            } catch (_) { showToast('Failed to save user'); }
+        }
+
+        async function deleteUser(id, name) {
+            if (!confirm(`Delete user "${name}"? This cannot be undone.`)) return;
+            try {
+                const res = await authFetch(`/api/users/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    showToast('User deleted');
+                    renderUsersList();
+                    loadUserList();
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    showToast(data.error || 'Failed to delete user');
+                }
+            } catch (_) { showToast('Failed to delete user'); }
         }
 
         function exportToCSV() {
@@ -1553,6 +2272,18 @@
             if (e.target === document.getElementById('notifOverlay')) closeNotifications();
         });
 
+        document.getElementById('usersOverlay').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('usersOverlay')) closeUsers();
+        });
+
+        document.getElementById('activityOverlay').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('activityOverlay')) closeActivity();
+        });
+
+        document.getElementById('pwOverlay').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('pwOverlay')) closeChangePassword();
+        });
+
         // Notifications Feature
         let lastSeenNotifTime = localStorage.getItem('lastSeenNotifTime') || '1970-01-01T00:00:00Z';
         let lastPoppedUpTime = lastSeenNotifTime; // Prevent spamming popups on page load
@@ -1560,7 +2291,7 @@
 
         async function pollNotifications() {
             try {
-                const res = await fetch('/api/notifications');
+                const res = await authFetch('/api/notifications');
                 const notifs = await res.json();
                 window.latestNotifs = notifs;
 
@@ -1617,13 +2348,13 @@
             document.getElementById('notifList').innerHTML = notifs.map(n => `
                 <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; background: ${n.timestamp > localStorage.getItem('lastSeenNotifTime') ? 'var(--surface-hover)' : 'transparent'};">
                     <div style="font-size: 0.9rem;">
-                        <strong>${n.author}</strong> replied on <span style="font-weight: 600; color: var(--primary); cursor: pointer;" onclick="closeNotifications(); document.getElementById('datePicker')._flatpickr.setDate('${n.task_date}'); fetchHandovers('${n.task_date}')">${n.title}</span>
+                        <strong>${esc(n.author)}</strong> replied on <span style="font-weight: 600; color: var(--primary); cursor: pointer;" onclick="closeNotifications(); document.getElementById('datePicker')._flatpickr.setDate('${esc(n.task_date)}'); fetchHandovers('${esc(n.task_date)}')">${esc(n.title)}</span>
                     </div>
-                    <div style="font-size: 0.95rem; color: var(--text-main); background: var(--surface); padding: 8px 12px; border-radius: 8px;">
-                        ${n.text}
+                    <div style="font-size: 0.95rem; color: var(--text-main); background: var(--surface); padding: 8px 12px; border-radius: 8px; white-space: pre-wrap;">
+                        ${esc(n.text)}
                     </div>
                     <div style="font-size: 0.8rem; color: var(--text-muted);">
-                        ${new Date(n.timestamp).toLocaleString()} • For ${n.task_date}
+                        ${new Date(n.timestamp).toLocaleString()} • For ${esc(n.task_date)}
                     </div>
                 </div>
             `).join('');
@@ -1635,7 +2366,7 @@
 
         // Accordion Card Logic
         document.addEventListener('click', (e) => {
-            if (e.target.closest('#modalOverlay') || e.target.closest('#notifOverlay') || e.target.closest('.toast-container')) {
+            if (e.target.closest('#modalOverlay') || e.target.closest('#notifOverlay') || e.target.closest('#usersOverlay') || e.target.closest('#activityOverlay') || e.target.closest('#pwOverlay') || e.target.closest('.toast-container')) {
                 return;
             }
 
@@ -1674,8 +2405,7 @@
         }, 15000);
 
         // Init
-        fetchHandovers();
-        pollNotifications();
+        init();
     </script>
 </body>
 
