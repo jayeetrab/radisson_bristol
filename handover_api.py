@@ -102,7 +102,7 @@ def can_edit_task(user, task):
     """Supervisor+ can edit any task; normal users can edit only tasks they created."""
     if rank(user["role"]) >= ROLE_RANK["supervisor"]:
         return True
-    return task.get("created_by_id") == user["id"]
+    return (task.get("created_by_id") and task.get("created_by_id") == user["id"]) or (task.get("created_by") and task.get("created_by") == user["name"])
 
 
 def resolve_task_id(task_id):
@@ -368,7 +368,9 @@ def api_update_user(user_id):
         if field in data:
             if field == "username":
                 new_username = data[field].strip().lower()
-                if new_username and new_username != target.get("username"):
+                if not new_username:
+                    return jsonify({"error": "Username cannot be empty"}), 400
+                if new_username != target.get("username"):
                     if mongo_users.find_one({"username": new_username}):
                         return jsonify({"error": "Username already exists"}), 409
                 update[field] = new_username

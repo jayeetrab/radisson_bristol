@@ -1247,6 +1247,7 @@
                     </div>
                     <div class="form-group">
                         <label>Role</label>
+                        <select id="userRole">
                             <option value="normal">Normal staff</option>
                             <option value="supervisor">Supervisor</option>
                             <option value="manager">Manager</option>
@@ -1311,7 +1312,7 @@
         function canEditTask(task) {
             if (!currentUser) return false;
             if (ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) return true;
-            return task.created_by_id && task.created_by_id === currentUser.id;
+            return (task.created_by_id && task.created_by_id === currentUser.id) || (task.created_by && task.created_by === currentUser.name);
         }
 
         // Escape user-supplied text before injecting into HTML (prevents broken
@@ -1354,8 +1355,9 @@
             if (currentUser.can_manage_users) {
                 document.getElementById('usersBtn').style.display = 'inline-flex';
             }
-            if (isAdmin()) {
-                document.getElementById('deleteReqBtn').style.display = 'inline-flex';
+            if (ROLE_RANK[currentUser.role] >= ROLE_RANK.manager) {
+                const dtBtn = document.getElementById('deletedTasksBtn');
+                if (dtBtn) dtBtn.style.display = 'inline-flex';
             }
             initPwToggles();
 
@@ -1540,11 +1542,7 @@
             document.getElementById('overdueCount').innerText = overdue ? `(${overdue})` : '';
             document.getElementById('highCount').innerText = high ? `(${high})` : '';
 
-            if (isAdmin()) {
-                const dr = tasks.filter(t => t.delete_requested).length;
-                const drEl = document.getElementById('deleteReqCount');
-                if (drEl) drEl.innerText = dr ? `(${dr})` : '';
-            }
+
 
             const depts = {};
             const people = {};
@@ -1639,8 +1637,8 @@
                         const deptsArr = Array.isArray(t.department) ? t.department : [t.department || 'Other'];
                         return deptsArr.some(d => activeFilter.value.includes(d));
                     });
-                } else if (activeFilter.type === 'delete_requested') {
-                    filtered = tasks.filter(t => t.delete_requested);
+                } else if (activeFilter.type === 'deleted') {
+                    filtered = tasks.filter(t => t.is_deleted);
                 }
             }
 
@@ -1745,11 +1743,9 @@
                         <button class="toggle-btn" onclick="toggleDetails('${task.id}')" style="${hasActivity ? 'color: white; font-weight: 700; background: var(--danger); padding: 4px 12px; border-radius: 16px;' : ''}">
                             ${hasActivity ? `${totalNotes} Note${totalNotes > 1 ? 's' : ''}` : 'Add Note'}
                         </button>
-                        ${canEditTask(task)
+                        ${canEditTask(task) && !task.is_deleted
                             ? `<button class="btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick='openModal(${JSON.stringify(task).replace(/'/g, "&#39;")})'>Edit</button>`
-                            : (task.delete_requested
-                                ? `<span style="font-size:0.82rem; color:var(--text-muted); font-weight:600;">Deletion pending</span>`
-                                : `<button class="btn" style="padding: 6px 12px; font-size: 0.85rem; color:var(--danger); border-color:#fecaca;" onclick="requestDelete('${task.id}')">Request Delete</button>`)}
+                            : ''}
                     </div>
                 `;
                 fragment.appendChild(card);
