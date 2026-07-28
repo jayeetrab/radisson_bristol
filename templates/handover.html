@@ -1042,7 +1042,7 @@
                 <button class="btn-secondary" id="overdueBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('overdue', 'Overdue')">Overdue <span id="overdueCount"></span></button>
                 <button class="btn-secondary" id="highBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('high', 'High priority')">High priority <span id="highCount"></span></button>
                 <button class="btn-secondary" id="myDeptBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem;" onclick="filterMyDept()">My Department</button>
-                <button class="btn-secondary" id="deleteReqBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem; color:var(--danger); border-color:#fecaca;" onclick="setFilter('delete_requested', 'Delete Requests')">Delete Requests <span id="deleteReqCount"></span></button>
+                <button class="btn-danger-outline" id="deletedTasksBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color: #9ca3af; border-color: #e5e7eb; display: none;" onclick="setFilter('deleted', true, 'Deleted Tasks')">Deleted Tasks</button>
                 <div class="clear-filter" id="clearFilterBtn" onclick="clearFilters()">Clear Filters ✕</div>
             </div>
             <div class="search-wrapper">
@@ -1201,6 +1201,17 @@
                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
                 <input type="text" id="activitySearch" placeholder="Filter by person, action, or task…" onkeyup="renderActivity()" autocomplete="off" value="" readonly onfocus="this.removeAttribute('readonly');">
+            </div>
+            <div id="managerActivityFilters" style="display:none; gap:12px; margin-bottom:16px;">
+                <select id="activityUserFilter" class="status-select" style="flex:1;" onchange="renderActivity()">
+                    <option value="">All Users</option>
+                </select>
+                <select id="activityTimeFilter" class="status-select" style="flex:1;" onchange="renderActivity()">
+                    <option value="">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">Past 7 Days</option>
+                    <option value="month">Past 30 Days</option>
+                </select>
             </div>
             <div id="activityList" style="display:flex; flex-direction:column; gap:2px; max-height:52vh; overflow-y:auto;"></div>
             <div class="modal-actions" style="margin-top:20px;">
@@ -1493,9 +1504,10 @@
                 document.getElementById('emptyState').style.display = 'none';
             }
 
+            const isDeletedView = currentFilterType === 'deleted';
             const date = dateOverride || datePickerInput.value || new Date().toISOString().split('T')[0];
             try {
-                const res = await authFetch(`/api/handovers?date=${date}&include_overdue=true`);
+                const res = await authFetch(`/api/handovers?date=${date}&include_overdue=true${isDeletedView ? '&view_deleted=true' : ''}`);
                 tasks = await res.json();
                 
                 // Sort tasks: Pending/In Progress first, Completed last, then by created_at descending
@@ -1691,23 +1703,24 @@
                             </div>
                         </div>
                         <div>
+                            ${task.is_deleted ? '<span class="badge" style="background:#f3f4f6; color:#9ca3af; border: 1px solid #e5e7eb;">DELETED</span>' : `
                             <select class="status-select" onchange="quickUpdateStatus('${task.id}', this.value)">
                                 <option ${task.status === 'Pending' ? 'selected' : ''}>Pending</option>
                                 <option ${task.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                                 <option ${task.status === 'Completed' ? 'selected' : ''}>Completed</option>
                             </select>
+                            `}
                         </div>
                     </div>
                     
                     ${task.status === 'Completed' && task.completed_by ? `<div class="completed-text"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Completed by ${esc(task.completed_by)}</div>` : ''}
 
-                    ${task.delete_requested ? `<div style="margin-top: 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                    ${task.is_deleted ? `<div style="margin-top: 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
                         <div style="font-size:0.9rem; color:#991b1b; font-weight:600;">
-                            Deletion requested by ${esc(task.delete_requested_by || 'someone')}${task.delete_requested_reason ? ` - <span style="font-weight:400;">${esc(task.delete_requested_reason)}</span>` : ''}
+                            Deleted by ${esc(task.deleted_by || 'Unknown')} on ${new Date(task.deleted_at).toLocaleString()}
                         </div>
                         <div style="display:flex; gap:8px;">
-                            ${(ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) ? `<button class="btn btn-danger" style="padding:6px 12px; font-size:0.82rem;" onclick="approveDelete('${task.id}')">Delete now</button>` : ''}
-                            ${((ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) || (currentUser && task.delete_requested_by === currentUser.name)) ? `<button class="btn" style="padding:6px 12px; font-size:0.82rem;" onclick="cancelDelete('${task.id}')">Dismiss</button>` : ''}
+                            ${(ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) ? `<button class="btn btn-danger" style="padding:6px 12px; font-size:0.82rem;" onclick="undoDelete('${task.id}')">Undo Delete</button>` : ''}
                         </div>
                     </div>` : ''}
 
@@ -1860,19 +1873,14 @@
 
         function configureDeleteBtn(task) {
             const btn = document.getElementById('deleteBtn');
-            if (!task) { btn.style.display = 'none'; return; }
-            btn.style.display = 'block';
+            if (!task || task.is_deleted) { btn.style.display = 'none'; return; }
             if (ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) {
+                btn.style.display = 'block';
                 btn.innerText = 'Delete Task';
                 btn.onclick = deleteTask;
-            } else if (task.delete_requested) {
-                btn.innerText = 'Deletion pending';
-                btn.disabled = true;
-                btn.onclick = null;
-            } else {
-                btn.innerText = 'Request Delete';
                 btn.disabled = false;
-                btn.onclick = requestDeleteFromModal;
+            } else {
+                btn.style.display = 'none';
             }
         }
 
@@ -1923,11 +1931,7 @@
             configureDeleteBtn(task);
         }
 
-        async function requestDeleteFromModal() {
-            const id = document.getElementById('taskId').value;
-            closeModal();
-            await requestDelete(id);
-        }
+
 
         function closeModal() {
             document.getElementById('modalOverlay').classList.remove('open');
@@ -2032,36 +2036,13 @@
             }
         }
 
-        // ---- Delete request flow (non-admins) ----
-        async function requestDelete(id) {
-            const reason = prompt('Reason for deletion (optional):', '');
-            if (reason === null) return; // cancelled
+        async function undoDelete(id) {
+            if (!confirm('Restore this deleted task?')) return;
             try {
-                await authFetch(`/api/handovers/${id}/request-delete`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ reason })
-                });
-                showToast('Delete request sent to admin');
+                await authFetch(`/api/handovers/${id}/undo-delete`, { method: 'POST' });
+                showToast('Task restored');
                 fetchHandovers(null, true);
-            } catch (_) { showToast('Failed to send request'); }
-        }
-
-        async function approveDelete(id) {
-            if (!confirm('Permanently delete this task?')) return;
-            try {
-                await authFetch(`/api/handovers/${id}`, { method: 'DELETE' });
-                showToast('Task deleted');
-                fetchHandovers();
-            } catch (_) { showToast('Failed to delete'); }
-        }
-
-        async function cancelDelete(id) {
-            try {
-                await authFetch(`/api/handovers/${id}/cancel-delete`, { method: 'POST' });
-                showToast('Delete request dismissed');
-                fetchHandovers(null, true);
-            } catch (_) { showToast('Failed to dismiss'); }
+            } catch (_) { showToast('Failed to restore'); }
         }
 
         // ---- User management (admin) ----
@@ -2104,6 +2085,21 @@
                 const res = await authFetch('/api/activity');
                 window._activity = res.ok ? await res.json() : [];
             } catch (_) { window._activity = []; }
+            
+            if (ROLE_RANK[currentUser.role] >= ROLE_RANK.manager) {
+                document.getElementById('managerActivityFilters').style.display = 'flex';
+                const userSel = document.getElementById('activityUserFilter');
+                if (userSel.options.length <= 1) {
+                    const uniqueUsers = [...new Set(window._activity.map(a => a.user_name).filter(Boolean))].sort();
+                    uniqueUsers.forEach(uname => {
+                        const opt = document.createElement('option');
+                        opt.value = uname;
+                        opt.textContent = uname;
+                        userSel.appendChild(opt);
+                    });
+                }
+            }
+            
             renderActivity();
         }
 
@@ -2117,6 +2113,25 @@
                     (e.detail || '').toLowerCase().includes(q) ||
                     (e.target_title || '').toLowerCase().includes(q) ||
                     (e.action || '').toLowerCase().includes(q));
+            }
+            
+            const uFilter = document.getElementById('activityUserFilter') ? document.getElementById('activityUserFilter').value : '';
+            const tFilter = document.getElementById('activityTimeFilter') ? document.getElementById('activityTimeFilter').value : '';
+            
+            if (uFilter) {
+                entries = entries.filter(e => e.user_name === uFilter);
+            }
+            if (tFilter) {
+                const now = new Date();
+                let cutoff = new Date(0);
+                if (tFilter === 'today') {
+                    cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                } else if (tFilter === 'week') {
+                    cutoff = new Date(now.setDate(now.getDate() - 7));
+                } else if (tFilter === 'month') {
+                    cutoff = new Date(now.setDate(now.getDate() - 30));
+                }
+                entries = entries.filter(e => new Date(e.ts) >= cutoff);
             }
             if (!entries.length) {
                 list.innerHTML = '<div style="color:var(--text-muted); padding:16px;">No activity yet.</div>';

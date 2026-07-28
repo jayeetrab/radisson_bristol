@@ -463,6 +463,12 @@ def get_handovers():
             query = {"$or": [base_query, overdue_query]}
         else:
             query = base_query
+            
+        view_deleted = request.args.get('view_deleted', 'false').lower() == 'true'
+        if view_deleted:
+            query["is_deleted"] = True
+        else:
+            query["is_deleted"] = {"$ne": True}
 
         tasks_cursor = mongo_tasks.find(query).sort("created_at", -1)
         tasks = []
@@ -587,50 +593,6 @@ def update_handover(task_id):
         return jsonify({"error": "Failed to update task"}), 500
 
 
-@app.route('/api/handovers/<task_id>/request-delete', methods=['POST'])
-@login_required
-def request_delete(task_id):
-    """Non-admins can't delete; they flag the task for an admin to review."""
-    user = current_user()
-    query_id = resolve_task_id(task_id)
-    reason = (request.json or {}).get("reason", "")
-    task = mongo_tasks.find_one({"_id": query_id}) or (mongo_tasks.find_one({"id": query_id}) if isinstance(query_id, int) else None)
-    res = mongo_tasks.update_one(
-        {"_id": query_id},
-        {"$set": {
-            "delete_requested": True,
-            "delete_requested_by": user["name"],
-            "delete_requested_reason": reason,
-            "delete_requested_at": datetime.utcnow().isoformat(),
-        }},
-    )
-    if res.matched_count == 0 and isinstance(query_id, int):
-        mongo_tasks.update_one({"id": query_id}, {"$set": {"delete_requested": True, "delete_requested_by": user["name"], "delete_requested_reason": reason}})
-    log_activity("request_delete", target_type="task", target_id=task_id,
-                 target_title=(task or {}).get("title"), task_departments=(task or {}).get("department"),
-                 detail="Requested deletion" + (f": {reason}" if reason else ""))
-    return jsonify({"success": True})
-
-
-@app.route('/api/handovers/<task_id>/cancel-delete', methods=['POST'])
-@login_required
-def cancel_delete(task_id):
-    user = current_user()
-    query_id = resolve_task_id(task_id)
-    task = mongo_tasks.find_one({"_id": query_id}) or (mongo_tasks.find_one({"id": query_id}) if isinstance(query_id, int) else None)
-    if not task:
-        return jsonify({"error": "Task not found"}), 404
-    # Admin can dismiss any request; the requester can withdraw their own.
-    if user["role"] != "admin" and task.get("delete_requested_by") != user["name"]:
-        return jsonify({"error": "Not allowed"}), 403
-    mongo_tasks.update_one({"_id": task["_id"] if "_id" in task else query_id},
-                           {"$unset": {"delete_requested": "", "delete_requested_by": "", "delete_requested_reason": "", "delete_requested_at": ""}})
-    log_activity("cancel_delete", target_type="task", target_id=task_id,
-                 target_title=task.get("title"), task_departments=task.get("department"),
-                 detail="Dismissed deletion request")
-    return jsonify({"success": True})
-
-
 @app.route('/api/handovers/<task_id>', methods=['DELETE'])
 @login_required
 def delete_handover(task_id):
@@ -641,10 +603,23 @@ def delete_handover(task_id):
         return jsonify({"error": "Database connection failed"}), 500
     query_id = resolve_task_id(task_id)
     task = mongo_tasks.find_one({"_id": query_id}) or (mongo_tasks.find_one({"id": query_id}) if isinstance(query_id, int) else None)
+    
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+        
     try:
-        result = mongo_tasks.delete_one({"_id": query_id})
-        if result.deleted_count == 0 and isinstance(query_id, int):
-            mongo_tasks.delete_one({"id": query_id})
+        user = current_user()
+        update_data = {
+            "$set": {
+                "is_deleted": True,
+                "deleted_by": user["name"],
+                "deleted_at": datetime.utcnow().isoformat()
+            }
+        }
+        result = mongo_tasks.update_one({"_id": query_id}, update_data)
+        if result.matched_count == 0 and isinstance(query_id, int):
+            mongo_tasks.update_one({"id": query_id}, update_data)
+            
         log_activity("delete_task", target_type="task", target_id=task_id,
                      target_title=(task or {}).get("title"), task_departments=(task or {}).get("department"),
                      detail="Deleted handover")
@@ -652,6 +627,40 @@ def delete_handover(task_id):
     except Exception as e:
         logger.error(f"MongoDB Delete Error: {e}")
         return jsonify({"error": "Failed to delete task"}), 500
+
+@app.route('/api/handovers/<task_id>/undo-delete', methods=['POST'])
+@login_required
+def undo_delete_handover(task_id):
+    if rank(session.get("role")) < rank("supervisor"):
+        return jsonify({"error": "Access denied"}), 403
+    
+    if mongo_tasks is None:
+        return jsonify({"error": "Database connection failed"}), 500
+    query_id = resolve_task_id(task_id)
+    task = mongo_tasks.find_one({"_id": query_id}) or (mongo_tasks.find_one({"id": query_id}) if isinstance(query_id, int) else None)
+    
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+        
+    try:
+        update_data = {
+            "$unset": {
+                "is_deleted": "",
+                "deleted_by": "",
+                "deleted_at": ""
+            }
+        }
+        result = mongo_tasks.update_one({"_id": query_id}, update_data)
+        if result.matched_count == 0 and isinstance(query_id, int):
+            mongo_tasks.update_one({"id": query_id}, update_data)
+            
+        log_activity("undo_delete_task", target_type="task", target_id=task_id,
+                     target_title=(task or {}).get("title"), task_departments=(task or {}).get("department"),
+                     detail="Restored deleted handover")
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"MongoDB Undo Delete Error: {e}")
+        return jsonify({"error": "Failed to restore task"}), 500
 
 
 # ---------------------------------------------------------------------------
