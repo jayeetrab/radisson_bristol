@@ -1217,6 +1217,10 @@
                         <input type="text" id="userName" placeholder="Jane Smith">
                     </div>
                     <div class="form-group">
+                        <label>Actual Role (Job Title)</label>
+                        <input type="text" id="userActualRole" placeholder="e.g. Room Attendant">
+                    </div>
+                    <div class="form-group">
                         <label>Username</label>
                         <input type="text" id="userUsername" placeholder="jsmith">
                     </div>
@@ -2127,7 +2131,7 @@
             list.innerHTML = users.map(u => `
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; ${u.active ? '' : 'opacity:0.55;'}">
                     <div>
-                        <div style="font-weight:700;">${esc(u.name)} <span style="font-weight:500; color:var(--text-muted); font-size:0.85rem;">@${esc(u.username)}</span>${u.id === currentUser.id ? ' <span style="font-size:0.7rem; color:var(--primary); font-weight:600;">(you)</span>' : ''}</div>
+                        <div style="font-weight:700;">${esc(u.name)} <span style="font-weight:500; color:var(--text-muted); font-size:0.85rem;">@${esc(u.username)}</span>${u.actual_role ? ` <span style="font-size:0.75rem; color:var(--text-muted);">| ${esc(u.actual_role)}</span>` : ''}${u.id === currentUser.id ? ' <span style="font-size:0.7rem; color:var(--primary); font-weight:600;">(you)</span>' : ''}</div>
                         <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
                             <span style="text-transform:uppercase; letter-spacing:0.04em; font-weight:600;">${esc(u.role)}</span>
                             &nbsp;·&nbsp; ${esc((u.departments || []).join(', ')) || 'No department'}
@@ -2166,6 +2170,7 @@
             document.getElementById('userFormWrap').style.display = 'block';
             document.getElementById('userId').value = '';
             document.getElementById('userName').value = '';
+            document.getElementById('userActualRole').value = '';
             document.getElementById('userUsername').value = '';
             document.getElementById('userUsername').disabled = false;
             document.getElementById('userPassword').value = '';
@@ -2181,8 +2186,9 @@
             document.getElementById('userFormWrap').style.display = 'block';
             document.getElementById('userId').value = u.id;
             document.getElementById('userName').value = u.name;
+            document.getElementById('userActualRole').value = u.actual_role || '';
             document.getElementById('userUsername').value = u.username;
-            document.getElementById('userUsername').disabled = true; // username is immutable
+            document.getElementById('userUsername').disabled = false;
             document.getElementById('userPassword').value = '';
             document.getElementById('userPassLabel').innerText = 'New Password (leave blank to keep)';
             document.getElementById('userRole').value = u.role;
@@ -2196,25 +2202,27 @@
         }
 
         async function saveUser() {
-            const id = document.getElementById('userId').value;
+            const userId = document.getElementById('userId').value;
+            const password = document.getElementById('userPassword').value;
             const departments = Array.from(document.querySelectorAll('#userDeptTiles .dept-tile.selected')).map(t => t.dataset.value);
             const payload = {
                 name: document.getElementById('userName').value.trim(),
+                actual_role: document.getElementById('userActualRole').value.trim(),
                 role: document.getElementById('userRole').value,
+                username: document.getElementById('userUsername').value.trim(),
                 departments,
             };
-            const password = document.getElementById('userPassword').value;
-            if (password) payload.password = password;
 
             let url, method;
-            if (id) {
-                url = `/api/users/${id}`; method = 'PUT';
+            if (userId) {
+                url = `/api/users/${userId}`; method = 'PUT';
+                if (password) payload.password = password;
             } else {
-                payload.username = document.getElementById('userUsername').value.trim();
                 if (!payload.username || !payload.name || !password) {
                     showToast('Name, username and password are required');
                     return;
                 }
+                payload.password = password;
                 url = '/api/users'; method = 'POST';
             }
 
@@ -2225,7 +2233,7 @@
                     body: JSON.stringify(payload)
                 });
                 if (res.ok) {
-                    showToast(id ? 'User updated' : 'User created');
+                    showToast(userId ? 'User updated' : 'User created');
                     closeUserForm();
                     renderUsersList();
                     loadUserList();

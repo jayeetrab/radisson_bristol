@@ -312,6 +312,7 @@ def api_users():
             "username": u.get("username"),
             "name": u.get("name"),
             "role": u.get("role"),
+            "actual_role": u.get("actual_role", ""),
             "departments": u.get("departments", []),
             "active": u.get("active", True),
         })
@@ -327,6 +328,7 @@ def api_create_user():
     name = (data.get("name") or "").strip()
     password = data.get("password") or ""
     role = data.get("role", "normal")
+    actual_role = data.get("actual_role", "")
     departments = data.get("departments", [])
     if not username or not name or not password:
         return jsonify({"error": "Username, name and password are required"}), 400
@@ -341,6 +343,7 @@ def api_create_user():
         "name": name,
         "password_hash": generate_password_hash(password),
         "role": role,
+        "actual_role": actual_role,
         "departments": departments,
         "active": True,
         "must_change_password": True,   # staff must replace the handed-out password on first login
@@ -361,9 +364,16 @@ def api_update_user(user_id):
 
     data = request.json or {}
     update = {}
-    for field in ["name", "role", "departments", "active"]:
+    for field in ["name", "role", "actual_role", "departments", "active", "username"]:
         if field in data:
-            update[field] = data[field]
+            if field == "username":
+                new_username = data[field].strip().lower()
+                if new_username and new_username != target.get("username"):
+                    if mongo_users.find_one({"username": new_username}):
+                        return jsonify({"error": "Username already exists"}), 409
+                update[field] = new_username
+            else:
+                update[field] = data[field]
     if update.get("role") and update["role"] not in ROLES:
         return jsonify({"error": "Invalid role"}), 400
 
