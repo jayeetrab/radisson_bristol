@@ -1355,10 +1355,8 @@
             if (currentUser.can_manage_users) {
                 document.getElementById('usersBtn').style.display = 'inline-flex';
             }
-            if (ROLE_RANK[currentUser.role] >= ROLE_RANK.manager) {
-                const dtBtn = document.getElementById('deletedTasksBtn');
-                if (dtBtn) dtBtn.style.display = 'inline-flex';
-            }
+            const dtBtn = document.getElementById('deletedTasksBtn');
+            if (dtBtn) dtBtn.style.display = 'inline-flex';
             initPwToggles();
 
             if (currentUser.must_change_password) {
@@ -1731,7 +1729,7 @@
                             Deleted by ${esc(task.deleted_by || 'Unknown')} on ${new Date(task.deleted_at).toLocaleString()}
                         </div>
                         <div style="display:flex; gap:8px;">
-                            ${(ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) ? `<button class="btn btn-danger" style="padding:6px 12px; font-size:0.82rem;" onclick="undoDelete('${task.id}')">Undo Delete</button>` : ''}
+                            <button class="btn btn-danger" style="padding:6px 12px; font-size:0.82rem;" onclick="undoDelete('${task.id}')">Undo Delete</button>
                         </div>
                     </div>` : ''}
 
@@ -1886,14 +1884,10 @@
         function configureDeleteBtn(task) {
             const btn = document.getElementById('deleteBtn');
             if (!task || task.is_deleted) { btn.style.display = 'none'; return; }
-            if (ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) {
-                btn.style.display = 'block';
-                btn.innerText = 'Delete Task';
-                btn.onclick = deleteTask;
-                btn.disabled = false;
-            } else {
-                btn.style.display = 'none';
-            }
+            btn.style.display = 'block';
+            btn.innerText = 'Delete Task';
+            btn.onclick = deleteTask;
+            btn.disabled = false;
         }
 
         function openModal(task = null) {

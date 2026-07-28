@@ -603,9 +603,6 @@ def update_handover(task_id):
 @app.route('/api/handovers/<task_id>', methods=['DELETE'])
 @login_required
 def delete_handover(task_id):
-    if rank(session.get("role")) < rank("supervisor"):
-        return jsonify({"error": "Delete access required"}), 403
-    
     if mongo_tasks is None:
         return jsonify({"error": "Database connection failed"}), 500
     query_id = resolve_task_id(task_id)
@@ -638,9 +635,6 @@ def delete_handover(task_id):
 @app.route('/api/handovers/<task_id>/undo-delete', methods=['POST'])
 @login_required
 def undo_delete_handover(task_id):
-    if rank(session.get("role")) < rank("supervisor"):
-        return jsonify({"error": "Access denied"}), 403
-    
     if mongo_tasks is None:
         return jsonify({"error": "Database connection failed"}), 500
     query_id = resolve_task_id(task_id)
