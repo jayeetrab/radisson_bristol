@@ -1123,10 +1123,8 @@
                         <input type="text" id="taskCompletedBy" placeholder="Name of person who completed it">
                     </div>
                     <div class="form-group full">
-                        <label>Assign To</label>
-                        <select id="taskAssignedTo">
-                            <option value="">Unassigned</option>
-                        </select>
+                        <label>Assign To (click to select one or more)</label>
+                        <div class="dept-tiles" id="taskAssigneeTiles"></div>
                     </div>
                     <div class="form-group full">
                         <label>Photo (Optional)</label>
@@ -1482,11 +1480,21 @@
             document.getElementById('completedByGroup').style.display = e.target.value === 'Completed' ? 'block' : 'none';
         });
 
+        function getSelectedAssignees() {
+            return Array.from(document.querySelectorAll('#taskAssigneeTiles .dept-tile.selected')).map(t => t.dataset.value);
+        }
+
         document.getElementById('taskDeptTiles').addEventListener('click', function(e) {
             if (e.target.classList.contains('dept-tile')) {
                 e.target.classList.toggle('selected');
-                const currentSelected = document.getElementById('taskAssignedTo').value;
+                const currentSelected = getSelectedAssignees();
                 populateAssignees(currentSelected);
+            }
+        });
+
+        document.getElementById('taskAssigneeTiles').addEventListener('click', function(e) {
+            if (e.target.classList.contains('dept-tile')) {
+                e.target.classList.toggle('selected');
             }
         });
 
@@ -1556,8 +1564,11 @@
                 deptsArr.forEach(d => {
                     depts[d] = (depts[d] || 0) + 1;
                 });
-                const p = t.assigned_to ? t.assigned_to.trim() : 'Unassigned';
-                people[p] = (people[p] || 0) + 1;
+                const assignees = t.assigned_to ? t.assigned_to.split(',').map(s => s.trim()) : ['Unassigned'];
+                assignees.forEach(p => {
+                    const person = p || 'Unassigned';
+                    people[person] = (people[person] || 0) + 1;
+                });
             });
 
             const deptContainer = document.getElementById('deptStats');
@@ -1636,7 +1647,11 @@
                 } else if (activeFilter.type === 'high') {
                     filtered = tasks.filter(t => t.priority === 'High' && t.status !== 'Completed');
                 } else if (activeFilter.type === 'assigned_to_me') {
-                    filtered = tasks.filter(t => t.assigned_to && currentUser && t.assigned_to.trim() === currentUser.name);
+                    filtered = tasks.filter(t => {
+                        if (!t.assigned_to || !currentUser) return false;
+                        const list = t.assigned_to.split(',').map(s => s.trim());
+                        return list.includes(currentUser.name);
+                    });
                 } else if (activeFilter.type === 'department') {
                     filtered = tasks.filter(t => {
                         const deptsArr = Array.isArray(t.department) ? t.department : [t.department || 'Other'];
@@ -1644,8 +1659,8 @@
                     });
                 } else if (activeFilter.type === 'assigned_to') {
                     filtered = tasks.filter(t => {
-                        const p = t.assigned_to ? t.assigned_to.trim() : 'Unassigned';
-                        return p === activeFilter.value;
+                        const list = t.assigned_to ? t.assigned_to.split(',').map(s => s.trim()) : ['Unassigned'];
+                        return list.includes(activeFilter.value);
                     });
                 } else if (activeFilter.type === 'my_dept') {
                     filtered = tasks.filter(t => {
@@ -1853,9 +1868,17 @@
         }
 
         function populateAssignees(selected = '') {
-            const sel = document.getElementById('taskAssignedTo');
-            sel.innerHTML = '<option value="">Unassigned</option>';
+            const container = document.getElementById('taskAssigneeTiles');
+            if (!container) return;
+            container.innerHTML = '';
             
+            let selectedArr = [];
+            if (Array.isArray(selected)) {
+                selectedArr = selected;
+            } else if (typeof selected === 'string' && selected.trim() !== '') {
+                selectedArr = selected.split(',').map(s => s.trim());
+            }
+
             const selectedDepts = Array.from(document.querySelectorAll('#taskDeptTiles .dept-tile.selected')).map(t => t.dataset.value);
             
             let eligibleUsers = userList;
@@ -1874,14 +1897,21 @@
             }
 
             const names = eligibleUsers.map(u => u.name);
-            // Keep any legacy free-text assignee that no longer maps to a user.
-            if (selected && !names.includes(selected)) names.push(selected);
+            selectedArr.forEach(s => {
+                if (s && s !== 'Unassigned' && !names.includes(s)) names.push(s);
+            });
+
+            if (names.length === 0) {
+                container.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem; padding:6px 0;">No supervisors/managers available for selected department(s).</div>';
+                return;
+            }
+
             names.forEach(n => {
-                const opt = document.createElement('option');
-                opt.value = n;
-                opt.textContent = n;
-                if (n === selected) opt.selected = true;
-                sel.appendChild(opt);
+                const tile = document.createElement('div');
+                tile.className = 'dept-tile' + (selectedArr.includes(n) ? ' selected' : '');
+                tile.dataset.value = n;
+                tile.textContent = n;
+                container.appendChild(tile);
             });
         }
 
@@ -1985,13 +2015,16 @@
                                       .map(tile => tile.dataset.value);
             if (selectedDepts.length === 0) selectedDepts.push('Other');
 
+            const selectedAssignees = getSelectedAssignees();
+            const assignedTo = selectedAssignees.join(', ');
+
             const payload = {
                 task_date: taskDateValue,
                 title: document.getElementById('taskTitle').value,
                 department: selectedDepts,
                 status: document.getElementById('taskStatus').value,
                 priority: document.getElementById('taskPriority').value,
-                assigned_to: document.getElementById('taskAssignedTo').value,
+                assigned_to: assignedTo,
                 completed_by: document.getElementById('taskCompletedBy').value,
                 comment: document.getElementById('taskComment').value,
             };
