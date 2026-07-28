@@ -904,6 +904,11 @@
 </head>
 
 <body>
+    <!-- Hidden dummy form to catch aggressive browser autofill -->
+    <form style="display: none;" aria-hidden="true">
+        <input type="text" autocomplete="username">
+        <input type="password" autocomplete="current-password">
+    </form>
 
     <div class="header">
         <div class="header-left">
