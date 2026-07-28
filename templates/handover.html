@@ -608,6 +608,12 @@
             border-color: #fde68a;
         }
 
+        .dept-HR {
+            background: #fdf2f8;
+            color: #9d174d;
+            border-color: #fbcfe8;
+        }
+
         .dept-Other {
             background: #f3f4f6;
             color: #4b5563;
@@ -913,16 +919,8 @@
 
     <div class="header">
         <div class="header-left">
-            <a href="https://www.majestichotels.co.uk" target="_blank" style="text-decoration: none; display: flex; cursor: pointer;">
-                <svg class="header-logo" viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="70" y="5" width="60" height="50" fill="none" stroke="#1a1a1a" stroke-width="4" />
-                    <text x="100" y="45" font-family="Georgia, serif" font-size="40" font-weight="bold" fill="#1a1a1a"
-                        text-anchor="middle">M</text>
-                    <text x="100" y="75" font-family="Georgia, serif" font-size="18" letter-spacing="2" fill="#1a1a1a"
-                        text-anchor="middle">MAJESTIC</text>
-                    <text x="100" y="92" font-family="Inter, sans-serif" font-size="10" font-weight="700" letter-spacing="1"
-                        fill="#666666" text-anchor="middle">HOTELS</text>
-                </svg>
+            <a href="https://www.majestichotels.co.uk" target="_blank" style="text-decoration: none; display: flex; align-items: center; cursor: pointer;">
+                <img src="/assets/majestic-logo.png" alt="Majestic Logo" style="height: 44px; width: auto; object-fit: contain;">
             </a>
             <div style="width: 2px; height: 36px; background: var(--border); margin: 0 12px; border-radius: 1px;"></div>
             <h1
@@ -948,7 +946,7 @@
                 </svg>
                 CSV Export
             </button>
-            <button class="btn-secondary" onclick="openNotifications()" style="position: relative; padding: 10px;"
+            <button class="btn-secondary" id="notifBtn" onclick="openNotifications()" style="display: none; position: relative; padding: 10px;"
                 title="Activity Feed">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px;">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -1100,6 +1098,7 @@
                             <div class="dept-tile" data-value="Management">Management</div>
                             <div class="dept-tile" data-value="F&B">F&B</div>
                             <div class="dept-tile" data-value="Finance">Finance</div>
+                            <div class="dept-tile" data-value="HR">HR</div>
                             <div class="dept-tile" data-value="Other">Other</div>
                         </div>
                     </div>
@@ -1276,6 +1275,7 @@
                             <div class="dept-tile" data-value="Management">Management</div>
                             <div class="dept-tile" data-value="F&amp;B">F&amp;B</div>
                             <div class="dept-tile" data-value="Finance">Finance</div>
+                            <div class="dept-tile" data-value="HR">HR</div>
                             <div class="dept-tile" data-value="Other">Other</div>
                         </div>
                     </div>
@@ -1354,6 +1354,9 @@
             }
             if (currentUser.can_manage_users) {
                 document.getElementById('usersBtn').style.display = 'inline-flex';
+            }
+            if (ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) {
+                document.getElementById('notifBtn').style.display = 'inline-flex';
             }
             const dtBtn = document.getElementById('deletedTasksBtn');
             if (dtBtn) dtBtn.style.display = 'inline-flex';
@@ -1548,6 +1551,7 @@
             const people = {};
 
             tasks.forEach(t => {
+                if (t.status === 'Completed' || t.is_deleted) return;
                 const deptsArr = Array.isArray(t.department) ? t.department : [t.department || 'Other'];
                 deptsArr.forEach(d => {
                     depts[d] = (depts[d] || 0) + 1;
@@ -2374,6 +2378,7 @@
         window.latestNotifs = [];
 
         async function pollNotifications() {
+            if (!currentUser || ROLE_RANK[currentUser.role] < ROLE_RANK.supervisor) return;
             try {
                 const res = await authFetch('/api/notifications');
                 const notifs = await res.json();

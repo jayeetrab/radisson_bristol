@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, redirect
+from flask import Flask, render_template, request, jsonify, session, redirect, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import pymongo
@@ -7,7 +7,11 @@ from datetime import datetime, date, timedelta
 import os
 import logging
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='assets', static_url_path='/assets')
+
+@app.route('/assets/<path:filename>')
+def serve_assets(filename):
+    return send_from_directory('assets', filename)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 app.permanent_session_lifetime = timedelta(days=7)
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +36,7 @@ except Exception as e:
     mongo_users = None
     mongo_activity = None
 
-DEPARTMENTS = ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "Other"]
+DEPARTMENTS = ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "HR", "Other"]
 ROLES = ["normal", "supervisor", "manager", "admin"]
 ROLE_RANK = {"normal": 1, "supervisor": 2, "manager": 3, "admin": 4}
 
