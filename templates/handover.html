@@ -1862,7 +1862,7 @@
                     const uRole = (u.role || 'normal').toLowerCase();
                     const isManagerOrSup = uRole === 'supervisor' || uRole === 'manager' || uRole === 'admin';
                     const hasDept = u.departments && u.departments.some(d => selectedDepts.includes(d));
-                    return isManagerOrSup && (hasDept || uRole === 'admin');
+                    return isManagerOrSup && hasDept;
                 });
             } else {
                 eligibleUsers = userList.filter(u => {
@@ -1929,10 +1929,9 @@
                 document.getElementById('modalTitle').innerText = 'New Handover';
                 document.getElementById('taskId').value = '';
 
-                // Pre-select the creator's own department(s) for convenience.
-                const myDepts = (currentUser && currentUser.departments) || [];
+                // Do not auto-select any department tiles automatically
                 document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => {
-                    tile.classList.toggle('selected', myDepts.includes(tile.dataset.value));
+                    tile.classList.remove('selected');
                 });
                 
                 populateAssignees('');
