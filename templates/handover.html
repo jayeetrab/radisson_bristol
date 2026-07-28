@@ -1471,6 +1471,8 @@
         document.getElementById('taskDeptTiles').addEventListener('click', function(e) {
             if (e.target.classList.contains('dept-tile')) {
                 e.target.classList.toggle('selected');
+                const currentSelected = document.getElementById('taskAssignedTo').value;
+                populateAssignees(currentSelected);
             }
         });
 
@@ -1829,7 +1831,22 @@
         function populateAssignees(selected = '') {
             const sel = document.getElementById('taskAssignedTo');
             sel.innerHTML = '<option value="">Unassigned</option>';
-            const names = userList.map(u => u.name);
+            
+            const selectedDepts = Array.from(document.querySelectorAll('#taskDeptTiles .dept-tile.selected')).map(t => t.dataset.value);
+            
+            let eligibleUsers = userList;
+            if (selectedDepts.length > 0) {
+                eligibleUsers = userList.filter(u => {
+                    const hasDept = u.departments && u.departments.some(d => selectedDepts.includes(d));
+                    const isManagerOrSup = u.role === 'supervisor' || u.role === 'manager' || u.role === 'admin';
+                    return hasDept && isManagerOrSup;
+                });
+            } else {
+                // If no department is selected, just show all supervisors/managers to be safe
+                eligibleUsers = userList.filter(u => u.role === 'supervisor' || u.role === 'manager' || u.role === 'admin');
+            }
+
+            const names = eligibleUsers.map(u => u.name);
             // Keep any legacy free-text assignee that no longer maps to a user.
             if (selected && !names.includes(selected)) names.push(selected);
             names.forEach(n => {
@@ -1891,13 +1908,14 @@
             } else {
                 document.getElementById('modalTitle').innerText = 'New Handover';
                 document.getElementById('taskId').value = '';
-                populateAssignees('');
 
                 // Pre-select the creator's own department(s) for convenience.
                 const myDepts = (currentUser && currentUser.departments) || [];
                 document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => {
                     tile.classList.toggle('selected', myDepts.includes(tile.dataset.value));
                 });
+                
+                populateAssignees('');
 
                 if (modalFp) modalFp.setDate(new Date().toISOString().split('T')[0]);
                 else document.getElementById('newTaskDate').value = new Date().toISOString().split('T')[0];
