@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-st.set_page_config(page_title="Handover Dashboard", layout="wide", page_icon="🤝")
+st.set_page_config(page_title="Handover Dashboard", layout="wide")
 
 # Modern CSS
 st.markdown("""
@@ -200,12 +200,12 @@ def delete_handover(task_id):
         except Exception as e:
             logger.error(f"MongoDB Sync Error (Delete): {e}")
 
-st.title("🤝 Handover Dashboard")
+st.title("Handover Dashboard")
 st.markdown("Modern Handover Management for Maintenance, Housekeeping, Front Office, F&B, Finance, and Management.")
 
 d = st.date_input("Select Date", value=date.today())
 
-with st.expander("➕ Add New Handover", expanded=False):
+with st.expander("Add New Handover", expanded=False):
     with st.form("add_handover_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         title = col1.text_input("Task / Title*", placeholder="e.g. Broken AC in Room 102")
@@ -224,10 +224,10 @@ with st.expander("➕ Add New Handover", expanded=False):
         if submitted:
             if title:
                 add_handover(d, title, created_by, assigned_to, comment, department, status)
-                st.success("✅ Handover added successfully.")
+                st.success("Handover added successfully.")
                 st.rerun()
             else:
-                st.error("❌ Title is required.")
+                st.error("Title is required.")
 
 # Fetch Handovers
 rows = get_handovers(d)

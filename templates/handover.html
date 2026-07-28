@@ -1044,7 +1044,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
-                <input type="text" id="searchInput" placeholder="Search tasks..." onkeyup="renderTasks()">
+                <input type="text" id="searchInput" placeholder="Search tasks..." onkeyup="renderTasks()" autocomplete="off" value="">
             </div>
         </div>
 
@@ -1116,7 +1116,7 @@
                     <div class="form-group full">
                         <label>Assign To</label>
                         <select id="taskAssignedTo">
-                            <option value="">— Unassigned —</option>
+                            <option value="">Unassigned</option>
                         </select>
                     </div>
                     <div class="form-group full">
@@ -1190,7 +1190,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
-                <input type="text" id="activitySearch" placeholder="Filter by person, action, or task…" onkeyup="renderActivity()">
+                <input type="text" id="activitySearch" placeholder="Filter by person, action, or task…" onkeyup="renderActivity()" autocomplete="off" value="">
             </div>
             <div id="activityList" style="display:flex; flex-direction:column; gap:2px; max-height:52vh; overflow-y:auto;"></div>
             <div class="modal-actions" style="margin-top:20px;">
@@ -1222,11 +1222,10 @@
                     </div>
                     <div class="form-group">
                         <label>Role</label>
-                        <select id="userRole">
-                            <option value="normal">Normal — create, comment, update status</option>
-                            <option value="supervisor">Supervisor — + edit/reassign any task</option>
-                            <option value="manager">Manager — + edit across all departments</option>
-                            <option value="admin">Admin — + user management &amp; delete</option>
+                            <option value="normal">Normal staff</option>
+                            <option value="supervisor">Supervisor</option>
+                            <option value="manager">Manager</option>
+                            <option value="admin">Admin (me)</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -1237,7 +1236,7 @@
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
                             <button type="button" class="btn" style="padding:4px 12px; font-size:0.78rem;" onclick="generatePassword()">Generate strong password</button>
-                            <span style="font-size:0.72rem; color:var(--text-muted);">Shown once — share it with the staff member. They'll set their own on first login.</span>
+                            <span style="font-size:0.72rem; color:var(--text-muted);">Shown once - share it with the staff member. They'll set their own on first login.</span>
                         </div>
                     </div>
                     <div class="form-group full">
@@ -1296,7 +1295,7 @@
             ));
         }
 
-        // Any 401 means the session expired (or the server restarted) — send the
+        // Any 401 means the session expired (or the server restarted) - send the
         // user to the login page instead of surfacing confusing failure toasts.
         async function authFetch(url, opts) {
             const res = await fetch(url, opts);
@@ -1401,7 +1400,7 @@
         }
 
         // Generate a strong password for a new/reset staff account and reveal it so the
-        // manager can hand it over. Nothing is stored plaintext — it's hashed on save.
+        // manager can hand it over. Nothing is stored plaintext - it's hashed on save.
         function generatePassword() {
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
             const specials = '!@#$%&*';
@@ -1466,16 +1465,7 @@
         });
 
         function showToast(message) {
-            const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
-            toast.className = 'toast';
-            toast.innerText = message;
-            container.appendChild(toast);
-            setTimeout(() => toast.classList.add('show'), 10);
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
+            // Notifications disabled by request
         }
 
         async function fetchHandovers(dateOverride = null, silent = false) {
@@ -1695,11 +1685,11 @@
 
                     ${task.delete_requested ? `<div style="margin-top: 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
                         <div style="font-size:0.9rem; color:#991b1b; font-weight:600;">
-                            🗑️ Deletion requested by ${esc(task.delete_requested_by || 'someone')}${task.delete_requested_reason ? ` — <span style="font-weight:400;">${esc(task.delete_requested_reason)}</span>` : ''}
+                            Deletion requested by ${esc(task.delete_requested_by || 'someone')}${task.delete_requested_reason ? ` - <span style="font-weight:400;">${esc(task.delete_requested_reason)}</span>` : ''}
                         </div>
                         <div style="display:flex; gap:8px;">
-                            ${isAdmin() ? `<button class="btn btn-danger" style="padding:6px 12px; font-size:0.82rem;" onclick="approveDelete('${task.id}')">Delete now</button>` : ''}
-                            ${(isAdmin() || (currentUser && task.delete_requested_by === currentUser.name)) ? `<button class="btn" style="padding:6px 12px; font-size:0.82rem;" onclick="cancelDelete('${task.id}')">Dismiss</button>` : ''}
+                            ${(ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) ? `<button class="btn btn-danger" style="padding:6px 12px; font-size:0.82rem;" onclick="approveDelete('${task.id}')">Delete now</button>` : ''}
+                            ${((ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) || (currentUser && task.delete_requested_by === currentUser.name)) ? `<button class="btn" style="padding:6px 12px; font-size:0.82rem;" onclick="cancelDelete('${task.id}')">Dismiss</button>` : ''}
                         </div>
                     </div>` : ''}
 
@@ -1822,7 +1812,7 @@
 
         function populateAssignees(selected = '') {
             const sel = document.getElementById('taskAssignedTo');
-            sel.innerHTML = '<option value="">— Unassigned —</option>';
+            sel.innerHTML = '<option value="">Unassigned</option>';
             const names = userList.map(u => u.name);
             // Keep any legacy free-text assignee that no longer maps to a user.
             if (selected && !names.includes(selected)) names.push(selected);
@@ -1839,7 +1829,7 @@
             const btn = document.getElementById('deleteBtn');
             if (!task) { btn.style.display = 'none'; return; }
             btn.style.display = 'block';
-            if (isAdmin()) {
+            if (ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) {
                 btn.innerText = 'Delete Task';
                 btn.onclick = deleteTask;
             } else if (task.delete_requested) {
@@ -2110,7 +2100,7 @@
                             <strong>${esc(e.user_name || 'Unknown')}</strong>
                             <span style="font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">${esc(e.user_role || '')}</span>
                             <span style="color:var(--text-main);"> ${esc(e.detail || m.label)}</span>
-                            ${e.target_title ? `<span style="color:var(--text-muted);"> — ${esc(e.target_title)}</span>` : ''}
+                            ${e.target_title ? `<span style="color:var(--text-muted);"> - ${esc(e.target_title)}</span>` : ''}
                         </div>
                         <div style="font-size:0.75rem; color:var(--text-muted); margin-top:3px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                             <span>${e.ts ? new Date(e.ts).toLocaleString() : ''}</span>
