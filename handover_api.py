@@ -21,6 +21,11 @@ try:
     mongo_tasks = mongo_db["tasks"]
     mongo_users = mongo_db["users"]
     mongo_activity = mongo_db["activity"]
+    try:
+        mongo_tasks.create_index([("is_deleted", 1), ("task_date", 1)])
+        mongo_tasks.create_index([("created_at", -1)])
+    except Exception as idx_err:
+        logger.warning(f"Task index creation notice: {idx_err}")
 except Exception as e:
     logger.error(f"Failed to connect to MongoDB: {e}")
     mongo_tasks = None

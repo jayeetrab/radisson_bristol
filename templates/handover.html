@@ -1042,7 +1042,7 @@
                 <button class="btn-secondary" id="overdueBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('overdue', 'Overdue')">Overdue <span id="overdueCount"></span></button>
                 <button class="btn-secondary" id="highBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('high', 'High priority')">High priority <span id="highCount"></span></button>
                 <button class="btn-secondary" id="myDeptBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem;" onclick="filterMyDept()">My Department</button>
-                <button class="btn-danger-outline" id="deletedTasksBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color: #9ca3af; border-color: #e5e7eb; display: none;" onclick="setFilter('deleted', true, 'Deleted Tasks')">Deleted Tasks</button>
+                <button class="btn-secondary" id="deletedTasksBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('deleted', 'Deleted Tasks')">Deleted Tasks</button>
                 <div class="clear-filter" id="clearFilterBtn" onclick="clearFilters()">Clear Filters ✕</div>
             </div>
             <div class="search-wrapper">
@@ -1506,11 +1506,12 @@
                 document.getElementById('emptyState').style.display = 'none';
             }
 
-            const isDeletedView = currentFilterType === 'deleted';
-            const date = dateOverride || datePickerInput.value || new Date().toISOString().split('T')[0];
+            const isDeletedView = activeFilter && activeFilter.type === 'deleted';
+            const date = dateOverride || (datePickerInput ? datePickerInput.value : '') || new Date().toISOString().split('T')[0];
             try {
                 const res = await authFetch(`/api/handovers?date=${date}&include_overdue=true${isDeletedView ? '&view_deleted=true' : ''}`);
-                tasks = await res.json();
+                const data = await res.json();
+                tasks = Array.isArray(data) ? data : [];
                 
                 // Sort tasks: Pending/In Progress first, Completed last, then by created_at descending
                 tasks.sort((a, b) => {
@@ -1524,6 +1525,7 @@
                 updateDashboard();
                 renderTasks();
             } catch (err) {
+                tasks = [];
                 if (!silent) showToast('Failed to fetch tasks.');
             } finally {
                 document.getElementById('loading').style.display = 'none';
@@ -1588,22 +1590,33 @@
         });
 
         function setFilter(type, value) {
+            const prevType = activeFilter ? activeFilter.type : null;
             activeFilter = { type, value };
             let title;
             if (type === 'assigned_to') title = `Assigned to: ${value}`;
             else if (type === 'department') title = `Department: ${value}`;
-            else title = value; // already a friendly label (Pending, Overdue, High priority…)
+            else title = value;
             document.getElementById('gridTitle').innerText = title;
             document.getElementById('clearFilterBtn').style.display = 'block';
-            renderTasks();
+
+            if (type === 'deleted' || prevType === 'deleted') {
+                fetchHandovers();
+            } else {
+                renderTasks();
+            }
         }
 
         function clearFilters() {
+            const prevType = activeFilter ? activeFilter.type : null;
             activeFilter = { type: null, value: null };
             document.getElementById('gridTitle').innerText = 'All Tasks';
             document.getElementById('clearFilterBtn').style.display = 'none';
             document.getElementById('searchInput').value = '';
-            renderTasks();
+            if (prevType === 'deleted') {
+                fetchHandovers();
+            } else {
+                renderTasks();
+            }
         }
 
         function renderTasks() {
