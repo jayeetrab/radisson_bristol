@@ -277,8 +277,8 @@ def api_users_list():
     """Lightweight list for assignee dropdowns."""
     if mongo_users is None:
         return jsonify([])
-    users = mongo_users.find({"active": True}, {"name": 1, "departments": 1})
-    return jsonify([{"name": u["name"], "departments": u.get("departments", [])} for u in users])
+    users = mongo_users.find({"active": True}, {"name": 1, "role": 1, "departments": 1})
+    return jsonify([{"name": u["name"], "role": u.get("role", "normal"), "departments": u.get("departments", [])} for u in users])
 
 
 @app.route('/api/me/password', methods=['POST'])

@@ -1859,13 +1859,16 @@
             let eligibleUsers = userList;
             if (selectedDepts.length > 0) {
                 eligibleUsers = userList.filter(u => {
+                    const uRole = (u.role || 'normal').toLowerCase();
+                    const isManagerOrSup = uRole === 'supervisor' || uRole === 'manager' || uRole === 'admin';
                     const hasDept = u.departments && u.departments.some(d => selectedDepts.includes(d));
-                    const isManagerOrSup = u.role === 'supervisor' || u.role === 'manager' || u.role === 'admin';
-                    return hasDept && isManagerOrSup;
+                    return isManagerOrSup && (hasDept || uRole === 'admin');
                 });
             } else {
-                // If no department is selected, just show all supervisors/managers to be safe
-                eligibleUsers = userList.filter(u => u.role === 'supervisor' || u.role === 'manager' || u.role === 'admin');
+                eligibleUsers = userList.filter(u => {
+                    const uRole = (u.role || 'normal').toLowerCase();
+                    return uRole === 'supervisor' || uRole === 'manager' || uRole === 'admin';
+                });
             }
 
             const names = eligibleUsers.map(u => u.name);
