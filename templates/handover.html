@@ -1050,7 +1050,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
-                <input type="text" id="searchInput" placeholder="Search tasks..." onkeyup="renderTasks()" autocomplete="off" value="">
+                <input type="text" id="searchInput" placeholder="Search tasks..." onkeyup="renderTasks()" autocomplete="off" value="" readonly onfocus="this.removeAttribute('readonly');">
             </div>
         </div>
 
@@ -1200,7 +1200,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
-                <input type="text" id="activitySearch" placeholder="Filter by person, action, or task…" onkeyup="renderActivity()" autocomplete="off" value="">
+                <input type="text" id="activitySearch" placeholder="Filter by person, action, or task…" onkeyup="renderActivity()" autocomplete="off" value="" readonly onfocus="this.removeAttribute('readonly');">
             </div>
             <div id="activityList" style="display:flex; flex-direction:column; gap:2px; max-height:52vh; overflow-y:auto;"></div>
             <div class="modal-actions" style="margin-top:20px;">
