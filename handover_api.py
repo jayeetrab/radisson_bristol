@@ -711,6 +711,27 @@ def acknowledge_handover(task_id):
     return jsonify({"success": True, "acknowledged_by": acknowledged_by})
 
 
+@app.route('/api/handovers/<task_id>/acknowledge', methods=['DELETE'])
+@login_required
+def unacknowledge_handover(task_id):
+    """Undo the current user's acknowledgement of a handover."""
+    if mongo_tasks is None:
+        return jsonify({"error": "Database connection failed"}), 500
+
+    user = current_user()
+    query_id = resolve_task_id(task_id)
+    task = mongo_tasks.find_one({"_id": query_id}) or (mongo_tasks.find_one({"id": query_id}) if isinstance(query_id, int) else None)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    acknowledged_by = [a for a in (task.get("acknowledged_by", []) or []) if a.get("name") != user["name"]]
+    mongo_tasks.update_one({"_id": task["_id"]}, {"$set": {"acknowledged_by": acknowledged_by}})
+    log_activity("unacknowledge_task", target_type="task", target_id=task["_id"],
+                 target_title=task.get("title", ""), task_departments=task.get("department"),
+                 detail="Removed acknowledgement")
+    return jsonify({"success": True, "acknowledged_by": acknowledged_by})
+
+
 @app.route('/api/handovers/<task_id>', methods=['DELETE'])
 @login_required
 def delete_handover(task_id):

@@ -564,25 +564,78 @@
         }
 
         .task-meta {
-            font-size: 0.95rem;
+            font-size: 0.875rem;
             color: var(--text-muted);
             display: flex;
-            gap: 12px;
+            flex-wrap: wrap;
+            gap: 8px 14px;
             align-items: center;
+            font-weight: 500;
+        }
+
+        .task-meta .meta-item {
+            display: inline-flex;
+            align-items: center;
+            white-space: nowrap;
+        }
+
+        .task-meta .meta-arrow {
+            color: #9ca3af;
+            margin: 0 4px;
             font-weight: 500;
         }
 
         .badge {
             display: inline-flex;
             align-items: center;
-            padding: 4px 12px;
+            height: 22px;
+            padding: 0 10px;
             border-radius: 6px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             font-weight: 600;
+            line-height: 1;
             border: 1px solid transparent;
-            letter-spacing: 0.02em;
+            letter-spacing: 0.01em;
             font-family: var(--font-body);
+            white-space: nowrap;
         }
+
+        .badge-neutral { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
+        .badge-info { background: #eff6ff; color: #1e40af; border-color: #dbeafe; }
+        .badge-danger { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+        .badge-success { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+
+        .ack-line {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: #15803d;
+            margin-top: 8px;
+            font-weight: 600;
+        }
+
+        .btn-ack {
+            background: #ffffff;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+            font-weight: 600;
+            padding: 6px 14px;
+            font-size: 0.82rem;
+        }
+
+        .btn-ack:hover { background: #f0fdf4; }
+
+        .btn-quiet {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            font-weight: 500;
+            padding: 6px 14px;
+            font-size: 0.82rem;
+        }
+
+        .btn-quiet:hover { background: var(--surface); color: var(--text-main); }
 
         .dept-Maintenance {
             background: #fef2f2;
@@ -969,12 +1022,9 @@
             <a href="https://www.majestichotels.co.uk" target="_blank" style="text-decoration: none; display: flex; align-items: center; cursor: pointer;">
                 <img src="/assets/majestic-logo.png" alt="Majestic Logo" style="height: 44px; width: auto; object-fit: contain;">
             </a>
-            <div style="width: 2px; height: 36px; background: var(--border); margin: 0 12px; border-radius: 1px;"></div>
-            <h1
-                style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); font-family: var(--font-display); display: flex; align-items: baseline; gap: 10px;">
-                <span
-                    style="font-family: 'Above the Beyond Script', 'Great Vibes', cursive; font-size: 1.8rem; font-weight: 400; background: linear-gradient(90deg, #5de0e6, #004aad); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Handover</span>
-                Dashboard
+            <div style="width: 1px; height: 30px; background: var(--border); margin: 0 16px;"></div>
+            <h1 style="font-size: 1.15rem; font-weight: 600; color: var(--text-main); font-family: var(--font-body); letter-spacing: -0.01em; margin: 0;">
+                Handover Dashboard
             </h1>
         </div>
         <div class="header-controls">
@@ -1091,19 +1141,19 @@
                 <div class="filter-title" id="gridTitle">All Tasks</div>
                 <button class="btn-secondary" id="assignedMeBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('assigned_to_me', 'Assigned to me')">Assigned to me</button>
                 <button class="btn-secondary" id="overdueBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('overdue', 'Overdue')">Overdue <span id="overdueCount"></span></button>
-                <button class="btn-secondary" id="slaEscalatedBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#dc2626; border-color:#fca5a5;" onclick="setFilter('sla_escalated', 'SLA Escalated')">🚨 SLA Alerts <span id="slaCount"></span></button>
+                <button class="btn-secondary" id="slaEscalatedBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#dc2626; border-color:#fca5a5;" onclick="setFilter('sla_escalated', 'SLA Alerts')">SLA Alerts <span id="slaCount"></span></button>
                 <button class="btn-secondary" id="highBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('high', 'High priority')">High priority <span id="highCount"></span></button>
                 <button class="btn-secondary" id="myDeptBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem;" onclick="filterMyDept()">My Department</button>
                 <button class="btn-secondary" id="deletedTasksBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('deleted', 'Deleted Tasks')">Deleted Tasks</button>
-                <div class="clear-filter" id="clearFilterBtn" onclick="clearFilters()">Clear Filters ✕</div>
+                <div class="clear-filter" id="clearFilterBtn" onclick="clearFilters()">Clear filters</div>
             </div>
-            
+
             <div style="display:flex; gap:6px; margin-top:8px;" id="shiftFilterPills">
-                <button class="btn-secondary shift-pill active" onclick="setShiftFilter('')">All Shifts</button>
-                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Morning')">🌅 Morning</button>
-                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Afternoon')">🌤️ Afternoon</button>
-                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Night')">🌙 Night</button>
-                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Full Day')">📅 Full Day</button>
+                <button class="btn-secondary shift-pill active" onclick="setShiftFilter('')">All shifts</button>
+                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Morning')">Morning</button>
+                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Afternoon')">Afternoon</button>
+                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Night')">Night</button>
+                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Full Day')">Full day</button>
             </div>
 
             <div class="search-wrapper">
@@ -1155,10 +1205,10 @@
                     <div class="form-group full">
                         <label>Shift</label>
                         <div class="dept-tiles" id="taskShiftTiles">
-                            <div class="dept-tile selected" data-value="Morning">🌅 Morning</div>
-                            <div class="dept-tile" data-value="Afternoon">🌤️ Afternoon</div>
-                            <div class="dept-tile" data-value="Night">🌙 Night</div>
-                            <div class="dept-tile" data-value="Full Day">📅 Full Day</div>
+                            <div class="dept-tile selected" data-value="Morning">Morning</div>
+                            <div class="dept-tile" data-value="Afternoon">Afternoon</div>
+                            <div class="dept-tile" data-value="Night">Night</div>
+                            <div class="dept-tile" data-value="Full Day">Full Day</div>
                         </div>
                     </div>
                     <div class="form-group">
@@ -1857,22 +1907,22 @@
                     return `<span class="badge dept-${deptClass}">${esc(d)}</span>`;
                 }).join(' ');
 
-                const shiftIconMap = { Morning: '🌅', Afternoon: '🌤️', Night: '🌙', 'Full Day': '📅' };
-                const shiftBadge = `<span class="badge" style="background:#f3f4f6; color:#374151; border-color:#d1d5db;">${shiftIconMap[task.shift || 'Morning'] || ''} ${esc(task.shift || 'Morning')}</span>`;
-                const roomBadge = task.room_location ? `<span class="badge" style="background:#eff6ff; color:#1e40af; border-color:#bfdbfe; font-weight:600;">📍 ${esc(task.room_location)}</span>` : '';
+                const shiftBadge = `<span class="badge badge-neutral">${esc(task.shift || 'Morning')} shift</span>`;
+                const roomBadge = task.room_location ? `<span class="badge badge-info">${esc(task.room_location)}</span>` : '';
 
                 const isPendingOrProgress = task.status === 'Pending' || task.status === 'In Progress';
                 const createdTime = new Date(task.created_at || task.ts || Date.now()).getTime();
                 const hoursElapsed = (Date.now() - createdTime) / (1000 * 60 * 60);
                 const isSlaEscalated = isPendingOrProgress && task.priority === 'High' && (hoursElapsed >= 2 || task.is_overdue);
-                const slaBadge = isSlaEscalated ? `<span class="badge" style="background:#fef2f2; color:#dc2626; border-color:#fca5a5; font-weight:700;">🚨 SLA Escalated (>2h)</span>` : '';
+                const slaBadge = isSlaEscalated ? `<span class="badge badge-danger">SLA breached</span>` : '';
 
+                const CHK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="width:13px;height:13px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>';
                 const acks = task.acknowledged_by || [];
                 const isAckedByMe = currentUser && acks.some(a => a.name === currentUser.name);
-                const ackBadge = acks.length ? `<div style="font-size:0.78rem; color:#15803d; margin-top:6px; font-weight:600;">✓ Acknowledged by ${esc(acks.map(a => a.name).join(', '))}</div>` : '';
-                const ackButton = (isPendingOrProgress && !isAckedByMe) 
-                    ? `<button class="btn" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:600; padding:4px 10px; font-size:0.8rem;" onclick="acknowledgeTask('${task.id}')">✓ Acknowledge</button>` 
-                    : '';
+                const ackBadge = acks.length ? `<div class="ack-line">${CHK} Acknowledged by ${esc(acks.map(a => a.name).join(', '))}</div>` : '';
+                const ackButton = !isPendingOrProgress ? '' : (isAckedByMe
+                    ? `<button class="btn btn-quiet" onclick="unacknowledgeTask('${task.id}')">Undo acknowledgement</button>`
+                    : `<button class="btn btn-ack" onclick="acknowledgeTask('${task.id}')">Acknowledge</button>`);
 
                 const card = document.createElement('div');
                 card.id = `card-${task.id}`;
@@ -1907,9 +1957,9 @@
                                 ${shiftBadge}
                                 ${roomBadge}
                                 ${deptBadges}
-                                <span>${(task.task_date || '').includes(' to ') ? 'From ' + esc(task.task_date) : 'For: ' + esc(task.task_date)}</span>
-                                <span>${esc(task.created_by || 'Unknown')} ➔ ${esc(task.assigned_to || 'Unassigned')}</span>
-                                <span>Created: ${task.created_at ? new Date(task.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown'}</span>
+                                <span class="meta-item">${(task.task_date || '').includes(' to ') ? 'From ' + esc(task.task_date) : 'For ' + esc(task.task_date)}</span>
+                                <span class="meta-item">${esc(task.created_by || 'Unknown')} <span class="meta-arrow">to</span> ${esc(task.assigned_to || 'Unassigned')}</span>
+                                <span class="meta-item">Created ${task.created_at ? new Date(task.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown'}</span>
                             </div>
                             ${ackBadge}
                         </div>
@@ -2357,32 +2407,48 @@
 
         // ---- Activity log (admin: all; manager: their department + own) ----
         const ACTION_META = {
-            login:          { icon: '→', color: '#64748b', label: 'signed in' },
-            logout:         { icon: '←', color: '#94a3b8', label: 'signed out' },
-            create_task:    { icon: '＋', color: '#059669', label: 'created' },
-            edit_task:      { icon: '✎', color: '#2563eb', label: 'edited' },
-            status_change:  { icon: '◐', color: '#7c3aed', label: 'status' },
-            comment:        { icon: '💬', color: '#0ea5e9', label: 'commented' },
-            request_delete: { icon: '🗑️', color: '#dc2626', label: 'requested delete' },
-            cancel_delete:  { icon: '↩', color: '#64748b', label: 'dismissed delete' },
-            delete_task:    { icon: '✕', color: '#b91c1c', label: 'deleted' },
-            acknowledge_task:{ icon: '✓', color: '#16a34a', label: 'acknowledged' },
-            create_user:    { icon: '👤', color: '#059669', label: 'created user' },
-            edit_user:      { icon: '👤', color: '#2563eb', label: 'updated user' },
-            delete_user:    { icon: '👤', color: '#b91c1c', label: 'deleted user' },
+            login:          { icon: '●', color: '#64748b', label: 'signed in' },
+            logout:         { icon: '●', color: '#94a3b8', label: 'signed out' },
+            create_task:    { icon: '●', color: '#059669', label: 'created' },
+            edit_task:      { icon: '●', color: '#2563eb', label: 'edited' },
+            status_change:  { icon: '●', color: '#7c3aed', label: 'status' },
+            comment:        { icon: '●', color: '#0ea5e9', label: 'commented' },
+            request_delete: { icon: '●', color: '#dc2626', label: 'requested delete' },
+            cancel_delete:  { icon: '●', color: '#64748b', label: 'dismissed delete' },
+            delete_task:    { icon: '●', color: '#b91c1c', label: 'deleted' },
+            undo_delete_task:{ icon: '●', color: '#059669', label: 'restored' },
+            acknowledge_task:{ icon: '●', color: '#16a34a', label: 'acknowledged' },
+            create_user:    { icon: '●', color: '#059669', label: 'created user' },
+            edit_user:      { icon: '●', color: '#2563eb', label: 'updated user' },
+            delete_user:    { icon: '●', color: '#b91c1c', label: 'deleted user' },
+            change_password:{ icon: '●', color: '#64748b', label: 'changed password' },
         };
 
         async function acknowledgeTask(taskId) {
             try {
                 const res = await authFetch(`/api/handovers/${taskId}/acknowledge`, { method: 'POST' });
                 if (res.ok) {
-                    showToast('Acknowledged handover!');
+                    showToast('Handover acknowledged');
                     await fetchHandovers(null, true);
                 } else {
                     showToast('Failed to acknowledge task');
                 }
             } catch (err) {
                 showToast('Failed to acknowledge task');
+            }
+        }
+
+        async function unacknowledgeTask(taskId) {
+            try {
+                const res = await authFetch(`/api/handovers/${taskId}/acknowledge`, { method: 'DELETE' });
+                if (res.ok) {
+                    showToast('Acknowledgement removed');
+                    await fetchHandovers(null, true);
+                } else {
+                    showToast('Failed to remove acknowledgement');
+                }
+            } catch (err) {
+                showToast('Failed to remove acknowledgement');
             }
         }
 
@@ -2457,7 +2523,7 @@
                                     <td style="padding:10px;">${esc(t.shift || 'Morning')}<br><small style="color:#6b7280;">${esc((t.department || []).join(', '))}</small></td>
                                     <td style="padding:10px;">
                                         <strong>${esc(t.title)}</strong>
-                                        ${t.room_location ? `<br><small style="color:#2563eb;">📍 ${esc(t.room_location)}</small>` : ''}
+                                        ${t.room_location ? `<br><small style="color:#2563eb;">${esc(t.room_location)}</small>` : ''}
                                     </td>
                                     <td style="padding:10px;">${esc(t.assigned_to || 'Unassigned')}</td>
                                     <td style="padding:10px; font-size:0.82rem; color:#374151;">${esc(t.comment || '-')}</td>
@@ -2639,7 +2705,7 @@
                             ${esc(u.name)}
                             <span style="font-weight:500; color:var(--text-muted); font-size:0.85rem;">@${esc(u.username)}</span>
                             ${u.is_online 
-                                ? '<span class="badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0; font-size:0.75rem; padding:2px 8px;">🟢 Online</span>' 
+                                ? '<span class="badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0; font-size:0.75rem; padding:2px 8px;">Online</span>'
                                 : '<span class="badge" style="background:#f3f4f6; color:#9ca3af; border-color:#e5e7eb; font-size:0.75rem; padding:2px 8px;">Offline</span>'}
                             ${u.actual_role ? `<span style="font-size:0.75rem; color:var(--text-muted);">| ${esc(u.actual_role)}</span>` : ''}
                             ${u.id === currentUser.id ? '<span style="font-size:0.7rem; color:var(--primary); font-weight:600;">(you)</span>' : ''}
