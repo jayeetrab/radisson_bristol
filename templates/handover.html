@@ -1119,10 +1119,13 @@
 </head>
 
 <body>
-    <!-- Hidden dummy form to catch aggressive browser autofill -->
-    <form style="display: none;" aria-hidden="true">
-        <input type="text" autocomplete="username">
-        <input type="password" autocomplete="current-password">
+    <!-- Decoy login form to absorb aggressive browser/password-manager autofill.
+         Must be rendered off-screen (NOT display:none, which Chrome skips) so the
+         saved username/password fill here instead of the search box. -->
+    <form aria-hidden="true" tabindex="-1"
+        style="position:absolute; top:-9999px; left:-9999px; width:1px; height:1px; overflow:hidden; opacity:0;">
+        <input type="text" name="username" autocomplete="username" tabindex="-1">
+        <input type="password" name="password" autocomplete="current-password" tabindex="-1">
     </form>
 
     <div class="header">
