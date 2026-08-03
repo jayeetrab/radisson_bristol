@@ -85,11 +85,21 @@ def current_user():
     }
 
 
+def touch_user_active():
+    uid = session.get("uid")
+    if uid and mongo_users is not None:
+        try:
+            mongo_users.update_one({"_id": ObjectId(uid)}, {"$set": {"last_active": datetime.utcnow()}})
+        except Exception:
+            pass
+
+
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get("uid"):
             return jsonify({"error": "Authentication required"}), 401
+        touch_user_active()
         return f(*args, **kwargs)
     return wrapper
 
@@ -243,6 +253,26 @@ def api_activity():
     return jsonify(entries)
 
 
+@app.route('/api/handovers/<task_id>/activity', methods=['GET'])
+@login_required
+def api_task_activity(task_id):
+    """Fetch activity history for a specific task."""
+    if mongo_activity is None:
+        return jsonify([])
+    try:
+        query = {"$or": [{"target_id": str(task_id)}, {"target_id": task_id}]}
+        entries = []
+        for e in mongo_activity.find(query).sort("ts", -1).limit(100):
+            e.pop("_id", None)
+            ts = e.get("ts")
+            e["ts"] = ts.isoformat() if hasattr(ts, "isoformat") else ts
+            entries.append(e)
+        return jsonify(entries)
+    except Exception as e:
+        logger.error(f"Error fetching task activity: {e}")
+        return jsonify([])
+
+
 # ---------------------------------------------------------------------------
 # User management
 #   Super admin: full control over every account.
@@ -275,14 +305,36 @@ def manager_can_manage(actor, target_role, target_departments):
     return bool(tgt_depts) and tgt_depts.issubset(actor_depts)
 
 
+@app.route('/api/ping', methods=['GET', 'POST'])
+@login_required
+def api_ping():
+    touch_user_active()
+    return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()})
+
+
 @app.route('/api/users/list', methods=['GET'])
 @login_required
 def api_users_list():
-    """Lightweight list for assignee dropdowns."""
+    """Lightweight list for assignee dropdowns and online status."""
     if mongo_users is None:
         return jsonify([])
-    users = mongo_users.find({"active": True}, {"name": 1, "role": 1, "departments": 1})
-    return jsonify([{"name": u["name"], "role": u.get("role", "normal"), "departments": u.get("departments", [])} for u in users])
+    touch_user_active()
+    users = mongo_users.find({"active": True}, {"name": 1, "role": 1, "departments": 1, "last_active": 1})
+    now = datetime.utcnow()
+    out = []
+    for u in users:
+        la = u.get("last_active")
+        is_online = False
+        if la and isinstance(la, datetime):
+            is_online = (now - la).total_seconds() <= 120
+        out.append({
+            "name": u["name"],
+            "role": u.get("role", "normal"),
+            "departments": u.get("departments", []),
+            "is_online": is_online,
+            "last_active": la.isoformat() if hasattr(la, "isoformat") else la
+        })
+    return jsonify(out)
 
 
 @app.route('/api/me/password', methods=['POST'])
@@ -315,7 +367,12 @@ def api_users():
         depts = actor.get("departments", []) or []
         cursor = mongo_users.find({"departments": {"$in": depts}, "role": {"$ne": "admin"}}).sort("name", 1)
     users = []
+    now = datetime.utcnow()
     for u in cursor:
+        la = u.get("last_active")
+        is_online = False
+        if la and isinstance(la, datetime):
+            is_online = (now - la).total_seconds() <= 120
         users.append({
             "id": str(u["_id"]),
             "username": u.get("username"),
@@ -324,6 +381,8 @@ def api_users():
             "actual_role": u.get("actual_role", ""),
             "departments": u.get("departments", []),
             "active": u.get("active", True),
+            "is_online": is_online,
+            "last_active": la.isoformat() if hasattr(la, "isoformat") else la
         })
     return jsonify(users)
 

@@ -913,6 +913,26 @@
 
             .status-select { width: 100%; }
         }
+
+        .highlight-card {
+            box-shadow: 0 0 0 3px var(--primary), 0 10px 25px -5px rgba(0,0,0,0.15) !important;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .online-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .online-dot.active {
+            background-color: #22c55e;
+            box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+        }
+        .online-dot.offline {
+            background-color: #cbd5e1;
+        }
     </style>
 </head>
 
@@ -1350,7 +1370,7 @@
                 return;
             }
 
-            document.getElementById('meName').innerText = currentUser.name;
+            document.getElementById('meName').innerHTML = `${esc(currentUser.name)} <span class="online-dot active" title="Online now"></span>`;
             document.getElementById('meRole').innerText = currentUser.role;
             if ((currentUser.departments || []).length) {
                 document.getElementById('myDeptBtn').style.display = 'inline-flex';
@@ -1375,6 +1395,16 @@
             await loadUserList();
             await fetchHandovers();
             pollNotifications();
+            setInterval(pollNotifications, 10000);
+
+            // Periodic presence heartbeat and online status sync
+            setInterval(async () => {
+                try {
+                    await authFetch('/api/ping', { method: 'POST' });
+                    await loadUserList();
+                    updateDashboard();
+                } catch (_) {}
+            }, 30000);
         }
 
         async function loadUserList() {
@@ -1593,9 +1623,14 @@
             const personContainer = document.getElementById('personStats');
             personContainer.innerHTML = '';
             Object.entries(people).sort((a, b) => b[1] - a[1]).forEach(([person, count]) => {
+                const uObj = userList.find(u => u.name === person);
+                const isOnline = uObj ? uObj.is_online : false;
+                const dotHtml = isOnline 
+                    ? `<span class="online-dot active" title="Online now"></span>` 
+                    : `<span class="online-dot offline" title="Offline"></span>`;
                 personContainer.innerHTML += `
                     <div class="stat-row" data-ftype="assigned_to" data-fvalue="${esc(person)}">
-                        <span class="stat-label">${esc(person)}</span>
+                        <span class="stat-label" style="display:flex; align-items:center; gap:6px;">${dotHtml}${esc(person)}</span>
                         <span class="stat-value">${count}</span>
                     </div>
                 `;
@@ -1705,6 +1740,7 @@
                 }).join(' ');
 
                 const card = document.createElement('div');
+                card.id = `card-${task.id}`;
                 card.className = 'task-card' + (task.status === 'Completed' ? ' task-completed' : '');
                 const commentsCount = (task.comments || []).length;
                 const hasDescription = task.comment && task.comment.trim() !== '';
@@ -1775,6 +1811,16 @@
                                 <button class="btn-primary" onclick="addComment('${task.id}')" style="padding: 0 16px; height: 38px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer;">Reply</button>
                             </div>
                         </div>
+
+                        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
+                            <strong style="display: block; margin-bottom: 10px; font-size: 0.9rem; color: var(--text-main); display: flex; align-items: center; gap: 6px;">
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px; color: var(--text-muted);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Handover Activity History
+                            </strong>
+                            <div id="task-activity-${task.id}" style="display: flex; flex-direction: column; gap: 6px;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted);">Loading activity…</div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="task-footer">
@@ -1792,9 +1838,43 @@
             grid.appendChild(fragment);
         }
 
-        function toggleDetails(id) {
+        async function toggleDetails(id, forceOpen = false) {
             const el = document.getElementById(`details-${id}`);
-            el.classList.toggle('open');
+            if (!el) return;
+            if (forceOpen) {
+                el.classList.add('open');
+            } else {
+                el.classList.toggle('open');
+            }
+            if (el.classList.contains('open')) {
+                loadTaskActivity(id);
+            }
+        }
+
+        async function loadTaskActivity(taskId) {
+            const container = document.getElementById(`task-activity-${taskId}`);
+            if (!container) return;
+            try {
+                const res = await authFetch(`/api/handovers/${taskId}/activity`);
+                const history = res.ok ? await res.json() : [];
+                if (!history.length) {
+                    container.innerHTML = '<div style="font-size: 0.8rem; color: var(--text-muted);">No activity entries recorded yet.</div>';
+                    return;
+                }
+                container.innerHTML = history.map(h => {
+                    const m = ACTION_META[h.action] || { icon: '•', color: '#64748b', label: h.action };
+                    return `
+                        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                            <span style="color: ${m.color}; font-weight: 700;">${m.icon}</span>
+                            <span style="font-weight: 600; color: var(--text-main);">${esc(h.user_name || 'System')}</span>
+                            <span style="color: var(--text-muted);">${esc(h.detail || m.label)}</span>
+                            <span style="margin-left: auto; font-size: 0.75rem; color: var(--text-muted); white-space: nowrap;">${h.ts ? new Date(h.ts).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : ''}</span>
+                        </div>
+                    `;
+                }).join('');
+            } catch (_) {
+                container.innerHTML = '<div style="font-size: 0.8rem; color: var(--text-muted);">Failed to load activity.</div>';
+            }
         }
 
         async function quickUpdateStatus(id, newStatus) {
@@ -1915,10 +1995,13 @@
             }
 
             names.forEach(n => {
+                const uObj = userList.find(u => u.name === n);
+                const isOnline = uObj ? uObj.is_online : false;
+                const dotHtml = isOnline ? '<span class="online-dot active" style="margin-right:6px;" title="Online now"></span>' : '<span class="online-dot offline" style="margin-right:6px;" title="Offline"></span>';
                 const tile = document.createElement('div');
                 tile.className = 'dept-tile' + (selectedArr.includes(n) ? ' selected' : '');
                 tile.dataset.value = n;
-                tile.textContent = n;
+                tile.innerHTML = `${dotHtml}${esc(n)}`;
                 container.appendChild(tile);
             });
         }
@@ -2191,19 +2274,22 @@
                 const m = ACTION_META[e.action] || { icon: '•', color: '#64748b', label: e.action };
                 const depts = (e.task_departments && e.task_departments.length ? e.task_departments : e.user_departments) || [];
                 const deptTags = depts.map(d => `<span class="badge" style="font-size:0.68rem; padding:1px 7px; background:var(--surface); border-color:var(--border);">${esc(d)}</span>`).join(' ');
+                const hasTaskTarget = e.target_id && (e.target_type === 'task' || e.target_title);
+                const clickAttr = hasTaskTarget ? `onclick="goToTask('${esc(e.target_id)}', '${esc(e.action)}')" style="display:flex; gap:12px; padding:12px 10px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.2s; border-radius:8px;" onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background='transparent'"` : `style="display:flex; gap:12px; padding:12px 4px; border-bottom:1px solid var(--border);"`;
                 return `
-                <div style="display:flex; gap:12px; padding:12px 4px; border-bottom:1px solid var(--border);">
+                <div ${clickAttr}>
                     <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${m.color}1a; color:${m.color}; display:flex; align-items:center; justify-content:center; font-size:0.8rem;">${m.icon}</div>
                     <div style="flex:1; min-width:0;">
                         <div style="font-size:0.92rem;">
                             <strong>${esc(e.user_name || 'Unknown')}</strong>
                             <span style="font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">${esc(e.user_role || '')}</span>
                             <span style="color:var(--text-main);"> ${esc(e.detail || m.label)}</span>
-                            ${e.target_title ? `<span style="color:var(--text-muted);"> - ${esc(e.target_title)}</span>` : ''}
+                            ${e.target_title ? `<span style="color:var(--primary); font-weight:600;"> - ${esc(e.target_title)}</span>` : ''}
                         </div>
                         <div style="font-size:0.75rem; color:var(--text-muted); margin-top:3px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                             <span>${e.ts ? new Date(e.ts).toLocaleString() : ''}</span>
                             ${deptTags}
+                            ${hasTaskTarget ? `<span style="margin-left:auto; font-size:0.72rem; color:var(--primary); font-weight:600;">View Handover →</span>` : ''}
                         </div>
                     </div>
                 </div>`;
@@ -2212,6 +2298,35 @@
 
         function closeActivity() {
             document.getElementById('activityOverlay').classList.remove('open');
+        }
+
+        async function goToTask(taskId, action = '') {
+            closeActivity();
+            if (!taskId) return;
+
+            const isDeletedAction = action === 'delete_task';
+            const existingInTasks = tasks.find(t => String(t.id) === String(taskId));
+
+            if (isDeletedAction && (!activeFilter || activeFilter.type !== 'deleted')) {
+                setFilter('deleted', 'Deleted Tasks');
+                await fetchHandovers();
+            } else if (!existingInTasks && activeFilter && activeFilter.type === 'deleted' && !isDeletedAction) {
+                clearFilters();
+                await fetchHandovers();
+            }
+
+            setTimeout(() => {
+                const card = document.getElementById(`card-${taskId}`);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.classList.add('highlight-card');
+                    setTimeout(() => card.classList.remove('highlight-card'), 2500);
+
+                    toggleDetails(taskId, true);
+                } else {
+                    showToast('Handover loaded on dashboard');
+                }
+            }, 150);
         }
 
         async function renderUsersList() {
@@ -2226,7 +2341,15 @@
             list.innerHTML = users.map(u => `
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; ${u.active ? '' : 'opacity:0.55;'}">
                     <div>
-                        <div style="font-weight:700;">${esc(u.name)} <span style="font-weight:500; color:var(--text-muted); font-size:0.85rem;">@${esc(u.username)}</span>${u.actual_role ? ` <span style="font-size:0.75rem; color:var(--text-muted);">| ${esc(u.actual_role)}</span>` : ''}${u.id === currentUser.id ? ' <span style="font-size:0.7rem; color:var(--primary); font-weight:600;">(you)</span>' : ''}</div>
+                        <div style="font-weight:700; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                            ${esc(u.name)}
+                            <span style="font-weight:500; color:var(--text-muted); font-size:0.85rem;">@${esc(u.username)}</span>
+                            ${u.is_online 
+                                ? '<span class="badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0; font-size:0.75rem; padding:2px 8px;">🟢 Online</span>' 
+                                : '<span class="badge" style="background:#f3f4f6; color:#9ca3af; border-color:#e5e7eb; font-size:0.75rem; padding:2px 8px;">Offline</span>'}
+                            ${u.actual_role ? `<span style="font-size:0.75rem; color:var(--text-muted);">| ${esc(u.actual_role)}</span>` : ''}
+                            ${u.id === currentUser.id ? '<span style="font-size:0.7rem; color:var(--primary); font-weight:600;">(you)</span>' : ''}
+                        </div>
                         <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
                             <span style="text-transform:uppercase; letter-spacing:0.04em; font-weight:600;">${esc(u.role)}</span>
                             &nbsp;·&nbsp; ${esc((u.departments || []).join(', ')) || 'No department'}
