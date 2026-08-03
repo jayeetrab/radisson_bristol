@@ -612,10 +612,29 @@
             white-space: nowrap;
         }
 
-        .badge-neutral { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
-        .badge-info { background: #eff6ff; color: #1e40af; border-color: #dbeafe; }
-        .badge-danger { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
-        .badge-success { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+        .badge-neutral {
+            background: #f3f4f6;
+            color: #4b5563;
+            border-color: #e5e7eb;
+        }
+
+        .badge-info {
+            background: #eff6ff;
+            color: #1e40af;
+            border-color: #dbeafe;
+        }
+
+        .badge-danger {
+            background: #fef2f2;
+            color: #b91c1c;
+            border-color: #fecaca;
+        }
+
+        .badge-success {
+            background: #f0fdf4;
+            color: #15803d;
+            border-color: #bbf7d0;
+        }
 
         .ack-line {
             display: flex;
@@ -637,7 +656,9 @@
             font-weight: 500;
         }
 
-        .seen-line:empty { display: none; }
+        .seen-line:empty {
+            display: none;
+        }
 
         .btn-ack {
             background: #ffffff;
@@ -648,7 +669,9 @@
             font-size: 0.82rem;
         }
 
-        .btn-ack:hover { background: #f0fdf4; }
+        .btn-ack:hover {
+            background: #f0fdf4;
+        }
 
         .btn-quiet {
             background: transparent;
@@ -659,7 +682,10 @@
             font-size: 0.82rem;
         }
 
-        .btn-quiet:hover { background: var(--surface); color: var(--text-main); }
+        .btn-quiet:hover {
+            background: var(--surface);
+            color: var(--text-main);
+        }
 
         .log-del {
             background: none;
@@ -674,7 +700,10 @@
             transition: color 0.15s, background 0.15s;
         }
 
-        .log-del:hover { color: var(--danger); background: #fef2f2; }
+        .log-del:hover {
+            color: var(--danger);
+            background: #fef2f2;
+        }
 
         .dept-Maintenance {
             background: #fef2f2;
@@ -951,14 +980,18 @@
                 padding: 12px 16px;
             }
 
-            .header-left { justify-content: flex-start; }
+            .header-left {
+                justify-content: flex-start;
+            }
 
             .header-controls {
                 flex-wrap: wrap;
                 gap: 10px;
             }
 
-            .date-wrapper { flex: 1 1 100%; }
+            .date-wrapper {
+                flex: 1 1 100%;
+            }
 
             .date-wrapper input {
                 min-width: 0;
@@ -981,33 +1014,60 @@
                 margin-bottom: 28px;
             }
 
-            .big-number { font-size: 2.75rem; }
+            .big-number {
+                font-size: 2.75rem;
+            }
 
-            .filter-bar { align-items: flex-start; }
+            .filter-bar {
+                align-items: flex-start;
+            }
 
-            .search-wrapper { width: 100%; }
+            .search-wrapper {
+                width: 100%;
+            }
 
-            .form-grid { grid-template-columns: 1fr; }
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
 
-            .form-group.full { grid-column: span 1; }
+            .form-group.full {
+                grid-column: span 1;
+            }
 
-            .modal { padding: 24px; }
+            .modal {
+                padding: 24px;
+            }
 
-            .modal h2 { font-size: 1.6rem; margin-bottom: 20px; }
+            .modal h2 {
+                font-size: 1.6rem;
+                margin-bottom: 20px;
+            }
 
-            .modal-actions { flex-wrap: wrap; }
+            .modal-actions {
+                flex-wrap: wrap;
+            }
 
-            .task-card { padding: 20px; }
+            .task-card {
+                padding: 20px;
+            }
 
-            .task-header { flex-direction: column; gap: 12px; }
+            .task-header {
+                flex-direction: column;
+                gap: 12px;
+            }
 
-            .task-meta { flex-wrap: wrap; gap: 8px; }
+            .task-meta {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
 
-            .status-select { width: 100%; }
+            .status-select {
+                width: 100%;
+            }
         }
 
         .highlight-card {
-            box-shadow: 0 0 0 3px var(--primary), 0 10px 25px -5px rgba(0,0,0,0.15) !important;
+            box-shadow: 0 0 0 3px var(--primary), 0 10px 25px -5px rgba(0, 0, 0, 0.15) !important;
             transition: box-shadow 0.3s ease;
         }
 
@@ -1018,10 +1078,12 @@
             display: inline-block;
             flex-shrink: 0;
         }
+
         .online-dot.active {
             background-color: #22c55e;
             box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
         }
+
         .online-dot.offline {
             background-color: #cbd5e1;
         }
@@ -1033,8 +1095,15 @@
         }
 
         @media print {
-            body * { visibility: hidden; }
-            #printableReportContent, #printableReportContent * { visibility: visible; }
+            body * {
+                visibility: hidden;
+            }
+
+            #printableReportContent,
+            #printableReportContent * {
+                visibility: visible;
+            }
+
             #printableReportContent {
                 position: absolute;
                 left: 0;
@@ -1058,11 +1127,14 @@
 
     <div class="header">
         <div class="header-left">
-            <a href="https://www.majestichotels.co.uk" target="_blank" style="text-decoration: none; display: flex; align-items: center; cursor: pointer;">
-                <img src="/assets/majestic-logo.png" alt="Majestic Logo" style="height: 44px; width: auto; object-fit: contain;">
+            <a href="https://www.majestichotels.co.uk" target="_blank"
+                style="text-decoration: none; display: flex; align-items: center; cursor: pointer;">
+                <img src="/assets/majestic-logo.png" alt="Majestic Logo"
+                    style="height: 44px; width: auto; object-fit: contain;">
             </a>
             <div style="width: 1px; height: 30px; background: var(--border); margin: 0 16px;"></div>
-            <h1 style="font-size: 1.15rem; font-weight: 600; color: var(--text-main); font-family: var(--font-body); letter-spacing: -0.01em; margin: 0;">
+            <h1
+                style="font-size: 1.15rem; font-weight: 600; color: var(--text-main); font-family: var(--font-body); letter-spacing: -0.01em; margin: 0;">
                 Handover Dashboard
             </h1>
         </div>
@@ -1082,23 +1154,27 @@
                 </svg>
                 CSV Export
             </button>
-            <button class="btn-secondary" onclick="openShiftReport()" title="Generate Shift Summary Report">
+            <!-- <button class="btn-secondary" onclick="openShiftReport()" title="Generate Shift Summary Report">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                 </svg>
                 Shift Report
-            </button>
-            <button class="btn-secondary" id="activityBtn" onclick="openActivity()" style="display:none;" title="Activity log">
+            </button> -->
+            <button class="btn-secondary" id="activityBtn" onclick="openActivity()" style="display:none;"
+                title="Activity log">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4">
+                    </path>
                 </svg>
                 Activity
             </button>
-            <button class="btn-secondary" id="usersBtn" onclick="openUsers()" style="display:none;" title="Manage users">
+            <button class="btn-secondary" id="usersBtn" onclick="openUsers()" style="display:none;"
+                title="Manage users">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z"></path>
+                        d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z">
+                    </path>
                 </svg>
                 Users
             </button>
@@ -1108,21 +1184,26 @@
                 </svg>
                 New Handover
             </button>
-            <div id="userChip" style="display:flex; align-items:center; gap:10px; padding-left:14px; margin-left:2px; border-left:1px solid var(--border);">
+            <div id="userChip"
+                style="display:flex; align-items:center; gap:10px; padding-left:14px; margin-left:2px; border-left:1px solid var(--border);">
                 <div style="display:flex; flex-direction:column; line-height:1.15; text-align:right;">
                     <span id="meName" style="font-weight:700; font-size:0.9rem;"></span>
-                    <span id="meRole" style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;"></span>
+                    <span id="meRole"
+                        style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;"></span>
                 </div>
-                <button class="btn-secondary" onclick="openChangePassword()" title="Change password" style="padding:10px;">
+                <button class="btn-secondary" onclick="openChangePassword()" title="Change password"
+                    style="padding:10px;">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:18px; height:18px;">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+                        </path>
                     </svg>
                 </button>
                 <button class="btn-secondary" onclick="logout()" title="Log out" style="padding:10px;">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:18px; height:18px;">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1">
+                        </path>
                     </svg>
                 </button>
             </div>
@@ -1168,12 +1249,22 @@
         <div class="filter-bar">
             <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                 <div class="filter-title" id="gridTitle">All Tasks</div>
-                <button class="btn-secondary" id="assignedMeBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('assigned_to_me', 'Assigned to me')">Assigned to me</button>
-                <button class="btn-secondary" id="overdueBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('overdue', 'Overdue')">Overdue <span id="overdueCount"></span></button>
-                <button class="btn-secondary" id="slaEscalatedBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#dc2626; border-color:#fca5a5;" onclick="setFilter('sla_escalated', 'SLA Alerts')">SLA Alerts <span id="slaCount"></span></button>
-                <button class="btn-secondary" id="highBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('high', 'High priority')">High priority <span id="highCount"></span></button>
-                <button class="btn-secondary" id="myDeptBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem;" onclick="filterMyDept()">My Department</button>
-                <button class="btn-secondary" id="deletedTasksBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('deleted', 'Deleted Tasks')">Deleted Tasks</button>
+                <button class="btn-secondary" id="assignedMeBtn" style="height:36px; padding:0 14px; font-size:0.85rem;"
+                    onclick="setFilter('assigned_to_me', 'Assigned to me')">Assigned to me</button>
+                <button class="btn-secondary" id="overdueBtn"
+                    style="height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;"
+                    onclick="setFilter('overdue', 'Overdue')">Overdue <span id="overdueCount"></span></button>
+                <button class="btn-secondary" id="slaEscalatedBtn"
+                    style="height:36px; padding:0 14px; font-size:0.85rem; color:#dc2626; border-color:#fca5a5;"
+                    onclick="setFilter('sla_escalated', 'SLA Alerts')">SLA Alerts <span id="slaCount"></span></button>
+                <button class="btn-secondary" id="highBtn" style="height:36px; padding:0 14px; font-size:0.85rem;"
+                    onclick="setFilter('high', 'High priority')">High priority <span id="highCount"></span></button>
+                <button class="btn-secondary" id="myDeptBtn"
+                    style="display:none; height:36px; padding:0 14px; font-size:0.85rem;" onclick="filterMyDept()">My
+                    Department</button>
+                <button class="btn-secondary" id="deletedTasksBtn"
+                    style="display:none; height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;"
+                    onclick="setFilter('deleted', 'Deleted Tasks')">Deleted Tasks</button>
                 <div class="clear-filter" id="clearFilterBtn" onclick="clearFilters()">Clear filters</div>
             </div>
 
@@ -1190,7 +1281,11 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
-                <input type="search" id="searchInput" name="handover-search-field" placeholder="Search all handovers by ID, title, name…" onkeyup="handleSearch()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" aria-autocomplete="none" value="" readonly onfocus="this.removeAttribute('readonly');">
+                <input type="search" id="searchInput" name="handover-search-field"
+                    placeholder="Search all handovers by ID, title, name…" onkeyup="handleSearch()" autocomplete="off"
+                    autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore
+                    data-form-type="other" aria-autocomplete="none" value="" readonly
+                    onfocus="this.removeAttribute('readonly');">
             </div>
         </div>
 
@@ -1212,7 +1307,7 @@
                 <!-- Dummy fields to defeat Chrome aggressive password manager -->
                 <input type="text" style="display:none" autocomplete="username">
                 <input type="password" style="display:none" autocomplete="current-password">
-                
+
                 <input type="hidden" id="taskId">
                 <div class="form-grid">
                     <div class="form-group full">
@@ -1283,7 +1378,8 @@
                     </div>
                     <div class="form-group full">
                         <label>Photo (Optional)</label>
-                        <input type="file" id="taskPhoto" accept="image/*" style="padding: 8px; background: var(--surface);">
+                        <input type="file" id="taskPhoto" accept="image/*"
+                            style="padding: 8px; background: var(--surface);">
                     </div>
                     <div class="form-group full">
                         <label>Description</label>
@@ -1304,21 +1400,30 @@
     <!-- Shift Report Modal -->
     <div class="modal-overlay" id="shiftReportOverlay">
         <div class="modal" style="max-width: 850px; width: 92%;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; flex-wrap:wrap; gap:10px;">
+            <div
+                style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; flex-wrap:wrap; gap:10px;">
                 <h2 style="margin:0;">Shift Handover Report</h2>
                 <div style="display:flex; gap:10px;">
-                    <button class="btn btn-primary" onclick="window.print()" style="display:flex; align-items:center; gap:6px;">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:16px; height:16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    <button class="btn btn-primary" onclick="window.print()"
+                        style="display:flex; align-items:center; gap:6px;">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:16px; height:16px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z">
+                            </path>
+                        </svg>
                         Print / Save PDF
                     </button>
                     <button class="btn" onclick="closeShiftReport()">Close</button>
                 </div>
             </div>
 
-            <div style="display:flex; gap:12px; margin-bottom: 20px; align-items:center; background:var(--surface); padding:12px 16px; border-radius:8px; border:1px solid var(--border);">
+            <div
+                style="display:flex; gap:12px; margin-bottom: 20px; align-items:center; background:var(--surface); padding:12px 16px; border-radius:8px; border:1px solid var(--border);">
                 <div>
-                    <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Select Shift</label>
-                    <select id="reportShiftSelect" onchange="generateShiftReport()" style="padding:6px 12px; height:36px; border-radius:6px; border:1px solid var(--border);">
+                    <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Select
+                        Shift</label>
+                    <select id="reportShiftSelect" onchange="generateShiftReport()"
+                        style="padding:6px 12px; height:36px; border-radius:6px; border:1px solid var(--border);">
                         <option value="All">All Shifts</option>
                         <option value="Morning">Morning Shift</option>
                         <option value="Afternoon">Afternoon Shift</option>
@@ -1328,7 +1433,8 @@
                 </div>
             </div>
 
-            <div id="printableReportContent" style="background:white; color:#1a1a1a; padding:24px; border-radius:8px; border:1px solid var(--border);">
+            <div id="printableReportContent"
+                style="background:white; color:#1a1a1a; padding:24px; border-radius:8px; border:1px solid var(--border);">
                 <!-- Populated dynamically by generateShiftReport() -->
             </div>
         </div>
@@ -1351,21 +1457,25 @@
     <div class="modal-overlay" id="pwOverlay">
         <div class="modal" style="max-width: 440px;">
             <h2>Change Password</h2>
-            <p id="pwForcedNote" style="display:none; background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 14px; border-radius:10px; font-size:0.88rem; margin-bottom:18px;">
-                Welcome! For security, please set your own password before continuing. Enter the temporary password you were given, then choose a new one.
+            <p id="pwForcedNote"
+                style="display:none; background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 14px; border-radius:10px; font-size:0.88rem; margin-bottom:18px;">
+                Welcome! For security, please set your own password before continuing. Enter the temporary password you
+                were given, then choose a new one.
             </p>
             <div class="form-group" style="margin-bottom:16px;">
                 <label>Current Password</label>
                 <div class="pw-wrap">
                     <input type="password" id="pwCurrent" autocomplete="current-password">
-                    <button type="button" class="pw-toggle" onclick="togglePw(this)" aria-label="Show password"></button>
+                    <button type="button" class="pw-toggle" onclick="togglePw(this)"
+                        aria-label="Show password"></button>
                 </div>
             </div>
             <div class="form-group" style="margin-bottom:16px;">
                 <label>New Password</label>
                 <div class="pw-wrap">
                     <input type="password" id="pwNew" autocomplete="new-password" placeholder="At least 6 characters">
-                    <button type="button" class="pw-toggle" onclick="togglePw(this)" aria-label="Show password"></button>
+                    <button type="button" class="pw-toggle" onclick="togglePw(this)"
+                        aria-label="Show password"></button>
                 </div>
             </div>
             <div class="modal-actions" style="margin-top:8px;">
@@ -1385,7 +1495,9 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
-                <input type="text" id="activitySearch" placeholder="Filter by person, action, or task…" onkeyup="renderActivity()" autocomplete="off" value="" readonly onfocus="this.removeAttribute('readonly');">
+                <input type="text" id="activitySearch" placeholder="Filter by person, action, or task…"
+                    onkeyup="renderActivity()" autocomplete="off" value="" readonly
+                    onfocus="this.removeAttribute('readonly');">
             </div>
             <div id="managerActivityFilters" style="display:none; gap:12px; margin-bottom:16px;">
                 <select id="activityUserFilter" class="status-select" style="flex:1;" onchange="renderActivity()">
@@ -1398,7 +1510,8 @@
                     <option value="month">Past 30 Days</option>
                 </select>
             </div>
-            <div id="activityList" style="display:flex; flex-direction:column; gap:2px; max-height:52vh; overflow-y:auto;"></div>
+            <div id="activityList"
+                style="display:flex; flex-direction:column; gap:2px; max-height:52vh; overflow-y:auto;"></div>
             <div class="modal-actions" style="margin-top:20px;">
                 <button type="button" class="btn" onclick="closeActivity()">Close</button>
             </div>
@@ -1410,12 +1523,14 @@
         <div class="modal" style="max-width: 760px;">
             <h2>Users &amp; Access</h2>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                <p id="usersScopeNote" style="color:var(--text-muted); font-size:0.9rem;">Create accounts and set roles &amp; departments.</p>
+                <p id="usersScopeNote" style="color:var(--text-muted); font-size:0.9rem;">Create accounts and set roles
+                    &amp; departments.</p>
                 <button class="btn btn-primary" onclick="openUserForm()">+ Add User</button>
             </div>
 
             <!-- User add/edit form -->
-            <div id="userFormWrap" style="display:none; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px;">
+            <div id="userFormWrap"
+                style="display:none; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px;">
                 <input type="hidden" id="userId">
                 <div class="form-grid" style="margin-bottom:16px;">
                     <div class="form-group">
@@ -1444,12 +1559,20 @@
                         <div class="pw-wrap" style="margin-top:6px;">
                             <input type="password" id="userPassword" placeholder="••••••••" autocomplete="new-password">
                             <button type="button" class="pw-toggle" onclick="togglePw(this)" aria-label="Show password">
-                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
+                                    </path>
+                                </svg>
                             </button>
                         </div>
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-                            <button type="button" class="btn" style="padding:4px 12px; font-size:0.78rem;" onclick="generatePassword()">Generate strong password</button>
-                            <span style="font-size:0.72rem; color:var(--text-muted);">Shown once - share it with the staff member. They'll set their own on first login.</span>
+                            <button type="button" class="btn" style="padding:4px 12px; font-size:0.78rem;"
+                                onclick="generatePassword()">Generate strong password</button>
+                            <span style="font-size:0.72rem; color:var(--text-muted);">Shown once - share it with the
+                                staff member. They'll set their own on first login.</span>
                         </div>
                     </div>
                     <div class="form-group full">
@@ -1472,7 +1595,8 @@
                 </div>
             </div>
 
-            <div id="usersList" style="display:flex; flex-direction:column; gap:8px; max-height:44vh; overflow-y:auto;"></div>
+            <div id="usersList" style="display:flex; flex-direction:column; gap:8px; max-height:44vh; overflow-y:auto;">
+            </div>
 
             <div class="modal-actions" style="margin-top:20px;">
                 <button type="button" class="btn" onclick="closeUsers()">Close</button>
@@ -1589,7 +1713,7 @@
                     await authFetch('/api/ping', { method: 'POST' });
                     await loadUserList();
                     updateDashboard();
-                } catch (_) {}
+                } catch (_) { }
             }, 30000);
         }
 
@@ -1708,7 +1832,7 @@
             return Array.from(document.querySelectorAll('#taskAssigneeTiles .dept-tile.selected')).map(t => t.dataset.value);
         }
 
-        document.getElementById('taskDeptTiles').addEventListener('click', function(e) {
+        document.getElementById('taskDeptTiles').addEventListener('click', function (e) {
             if (e.target.classList.contains('dept-tile')) {
                 e.target.classList.toggle('selected');
                 const currentSelected = getSelectedAssignees();
@@ -1716,13 +1840,13 @@
             }
         });
 
-        document.getElementById('taskAssigneeTiles').addEventListener('click', function(e) {
+        document.getElementById('taskAssigneeTiles').addEventListener('click', function (e) {
             if (e.target.classList.contains('dept-tile')) {
                 e.target.classList.toggle('selected');
             }
         });
 
-        document.getElementById('userDeptTiles').addEventListener('click', function(e) {
+        document.getElementById('userDeptTiles').addEventListener('click', function (e) {
             if (e.target.classList.contains('dept-tile')) {
                 e.target.classList.toggle('selected');
             }
@@ -1745,7 +1869,7 @@
                 const res = await authFetch(`/api/handovers?date=${date}&include_overdue=true${isDeletedView ? '&view_deleted=true' : ''}`);
                 const data = await res.json();
                 tasks = Array.isArray(data) ? data : [];
-                
+
                 // Sort tasks: Pending/In Progress first, Completed last, then by created_at descending
                 tasks.sort((a, b) => {
                     if (a.status === 'Completed' && b.status !== 'Completed') return 1;
@@ -1765,17 +1889,17 @@
             }
         }
 
-            let activeShiftFilter = '';
-            
-            window.setShiftFilter = function(val) {
-                activeShiftFilter = val;
-                document.querySelectorAll('#shiftFilterPills .shift-pill').forEach(btn => {
-                    const txt = btn.textContent.toLowerCase();
-                    const isMatch = (val === '' && txt.includes('all')) || (val && txt.toLowerCase().includes(val.toLowerCase()));
-                    btn.classList.toggle('active', isMatch);
-                });
-                renderTasks();
-            };
+        let activeShiftFilter = '';
+
+        window.setShiftFilter = function (val) {
+            activeShiftFilter = val;
+            document.querySelectorAll('#shiftFilterPills .shift-pill').forEach(btn => {
+                const txt = btn.textContent.toLowerCase();
+                const isMatch = (val === '' && txt.includes('all')) || (val && txt.toLowerCase().includes(val.toLowerCase()));
+                btn.classList.toggle('active', isMatch);
+            });
+            renderTasks();
+        };
 
         function updateDashboard() {
             const pending = tasks.filter(t => (t.status || 'Pending') === 'Pending').length;
@@ -1832,8 +1956,8 @@
             Object.entries(people).sort((a, b) => b[1] - a[1]).forEach(([person, count]) => {
                 const uObj = userList.find(u => u.name === person);
                 const isOnline = uObj ? uObj.is_online : false;
-                const dotHtml = isOnline 
-                    ? `<span class="online-dot active" title="Online now"></span>` 
+                const dotHtml = isOnline
+                    ? `<span class="online-dot active" title="Online now"></span>`
                     : `<span class="online-dot offline" title="Offline"></span>`;
                 personContainer.innerHTML += `
                     <div class="stat-row" data-ftype="assigned_to" data-fvalue="${esc(person)}">
@@ -2030,7 +2154,8 @@
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>` : ''}
                     </div>
-                `;}).join('');
+                `;
+                }).join('');
 
                 card.innerHTML = `
                     <div class="task-header">
@@ -2113,8 +2238,8 @@
                         </button>
                         ${ackButton}
                         ${canEditTask(task) && !task.is_deleted
-                            ? `<button class="btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick='openModal(${JSON.stringify(task).replace(/'/g, "&#39;")})'>Edit</button>`
-                            : ''}
+                        ? `<button class="btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick='openModal(${JSON.stringify(task).replace(/'/g, "&#39;")})'>Edit</button>`
+                        : ''}
                     </div>
                 `;
                 fragment.appendChild(card);
@@ -2274,7 +2399,7 @@
             const container = document.getElementById('taskAssigneeTiles');
             if (!container) return;
             container.innerHTML = '';
-            
+
             let selectedArr = [];
             if (Array.isArray(selected)) {
                 selectedArr = selected;
@@ -2283,7 +2408,7 @@
             }
 
             const selectedDepts = Array.from(document.querySelectorAll('#taskDeptTiles .dept-tile.selected')).map(t => t.dataset.value);
-            
+
             // Show every member of the selected department(s) — receptionists, room
             // attendants, supervisors and managers alike — so any of them can be assigned.
             let eligibleUsers = userList;
@@ -2329,7 +2454,7 @@
             return 'Night';
         }
 
-        document.getElementById('taskShiftTiles').addEventListener('click', function(e) {
+        document.getElementById('taskShiftTiles').addEventListener('click', function (e) {
             if (e.target.classList.contains('dept-tile')) {
                 document.querySelectorAll('#taskShiftTiles .dept-tile').forEach(t => t.classList.remove('selected'));
                 e.target.classList.add('selected');
@@ -2379,7 +2504,7 @@
                 document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => {
                     tile.classList.remove('selected');
                 });
-                
+
                 populateAssignees('');
 
                 if (modalFp) modalFp.setDate(new Date().toISOString().split('T')[0]);
@@ -2430,7 +2555,7 @@
 
             const taskDateValue = document.getElementById('newTaskDate').value;
             const selectedDepts = Array.from(document.querySelectorAll('#taskDeptTiles .dept-tile.selected'))
-                                      .map(tile => tile.dataset.value);
+                .map(tile => tile.dataset.value);
             const selectedAssignees = getSelectedAssignees();
             const assignedTo = selectedAssignees.join(', ');
             const selectedShift = document.querySelector('#taskShiftTiles .dept-tile.selected')?.dataset?.value || '';
@@ -2536,21 +2661,21 @@
 
         // ---- Activity log (admin: all; manager: their department + own) ----
         const ACTION_META = {
-            login:          { icon: '●', color: '#64748b', label: 'signed in' },
-            logout:         { icon: '●', color: '#94a3b8', label: 'signed out' },
-            create_task:    { icon: '●', color: '#059669', label: 'created' },
-            edit_task:      { icon: '●', color: '#2563eb', label: 'edited' },
-            status_change:  { icon: '●', color: '#7c3aed', label: 'status' },
-            comment:        { icon: '●', color: '#0ea5e9', label: 'commented' },
+            login: { icon: '●', color: '#64748b', label: 'signed in' },
+            logout: { icon: '●', color: '#94a3b8', label: 'signed out' },
+            create_task: { icon: '●', color: '#059669', label: 'created' },
+            edit_task: { icon: '●', color: '#2563eb', label: 'edited' },
+            status_change: { icon: '●', color: '#7c3aed', label: 'status' },
+            comment: { icon: '●', color: '#0ea5e9', label: 'commented' },
             request_delete: { icon: '●', color: '#dc2626', label: 'requested delete' },
-            cancel_delete:  { icon: '●', color: '#64748b', label: 'dismissed delete' },
-            delete_task:    { icon: '●', color: '#b91c1c', label: 'deleted' },
-            undo_delete_task:{ icon: '●', color: '#059669', label: 'restored' },
-            acknowledge_task:{ icon: '●', color: '#16a34a', label: 'acknowledged' },
-            create_user:    { icon: '●', color: '#059669', label: 'created user' },
-            edit_user:      { icon: '●', color: '#2563eb', label: 'updated user' },
-            delete_user:    { icon: '●', color: '#b91c1c', label: 'deleted user' },
-            change_password:{ icon: '●', color: '#64748b', label: 'changed password' },
+            cancel_delete: { icon: '●', color: '#64748b', label: 'dismissed delete' },
+            delete_task: { icon: '●', color: '#b91c1c', label: 'deleted' },
+            undo_delete_task: { icon: '●', color: '#059669', label: 'restored' },
+            acknowledge_task: { icon: '●', color: '#16a34a', label: 'acknowledged' },
+            create_user: { icon: '●', color: '#059669', label: 'created user' },
+            edit_user: { icon: '●', color: '#2563eb', label: 'updated user' },
+            delete_user: { icon: '●', color: '#b91c1c', label: 'deleted user' },
+            change_password: { icon: '●', color: '#64748b', label: 'changed password' },
         };
 
         async function acknowledgeTask(taskId) {
@@ -2677,7 +2802,7 @@
                 const res = await authFetch('/api/activity');
                 window._activity = res.ok ? await res.json() : [];
             } catch (_) { window._activity = []; }
-            
+
             if (ROLE_RANK[currentUser.role] >= ROLE_RANK.manager) {
                 document.getElementById('managerActivityFilters').style.display = 'flex';
                 const userSel = document.getElementById('activityUserFilter');
@@ -2691,7 +2816,7 @@
                     });
                 }
             }
-            
+
             renderActivity();
         }
 
@@ -2706,10 +2831,10 @@
                     (e.target_title || '').toLowerCase().includes(q) ||
                     (e.action || '').toLowerCase().includes(q));
             }
-            
+
             const uFilter = document.getElementById('activityUserFilter') ? document.getElementById('activityUserFilter').value : '';
             const tFilter = document.getElementById('activityTimeFilter') ? document.getElementById('activityTimeFilter').value : '';
-            
+
             if (uFilter) {
                 entries = entries.filter(e => e.user_name === uFilter);
             }
@@ -2826,7 +2951,7 @@
             try {
                 const res = await authFetch('/api/users');
                 users = res.ok ? await res.json() : [];
-            } catch (_) {}
+            } catch (_) { }
             if (!users.length) { list.innerHTML = '<div style="color:var(--text-muted); padding:16px;">No users.</div>'; return; }
             list.innerHTML = users.map(u => `
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; ${u.active ? '' : 'opacity:0.55;'}">
@@ -2834,9 +2959,9 @@
                         <div style="font-weight:700; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                             ${esc(u.name)}
                             <span style="font-weight:500; color:var(--text-muted); font-size:0.85rem;">@${esc(u.username)}</span>
-                            ${u.is_online 
-                                ? '<span class="badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0; font-size:0.75rem; padding:2px 8px;">Online</span>'
-                                : '<span class="badge" style="background:#f3f4f6; color:#9ca3af; border-color:#e5e7eb; font-size:0.75rem; padding:2px 8px;">Offline</span>'}
+                            ${u.is_online
+                    ? '<span class="badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0; font-size:0.75rem; padding:2px 8px;">Online</span>'
+                    : '<span class="badge" style="background:#f3f4f6; color:#9ca3af; border-color:#e5e7eb; font-size:0.75rem; padding:2px 8px;">Offline</span>'}
                             ${u.actual_role ? `<span style="font-size:0.75rem; color:var(--text-muted);">| ${esc(u.actual_role)}</span>` : ''}
                             ${u.id === currentUser.id ? '<span style="font-size:0.7rem; color:var(--primary); font-weight:600;">(you)</span>' : ''}
                         </div>
@@ -2991,7 +3116,7 @@
 
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
-            
+
             const link = document.createElement("a");
             link.setAttribute("href", url);
 
