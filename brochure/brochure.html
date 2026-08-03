@@ -1,0 +1,528 @@
+<meta charset="utf-8">
+<title>Majestic Hotels, Bristol - Brochure</title>
+<style>
+  /* ============ FONTS ============ */
+  @font-face{font-family:'Cormorant';src:url('fonts/CormorantGaramond-300.woff2') format('woff2');font-weight:300;font-style:normal;font-display:block;}
+  @font-face{font-family:'Cormorant';src:url('fonts/CormorantGaramond-400.woff2') format('woff2');font-weight:400;font-style:normal;font-display:block;}
+  @font-face{font-family:'Cormorant';src:url('fonts/CormorantGaramond-500.woff2') format('woff2');font-weight:500;font-style:normal;font-display:block;}
+  @font-face{font-family:'Cormorant';src:url('fonts/CormorantGaramond-600.woff2') format('woff2');font-weight:600;font-style:normal;font-display:block;}
+  @font-face{font-family:'Cormorant';src:url('fonts/CormorantGaramond-400-i.woff2') format('woff2');font-weight:400;font-style:italic;font-display:block;}
+  @font-face{font-family:'Jost';src:url('fonts/Jost-300.woff2') format('woff2');font-weight:300;font-style:normal;font-display:block;}
+  @font-face{font-family:'Jost';src:url('fonts/Jost-400.woff2') format('woff2');font-weight:400;font-style:normal;font-display:block;}
+  @font-face{font-family:'Jost';src:url('fonts/Jost-500.woff2') format('woff2');font-weight:500;font-style:normal;font-display:block;}
+
+  :root{
+    --navy:#001F59;
+    --navy2:#012161;
+    --navy3:#182660;
+    --gold:#BFA06A;
+    --ink:#101a30;
+    --muted:#6a7286;
+    --paper:#FCFBF8;
+    --line:rgba(16,26,48,.14);
+    --serif:'Cormorant',Georgia,serif;
+    --sans:'Jost','Helvetica Neue',Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:#2a2d33;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  @page{size:210mm 297mm;margin:0;}
+  img{display:block;}
+
+  .page{
+    position:relative;width:210mm;height:297mm;overflow:hidden;
+    background:var(--paper);color:var(--ink);font-family:var(--sans);
+    page-break-after:always;
+  }
+  .page:last-child{page-break-after:auto;}
+  .bleed{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+
+  /* ---------- shared type ---------- */
+  .eyebrow{font-family:var(--sans);font-weight:500;font-size:10px;letter-spacing:.42em;
+    text-transform:uppercase;color:var(--gold);}
+  .display{font-family:var(--serif);font-weight:300;color:var(--navy);line-height:1.02;letter-spacing:.005em;}
+  .rule{width:46px;height:1px;background:var(--gold);border:0;}
+  p.body{font-family:var(--sans);font-weight:300;font-size:11px;line-height:1.95;color:var(--muted);}
+  p.body b{color:var(--ink);font-weight:400;}
+  .kicker-serif{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--navy);}
+
+  /* ---------- footer ---------- */
+  .foot{position:absolute;left:22mm;right:22mm;bottom:14mm;display:flex;justify-content:space-between;
+    align-items:center;font-family:var(--sans);font-weight:400;font-size:8px;letter-spacing:.34em;
+    text-transform:uppercase;color:var(--muted);}
+  .foot .ln{flex:1;height:1px;background:var(--line);margin:0 14px;}
+  .foot.on-dark{color:rgba(255,255,255,.6);}
+  .foot.on-dark .ln{background:rgba(255,255,255,.22);}
+
+  /* ---------- logo mark ---------- */
+  .logo{display:inline-block;text-align:center;line-height:1;color:var(--navy);}
+  .logo .box{display:flex;align-items:center;justify-content:center;border:1.5px solid currentColor;margin:0 auto;}
+  .logo .m{font-family:var(--serif);font-weight:500;}
+  .logo .nm{font-family:var(--serif);font-weight:500;letter-spacing:.2em;}
+  .logo .sb{font-family:var(--sans);font-weight:400;letter-spacing:.5em;}
+  .logo.light{color:#fff;}
+  .logo.xl .box{width:104px;height:104px;}
+  .logo.xl .m{font-size:80px;}
+  .logo.xl .nm{font-size:33px;margin-top:18px;}
+  .logo.xl .sb{font-size:12px;margin-top:9px;}
+  .logo.md .box{width:58px;height:58px;}
+  .logo.md .m{font-size:45px;}
+  .logo.md .nm{font-size:21px;margin-top:11px;}
+  .logo.md .sb{font-size:8px;margin-top:6px;}
+  .logo.sm .box{width:34px;height:34px;border-width:1px;}
+  .logo.sm .m{font-size:26px;}
+  .logo.sm .nm{font-size:13px;margin-top:6px;}
+  .logo.sm .sb{font-size:6px;margin-top:3px;letter-spacing:.42em;}
+
+  /* ============ COVER ============ */
+  .cover-grad{position:absolute;inset:0;background:
+    linear-gradient(180deg,rgba(0,18,52,.55) 0%,rgba(0,18,52,.22) 30%,rgba(0,18,52,.30) 60%,rgba(0,14,40,.90) 100%);}
+  .cover-vignette{position:absolute;inset:0;background:
+    radial-gradient(58% 42% at 50% 46%,rgba(0,14,40,.55) 0%,rgba(0,14,40,.22) 45%,rgba(0,14,40,0) 78%);}
+  .cover-frame{position:absolute;inset:12mm;border:1px solid rgba(255,255,255,.34);}
+  .cover-inner{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:space-between;padding:26mm 24mm;text-align:center;color:#fff;}
+  .cover-top{font-family:var(--sans);font-weight:400;letter-spacing:.62em;font-size:10px;text-transform:uppercase;opacity:.92;}
+  .cover-lockup{display:flex;flex-direction:column;align-items:center;}
+  .cover-tag{font-family:var(--serif);font-weight:400;font-style:italic;font-size:19px;line-height:1.65;opacity:.96;letter-spacing:.01em;}
+  .cover-foot{font-family:var(--sans);font-weight:400;letter-spacing:.44em;font-size:9px;text-transform:uppercase;opacity:.85;}
+
+  /* ============ CONTENTS ============ */
+  .contents{display:flex;height:100%;}
+  .contents .l{flex:1;padding:34mm 20mm 24mm 24mm;display:flex;flex-direction:column;}
+  .contents .r{width:74mm;position:relative;}
+  .contents .r img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .toc{margin-top:auto;}
+  .toc .row{display:flex;align-items:baseline;gap:12px;padding:13px 0;border-bottom:1px solid var(--line);}
+  .toc .row .no{font-family:var(--serif);font-style:italic;font-size:14px;color:var(--gold);width:26px;}
+  .toc .row .t{font-family:var(--serif);font-weight:400;font-size:19px;color:var(--navy);flex:1;}
+  .toc .row .pg{font-family:var(--sans);font-weight:400;font-size:9px;letter-spacing:.2em;color:var(--muted);}
+
+  /* ============ editorial frame ============ */
+  .frame{padding:30mm 24mm 26mm;height:100%;display:flex;flex-direction:column;}
+  .head .eyebrow{display:block;}
+  .head .display{margin-top:16px;}
+  .head .rule{margin-top:20px;}
+
+  /* two-column split (image + text) */
+  .split{display:flex;height:100%;}
+  .split .pic{width:96mm;position:relative;}
+  .split .pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .split .txt{flex:1;display:flex;flex-direction:column;justify-content:center;padding:30mm 22mm;}
+
+  /* stat row */
+  .stats{display:flex;border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .stat{flex:1;padding:18px 6px;text-align:center;border-right:1px solid var(--line);}
+  .stat:last-child{border-right:none;}
+  .stat .n{font-family:var(--serif);font-weight:300;font-size:36px;color:var(--navy);line-height:1;}
+  .stat .l{font-family:var(--sans);font-weight:400;font-size:7.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-top:9px;}
+
+  /* full-bleed feature */
+  .feat-cap{position:absolute;left:24mm;bottom:26mm;color:#fff;max-width:120mm;}
+  .feat-cap .eyebrow{color:var(--gold);}
+  .feat-cap .display{color:#fff;margin-top:14px;}
+  .feat-cap .rule{margin-top:16px;background:var(--gold);}
+  .feat-grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,16,44,.15) 0%,rgba(0,16,44,.05) 45%,rgba(0,16,44,.82) 100%);}
+
+  /* room list */
+  .rlist{margin-top:6px;}
+  .rlabel{font-family:var(--sans);font-weight:500;font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+    color:var(--gold);padding-bottom:6px;margin-bottom:2px;border-bottom:1px solid var(--navy);}
+  .rrow.flag{padding-left:14px;border-left:2px solid var(--gold);margin-left:-16px;padding-top:12px;padding-bottom:12px;}
+  .rrow.flag .rn{color:var(--navy);}
+  .rtag{font-family:var(--sans);font-weight:500;font-size:7.5px;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--gold);margin-left:12px;vertical-align:2px;}
+  .rrow{display:flex;justify-content:space-between;align-items:baseline;gap:20px;
+    padding:11.5px 0;border-bottom:1px solid var(--line);}
+  .rrow .rn{font-family:var(--serif);font-weight:500;font-size:16px;color:var(--navy);}
+  .rrow .rd{font-family:var(--sans);font-weight:300;font-size:9.5px;letter-spacing:.04em;color:var(--muted);white-space:nowrap;}
+
+  /* suite list */
+  .suite-list .srow{display:flex;gap:22px;padding:13px 0;border-top:1px solid var(--line);}
+  .suite-list .srow:last-child{border-bottom:1px solid var(--line);}
+  .suite-list .sn{font-family:var(--serif);font-weight:600;font-size:17px;color:var(--navy);width:66mm;flex-shrink:0;line-height:1.2;}
+  .suite-list .sn .sv{display:block;font-family:var(--sans);font-weight:400;font-size:8.5px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--gold);margin-top:5px;}
+  .suite-list .sd{font-family:var(--sans);font-weight:300;font-size:10px;line-height:1.7;color:var(--muted);}
+
+  /* image grid */
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:5mm;}
+  .g2 .c{position:relative;overflow:hidden;}
+  .g2 .c img{width:100%;height:100%;object-fit:cover;}
+  .cap-tag{position:absolute;left:0;bottom:0;background:rgba(0,20,55,.82);color:#fff;
+    font-family:var(--sans);font-weight:400;font-size:8px;letter-spacing:.24em;text-transform:uppercase;padding:6px 11px;}
+
+  /* feature chips */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{border:1px solid var(--line);color:var(--navy);font-family:var(--sans);font-weight:400;
+    font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;padding:8px 13px;}
+
+  /* services / two-col defs */
+  .defcols{columns:2;column-gap:30px;}
+  .def{break-inside:avoid;margin-bottom:17px;}
+  .def h3{font-family:var(--serif);font-weight:600;font-size:15px;color:var(--navy);margin-bottom:4px;}
+  .def p{font-family:var(--sans);font-weight:300;font-size:9.5px;line-height:1.62;color:var(--muted);}
+
+  /* essentials list */
+  .ess{margin-top:4px;}
+  .erow{display:flex;gap:20px;padding:14px 0;border-bottom:1px solid var(--line);}
+  .erow .k{font-family:var(--sans);font-weight:500;font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--navy);width:52mm;flex-shrink:0;padding-top:2px;}
+  .erow .v{font-family:var(--sans);font-weight:300;font-size:10.5px;line-height:1.7;color:var(--muted);}
+  .erow .v b{color:var(--ink);font-weight:400;}
+
+  /* meeting table */
+  .mt{width:100%;border-collapse:collapse;}
+  .mt th{font-family:var(--sans);font-weight:500;font-size:8px;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--muted);text-align:left;padding:0 6px 10px;border-bottom:1px solid var(--navy);}
+  .mt td{padding:14px 6px;border-bottom:1px solid var(--line);}
+  .mt td.nm{font-family:var(--serif);font-weight:500;font-size:16px;color:var(--navy);}
+  .mt td.sz{font-family:var(--serif);font-weight:400;font-size:16px;color:var(--navy);}
+  .mt td.us{font-family:var(--sans);font-weight:300;font-size:10px;color:var(--muted);}
+
+  /* attractions */
+  .alist{margin-top:2px;}
+  .arow{display:flex;gap:18px;align-items:baseline;padding:13px 0;border-bottom:1px solid var(--line);}
+  .arow .d{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--gold);width:64px;flex-shrink:0;}
+  .arow .b h3{font-family:var(--serif);font-weight:600;font-size:16px;color:var(--navy);margin-bottom:3px;}
+  .arow .b p{font-family:var(--sans);font-weight:300;font-size:9.5px;line-height:1.6;color:var(--muted);}
+  .getabout{margin-top:20px;}
+  .getabout .ga-t{font-family:var(--sans);font-weight:500;font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+    color:var(--gold);padding-bottom:8px;border-bottom:1px solid var(--navy);}
+  .getabout .ga-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 30px;}
+  .getabout .ga{display:flex;flex-direction:column;padding:11px 0;border-bottom:1px solid var(--line);}
+  .getabout .ga-k{font-family:var(--serif);font-weight:600;font-size:13px;color:var(--navy);}
+  .getabout .ga-v{font-family:var(--sans);font-weight:300;font-size:9px;color:var(--muted);margin-top:2px;letter-spacing:.02em;}
+
+  /* contact */
+  .contact{background:var(--navy);color:#fff;}
+  .c-map{position:absolute;top:0;left:0;right:0;height:150mm;}
+  .c-map img{width:100%;height:100%;object-fit:cover;}
+  .c-map .pin-note{position:absolute;left:24mm;bottom:12mm;font-family:var(--sans);font-weight:400;
+    font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--navy);background:rgba(252,251,248,.9);padding:6px 11px;}
+  .c-body{position:absolute;top:150mm;left:0;right:0;bottom:0;padding:20mm 24mm;
+    display:flex;flex-direction:column;}
+  .cgrid{display:grid;grid-template-columns:1fr 1fr;gap:20px 34px;margin-top:20px;}
+  .cblk .lbl{font-family:var(--sans);font-weight:500;font-size:8.5px;letter-spacing:.28em;text-transform:uppercase;
+    color:var(--gold);margin-bottom:8px;}
+  .cblk .val{font-family:var(--sans);font-weight:300;font-size:11px;line-height:1.75;color:rgba(255,255,255,.9);}
+  .cblk .val a{color:rgba(255,255,255,.9);text-decoration:none;}
+</style>
+
+<!-- ============ 1 · COVER ============ -->
+<div class="page">
+  <img class="bleed" src="img/exterior.png">
+  <div class="cover-grad"></div>
+  <div class="cover-vignette"></div>
+  <div class="cover-frame"></div>
+  <div class="cover-inner">
+    <div class="cover-top">Bristol &nbsp;·&nbsp; England</div>
+    <div class="cover-lockup">
+      <img src="img/logo-white.png" alt="Majestic Hotels" style="width:56mm;height:auto;display:block">
+      <hr class="rule" style="margin:30px auto 24px;background:var(--gold)">
+      <div class="cover-tag">An iconic harbourside high-rise,<br>in the heart of Bristol.</div>
+    </div>
+    <div class="cover-foot">Hotel Brochure</div>
+  </div>
+</div>
+
+<!-- ============ 2 · CONTENTS ============ -->
+<div class="page">
+  <div class="contents">
+    <div class="l">
+      <div class="eyebrow">Majestic Hotels · Bristol</div>
+      <div class="display" style="font-size:52px;margin-top:22px">A stay<br>above the<br><span style="font-style:italic;font-weight:400">harbour.</span></div>
+      <p class="body" style="margin-top:22px;max-width:64mm">Set in one of the tallest buildings in the city, moments from the water, the theatres and the old town - a calm, contemporary base from which to discover Bristol.</p>
+      <div class="toc">
+        <div class="row"><span class="no">01</span><span class="t">Welcome</span><span class="pg">03</span></div>
+        <div class="row"><span class="no">02</span><span class="t">The Setting</span><span class="pg">04</span></div>
+        <div class="row"><span class="no">03</span><span class="t">Rooms &amp; Suites</span><span class="pg">05</span></div>
+        <div class="row"><span class="no">04</span><span class="t">Dining</span><span class="pg">08</span></div>
+        <div class="row"><span class="no">05</span><span class="t">Meetings &amp; Events</span><span class="pg">09</span></div>
+        <div class="row"><span class="no">06</span><span class="t">Services &amp; Essentials</span><span class="pg">10</span></div>
+        <div class="row"><span class="no">07</span><span class="t">Explore Bristol</span><span class="pg">12</span></div>
+        <div class="row"><span class="no">08</span><span class="t">Find Us</span><span class="pg">13</span></div>
+      </div>
+    </div>
+    <div class="r"><img src="img/cityview.jpg"></div>
+  </div>
+</div>
+
+<!-- ============ 3 · WELCOME ============ -->
+<div class="page">
+  <div style="position:absolute;top:0;left:0;right:0;height:118mm;overflow:hidden">
+    <img src="img/reception.jpg" style="width:100%;height:100%;object-fit:cover">
+  </div>
+  <div style="position:absolute;top:118mm;left:0;right:0;bottom:0;padding:20mm 24mm">
+    <div class="eyebrow">01 - Welcome</div>
+    <div class="display" style="font-size:38px;margin-top:14px">Welcome to the heart<br>of Bristol</div>
+    <hr class="rule" style="margin-top:18px">
+    <div style="display:flex;gap:26px;margin-top:20px">
+      <p class="body" style="flex:1">Housed in an iconic <b>18-storey high-rise</b>, Majestic Hotels, Bristol places you at the centre of one of England's most captivating cities. Our hotel is within walking distance of a variety of popular attractions and just steps from public transport, so getting around is effortless.</p>
+      <p class="body" style="flex:1">In addition to a prime harbour location, we offer <b>176 modern rooms and suites</b> with signature bedding, 24-hour room service and unlimited free Wi-Fi. Enjoy gastropub-style food at our Collage Restaurant, drinks overlooking the water, and helpful touches such as three-hour express laundry.</p>
+    </div>
+  </div>
+  <div class="foot"><span>Majestic Hotels · Bristol</span><span class="ln"></span><span>03</span></div>
+</div>
+
+<!-- ============ 4 · THE SETTING ============ -->
+<div class="page">
+  <div class="split">
+    <div class="txt">
+      <div class="eyebrow">02 - The Setting</div>
+      <div class="display" style="font-size:40px;margin-top:16px">An address<br>like no other</div>
+      <hr class="rule" style="margin-top:20px">
+      <p class="body" style="margin-top:20px">Only <b>20 minutes from Bristol Airport</b> and less than a ten-minute walk from some of the city's finest attractions, the hotel is a perfect base from which to explore. The Airport Flyer bus stops right outside, with a variety of other transport options close by.</p>
+      <p class="body" style="margin-top:12px">Rising above the waterside, our rooms and suites frame scenic views over the harbour and the city skyline - the calm counterpoint to a day spent along the quays below.</p>
+      <div class="chips" style="margin-top:22px">
+        <span class="chip">Harbourside</span><span class="chip">City Centre</span>
+        <span class="chip">20 min · Airport</span><span class="chip">Steps to Transport</span>
+      </div>
+    </div>
+    <div class="pic"><img src="img/view.jpg"></div>
+  </div>
+</div>
+
+<!-- ============ 5 · ROOMS ============ -->
+<div class="page">
+  <div class="frame">
+    <div class="head">
+      <span class="eyebrow">03 - Rooms &amp; Suites</span>
+      <div class="display" style="font-size:40px">Rest above the harbour</div>
+      <hr class="rule">
+    </div>
+    <p class="body" style="margin-top:18px;max-width:148mm">Majestic Hotels features <b>176 sophisticated rooms and suites</b>, ideal for business and leisure alike. Rest on signature mattresses and wake to a refreshing rain shower. Every room includes free Wi-Fi, a flat-screen TV, individual climate control, coffee and tea facilities and 24-hour room service.</p>
+    <div class="g2" style="margin-top:22px;height:60mm">
+      <div class="c"><img src="img/room1.jpg"><span class="cap-tag">Premium Room</span></div>
+      <div class="c"><img src="img/suite.jpg"><span class="cap-tag">Two-Storey Suite</span></div>
+    </div>
+    <div class="rlist" style="margin-top:22px">
+      <div class="rlabel">The Rooms</div>
+      <div class="rrow"><span class="rn">Standard Room</span><span class="rd">1 double or 2 twin</span></div>
+      <div class="rrow"><span class="rn">Accessible Room</span><span class="rd">1 double or 2 twin · step-free</span></div>
+      <div class="rrow"><span class="rn">Superior Room — City / Harbour View</span><span class="rd">2 twin or 1 double</span></div>
+      <div class="rrow"><span class="rn">Premium Room — City / Harbour View</span><span class="rd">2 twin or 1 double</span></div>
+      <div class="rrow"><span class="rn">Family Room with Sofa Bed</span><span class="rd">28 m² · 2 twin or 1 king</span></div>
+      <div class="rlabel" style="margin-top:16px">The Suites</div>
+      <div class="rrow"><span class="rn">Two-Storey Suite with Terrace — Harbour View</span><span class="rd">1 double · duplex</span></div>
+      <div class="rrow flag"><span class="rn">Presidential Suite — Panoramic View<span class="rtag">Our Finest</span></span><span class="rd">1 double · duplex</span></div>
+    </div>
+  </div>
+  <div class="foot"><span>Majestic Hotels · Bristol</span><span class="ln"></span><span>05</span></div>
+</div>
+
+<!-- ============ 6 · SUITES (feature) ============ -->
+<div class="page">
+  <img class="bleed" src="img/suite2.jpg">
+  <div class="feat-grad"></div>
+  <div class="feat-cap">
+    <div class="eyebrow">The Suites</div>
+    <div class="display" style="font-size:46px">Panoramic living</div>
+    <hr class="rule">
+    <p class="body" style="color:rgba(255,255,255,.9);margin-top:16px;max-width:110mm">Our Suite with Terrace and Presidential Suite crown the building, opening onto private outdoor space and uninterrupted views across Bristol harbour - signature comfort, generous bathrooms and considered contemporary design.</p>
+    <div class="chips" style="margin-top:18px">
+      <span class="chip" style="border-color:rgba(255,255,255,.4);color:#fff">Private Terrace</span>
+      <span class="chip" style="border-color:rgba(255,255,255,.4);color:#fff">Panoramic View</span>
+      <span class="chip" style="border-color:rgba(255,255,255,.4);color:#fff">Rain Shower</span>
+    </div>
+  </div>
+  <div class="foot on-dark"><span>Majestic Hotels · Bristol</span><span class="ln"></span><span>06</span></div>
+</div>
+
+<!-- ============ 7 · SUITE DETAIL grid ============ -->
+<div class="page">
+  <div class="frame">
+    <div class="head">
+      <span class="eyebrow">Suites &amp; Views</span>
+      <div class="display" style="font-size:38px">Designed around the light</div>
+      <hr class="rule">
+    </div>
+    <p class="body" style="margin-top:18px;max-width:152mm">A suite here is a category all its own — a tier apart from our Standard, Superior and Premium rooms. Crowning the upper floors, our two signature suites trade square metres for spectacle: private outdoor space, double-height living and glass that pulls the daylight — and the water — inside.</p>
+    <div class="g2" style="margin-top:20px;height:64mm;grid-template-columns:1.5fr 1fr">
+      <div class="c"><img src="img/suite2.jpg"><span class="cap-tag">Two-Storey Suite</span></div>
+      <div class="c" style="display:grid;grid-template-rows:1fr 1fr;gap:5mm">
+        <div class="c"><img src="img/view.jpg"><span class="cap-tag">Panoramic View</span></div>
+        <div class="c"><img src="img/bath.jpg"><span class="cap-tag">Rain Shower</span></div>
+      </div>
+    </div>
+    <div class="suite-list" style="margin-top:20px">
+      <div class="srow">
+        <div class="sn">Two-Storey Suite with Terrace<span class="sv">Harbour View · duplex</span></div>
+        <div class="sd">A duplex retreat over two floors — living space and a private terrace above the water below, sleeping quarters above, joined by full-height glass and a rain-shower bathroom.</div>
+      </div>
+      <div class="srow">
+        <div class="sn">Presidential Suite<span class="sv">Panoramic View · duplex</span></div>
+        <div class="sd">Our finest address — a two-storey residence at the summit of the building. Wraparound panoramic views, a generous living area and the quiet of the top floor make it the definitive Bristol stay.</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Majestic Hotels · Bristol</span><span class="ln"></span><span>07</span></div>
+</div>
+
+<!-- ============ 8 · DINING ============ -->
+<div class="page">
+  <div style="position:absolute;top:0;left:0;right:0;height:126mm;overflow:hidden">
+    <img src="img/lobby.jpg" style="width:100%;height:100%;object-fit:cover">
+  </div>
+  <div style="position:absolute;top:126mm;left:0;right:0;bottom:0;padding:18mm 24mm">
+    <div class="eyebrow">04 - Dining</div>
+    <div class="display" style="font-size:38px;margin-top:14px">Collage Restaurant &amp; Bar</div>
+    <hr class="rule" style="margin-top:18px">
+    <p class="body" style="margin-top:18px;max-width:152mm">Experience a unique twist on the classic British brasserie. From steaks and smoked haddock kedgeree to a classic British cheeseboard, this is a space where the theatre of service and memorable dishes are the order of the day. Begin with a breakfast buffet of continental favourites and healthy alternatives; end the evening over harbour views or a cocktail at the bar.</p>
+    <div class="chips" style="margin-top:18px">
+      <span class="chip">Breakfast Buffet</span><span class="chip">À la Carte</span>
+      <span class="chip">Cocktail Bar</span><span class="chip">Harbour Views</span><span class="chip">Room Service</span>
+    </div>
+  </div>
+  <div class="foot"><span>Majestic Hotels · Bristol</span><span class="ln"></span><span>08</span></div>
+</div>
+
+<!-- ============ 9 · MEETINGS ============ -->
+<div class="page">
+  <div class="frame" style="padding-bottom:0">
+    <div class="head">
+      <span class="eyebrow">05 - Meetings &amp; Events</span>
+      <div class="display" style="font-size:40px">Gather with a view</div>
+      <hr class="rule">
+    </div>
+    <p class="body" style="margin-top:18px;max-width:152mm">Whether a board meeting, a training workshop, a celebration or an outdoor barbecue, the hotel offers <b>four flexible spaces</b> for every occasion. Each has individual climate control, built-in audiovisual equipment, free high-speed Wi-Fi and modern furnishings. Our terrace, overlooking the harbour, is ideal for receptions and summer events - and with a picturesque setting, a much-loved Bristol wedding venue.</p>
+    <table class="mt" style="margin-top:24px">
+      <tr><th>Space</th><th>Area</th><th>Ideal for</th></tr>
+      <tr><td class="nm">Jupiter</td><td class="sz">136 m²</td><td class="us">Conferences · Weddings · Receptions</td></tr>
+      <tr><td class="nm">Pegasus / Phoenix</td><td class="sz">63 m²</td><td class="us">Workshops · Training · Private dining</td></tr>
+      <tr><td class="nm">Mercury Suite</td><td class="sz">45 m²</td><td class="us">Meetings · Presentations</td></tr>
+      <tr><td class="nm">Titan Suite</td><td class="sz">36 m²</td><td class="us">Board meetings · Breakouts</td></tr>
+    </table>
+    <div class="stats" style="margin-top:24px">
+      <div class="stat"><div class="n">4</div><div class="l">Event Spaces</div></div>
+      <div class="stat"><div class="n">507</div><div class="l">m² Total</div></div>
+      <div class="stat"><div class="n">150</div><div class="l">Max Capacity</div></div>
+      <div class="stat"><div class="n">120</div><div class="l">Banquet Guests</div></div>
+    </div>
+  </div>
+  <div style="position:absolute;bottom:0;left:0;right:0;height:66mm;overflow:hidden">
+    <img src="img/ballroom.jpg" style="width:100%;height:100%;object-fit:cover">
+  </div>
+</div>
+
+<!-- ============ 10 · SERVICES ============ -->
+<div class="page">
+  <div class="frame">
+    <div class="head">
+      <span class="eyebrow">06 - Services</span>
+      <div class="display" style="font-size:40px">Everything in place</div>
+      <hr class="rule">
+    </div>
+    <div class="defcols" style="margin-top:24px">
+      <div class="def"><h3>Free Wi-Fi</h3><p>Unlimited high-speed wireless throughout the hotel.</p></div>
+      <div class="def"><h3>24-Hour Room Service</h3><p>In-room dining from the Collage menu, day or night.</p></div>
+      <div class="def"><h3>Fitness Centre</h3><p>On-site gym to keep your routine on track.</p></div>
+      <div class="def"><h3>Air Conditioning</h3><p>Individual climate control in every room.</p></div>
+      <div class="def"><h3>On-Site Dining</h3><p>Collage Restaurant &amp; Bar, plus complimentary coffee and tea.</p></div>
+      <div class="def"><h3>Express Laundry</h3><p>Three-hour express laundry and dry-cleaning.</p></div>
+      <div class="def"><h3>Express Check-Out</h3><p>A swift, seamless departure whenever you are ready.</p></div>
+      <div class="def"><h3>Luggage Storage</h3><p>Secure baggage storage before check-in and after departure.</p></div>
+      <div class="def"><h3>Running Trails</h3><p>Customised routes around the hotel and harbourside.</p></div>
+      <div class="def"><h3>Sustainable Stays</h3><p>Verified on Hotel Sustainability Basics and eco-label certified.</p></div>
+      <div class="def"><h3>Safe Hotels Certified</h3><p>Independent safety &amp; security certification.</p></div>
+      <div class="def"><h3>Pet Friendly</h3><p>Designated rooms with beds, food and water bowls.</p></div>
+    </div>
+    <div style="margin-top:auto;height:52mm" class="g2">
+      <div class="c"><img src="img/room2.jpg"><span class="cap-tag">Signature Room</span></div>
+      <div class="c"><img src="img/bath.jpg"><span class="cap-tag">Bathroom</span></div>
+    </div>
+  </div>
+  <div class="foot"><span>Majestic Hotels · Bristol</span><span class="ln"></span><span>10</span></div>
+</div>
+
+<!-- ============ 11 · ESSENTIALS ============ -->
+<div class="page">
+  <div class="frame">
+    <div class="head">
+      <span class="eyebrow">Good to Know</span>
+      <div class="display" style="font-size:40px">Hotel essentials</div>
+      <hr class="rule">
+    </div>
+    <div class="ess" style="margin-top:22px">
+      <div class="erow"><div class="k">Arrival &amp; Departure</div><div class="v">Check-in from <b>3:00 pm</b> · Check-out by <b>12:00 noon</b>. Express check-out available. A smoke-free hotel.</div></div>
+      <div class="erow"><div class="k">Breakfast</div><div class="v"><b>Collage Restaurant</b> · Mon–Fri 7:00–10:00 am, Sat–Sun &amp; holidays 7:00–11:00 am. £17.95 per adult, children under 12 dine free. À la carte dinner Mon–Sat 5:30–10:00 pm.</div></div>
+      <div class="erow"><div class="k">Parking</div><div class="v"><b>25 secure on-site spaces</b> beneath the hotel · £20 per overnight stay · reserve in advance with our Front Office. NCP car parking is also a short walk away.</div></div>
+      <div class="erow"><div class="k">Connectivity</div><div class="v">Unlimited complimentary high-speed Wi-Fi throughout the hotel and event spaces.</div></div>
+      <div class="erow"><div class="k">Travelling with Pets</div><div class="v">Pet-friendly, cats &amp; dogs welcome · £30 per night · one pet per room · specialised bedding, food and water bowls provided.</div></div>
+      <div class="erow"><div class="k">Families</div><div class="v">Interconnecting and family rooms · cots available on request · children under 12 dine free at breakfast.</div></div>
+      <div class="erow"><div class="k">Sustainability</div><div class="v">Verified on <b>Hotel Sustainability Basics</b> and certified by a leading hotel eco-label - reducing our footprint and supporting the local community.</div></div>
+    </div>
+  </div>
+  <div class="foot"><span>Majestic Hotels · Bristol</span><span class="ln"></span><span>11</span></div>
+</div>
+
+<!-- ============ 12 · ATTRACTIONS ============ -->
+<div class="page">
+  <div class="frame">
+    <div class="head">
+      <span class="eyebrow">07 - Explore Bristol</span>
+      <div class="display" style="font-size:40px">Moments from the door</div>
+      <hr class="rule">
+    </div>
+    <p class="body" style="margin-top:16px;max-width:150mm">Step outside and the city is already yours. From the harbourside on our doorstep to Brunel's engineering marvels and the West End stage, the finest of Bristol is a short walk away — distances below are from the hotel entrance.</p>
+    <div class="alist" style="margin-top:16px">
+      <div class="arow"><span class="d">0.10 mi</span><div class="b"><h3>Bristol Hippodrome</h3><p>Bristol's West End theatre and one of the largest stages in the country - catch the latest musical production.</p></div></div>
+      <div class="arow"><span class="d">0.15 mi</span><div class="b"><h3>Bristol Aquarium</h3><p>An undersea journey through nature-themed displays and a giant botanical house of exotic species.</p></div></div>
+      <div class="arow"><span class="d">0.18 mi</span><div class="b"><h3>Bristol Harbour</h3><p>The vibrant Harbourside, lined with trendy restaurants, bars and wonderful scenic views.</p></div></div>
+      <div class="arow"><span class="d">0.48 mi</span><div class="b"><h3>Bristol Museum &amp; Art Gallery</h3><p>Vibrant collections of art and natural history spanning the last billion years of Earth's story.</p></div></div>
+      <div class="arow"><span class="d">0.54 mi</span><div class="b"><h3>SS Great Britain</h3><p>One of the UK's top attractions - Brunel's 1843 ship that began international passenger travel.</p></div></div>
+      <div class="arow"><span class="d">0.65 mi</span><div class="b"><h3>Cabot Circus</h3><p>The city's ultimate shopping hub - high-street and designer brands beneath a shell-shaped glass roof.</p></div></div>
+      <div class="arow"><span class="d">1.36 mi</span><div class="b"><h3>Clifton Suspension Bridge</h3><p>Brunel's architectural landmark, beautifully lit in the evening above the Avon Gorge.</p></div></div>
+    </div>
+    <div class="getabout">
+      <div class="ga-t">Getting around</div>
+      <div class="ga-grid">
+        <div class="ga"><span class="ga-k">Bristol Airport</span><span class="ga-v">20 min · Airport Flyer stops outside</span></div>
+        <div class="ga"><span class="ga-k">Bristol Temple Meads</span><span class="ga-v">Mainline rail · approx. 1 mi</span></div>
+        <div class="ga"><span class="ga-k">By Car</span><span class="ga-v">M32 to city centre · on-site parking</span></div>
+        <div class="ga"><span class="ga-k">Ferry &amp; Bus</span><span class="ga-v">Harbour ferry &amp; city routes at the door</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Majestic Hotels · Bristol</span><span class="ln"></span><span>12</span></div>
+</div>
+
+<!-- ============ 13 · CONTACT + MAP ============ -->
+<div class="page contact">
+  <div class="c-map">
+    <img src="img/map.png">
+    <div class="pin-note">Broad Quay · Bristol Harbourside</div>
+  </div>
+  <div class="c-body">
+    <div class="eyebrow" style="color:var(--gold)">08 - Find Us</div>
+    <div class="display" style="color:#fff;font-size:38px;margin-top:12px">Plan your stay</div>
+    <hr class="rule" style="margin-top:16px">
+    <div class="cgrid">
+      <div class="cblk">
+        <div class="lbl">Address</div>
+        <div class="val">Majestic Hotels, Bristol<br>Broad Quay, Bristol, BS1 4BY<br>United Kingdom</div>
+      </div>
+      <div class="cblk">
+        <div class="lbl">General Enquiries</div>
+        <div class="val">+44 117 945 0394<br><a href="mailto:reception.bristol@majestichotels.co.uk">reception.bristol@majestichotels.co.uk</a></div>
+      </div>
+      <div class="cblk">
+        <div class="lbl">Meetings, Groups &amp; Events</div>
+        <div class="val"><a href="mailto:reservations.bristol@majestichotels.co.uk">reservations.bristol@majestichotels.co.uk</a></div>
+      </div>
+      <div class="cblk">
+        <div class="lbl">Reception</div>
+        <div class="val">Check-in 3:00 pm · Check-out 12:00 noon</div>
+      </div>
+      <div class="cblk" style="grid-column:1/-1;margin-top:6px;border-top:1px solid rgba(191,160,106,.4);padding-top:16px">
+        <div class="lbl">Book &amp; Discover More</div>
+        <div class="val"><a href="https://www.majestichotels.co.uk">www.majestichotels.co.uk</a></div>
+      </div>
+    </div>
+    <div style="margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between">
+      <img src="img/logo-white.png" alt="Majestic Hotels" style="width:32mm;height:auto;display:block">
+      <div style="font-family:var(--sans);font-weight:400;font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.5);text-align:right">
+        Bristol · England<br><span style="color:rgba(255,255,255,.32)"></span>
+      </div>
+    </div>
+  </div>
+</div>
