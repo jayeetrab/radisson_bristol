@@ -583,6 +583,8 @@ def add_handover():
             "department": data.get("department"),
             "priority": data.get("priority", "Normal"),
             "status": data.get("status", "Pending"),
+            "shift": data.get("shift", "Morning"),
+            "room_location": data.get("room_location", ""),
             "assigned_to": data.get("assigned_to"),
             "created_by": user["name"],        # authenticated author, not free text
             "created_by_id": user["id"],
@@ -590,6 +592,7 @@ def add_handover():
             "comment": data.get("comment"),
             "photo": data.get("photo"),
             "comments": [],
+            "acknowledged_by": [],
             "created_at": datetime.utcnow(),
         }
         result = mongo_tasks.insert_one(task)
@@ -616,7 +619,7 @@ def update_handover(task_id):
 
     data = request.json or {}
     update_data = {}
-    for field in ['task_date', 'title', 'created_by', 'assigned_to', 'comment', 'department', 'status', 'priority', 'completed_by', 'photo']:
+    for field in ['task_date', 'title', 'created_by', 'assigned_to', 'comment', 'department', 'status', 'priority', 'completed_by', 'photo', 'shift', 'room_location']:
         if field in data:
             update_data[field] = data[field]
             if field == 'task_date':
@@ -625,6 +628,7 @@ def update_handover(task_id):
                 else:
                     update_data['start_date'] = data[field]
                     update_data['end_date'] = data[field]
+
 
     if not update_data:
         return jsonify({"success": True})
@@ -661,6 +665,31 @@ def update_handover(task_id):
     except Exception as e:
         logger.error(f"MongoDB Update Error: {e}")
         return jsonify({"error": "Failed to update task"}), 500
+
+
+@app.route('/api/handovers/<task_id>/acknowledge', methods=['POST'])
+@login_required
+def acknowledge_handover(task_id):
+    if mongo_tasks is None:
+        return jsonify({"error": "Database connection failed"}), 500
+
+    user = current_user()
+    query_id = resolve_task_id(task_id)
+    task = mongo_tasks.find_one({"_id": query_id}) or (mongo_tasks.find_one({"id": query_id}) if isinstance(query_id, int) else None)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    ack_entry = {"name": user["name"], "ts": datetime.utcnow().isoformat()}
+    acknowledged_by = task.get("acknowledged_by", []) or []
+    
+    if not any(a.get("name") == user["name"] for a in acknowledged_by):
+        acknowledged_by.append(ack_entry)
+        mongo_tasks.update_one({"_id": task["_id"]}, {"$set": {"acknowledged_by": acknowledged_by}})
+        log_activity("acknowledge_task", target_type="task", target_id=task["_id"],
+                     target_title=task.get("title", ""), task_departments=task.get("department"),
+                     detail="Acknowledged handover task")
+
+    return jsonify({"success": True, "acknowledged_by": acknowledged_by})
 
 
 @app.route('/api/handovers/<task_id>', methods=['DELETE'])

@@ -933,6 +933,27 @@
         .online-dot.offline {
             background-color: #cbd5e1;
         }
+
+        .shift-pill.active {
+            background: var(--primary) !important;
+            color: white !important;
+            border-color: var(--primary) !important;
+        }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printableReportContent, #printableReportContent * { visibility: visible; }
+            #printableReportContent {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 20px;
+                border: none !important;
+                background: white !important;
+                color: black !important;
+            }
+        }
     </style>
 </head>
 
@@ -971,6 +992,12 @@
                         d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                 </svg>
                 CSV Export
+            </button>
+            <button class="btn-secondary" onclick="openShiftReport()" title="Generate Shift Summary Report">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                Shift Report
             </button>
             <button class="btn-secondary" id="notifBtn" onclick="openNotifications()" style="display: none; position: relative; padding: 10px;"
                 title="Activity Feed">
@@ -1064,11 +1091,21 @@
                 <div class="filter-title" id="gridTitle">All Tasks</div>
                 <button class="btn-secondary" id="assignedMeBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('assigned_to_me', 'Assigned to me')">Assigned to me</button>
                 <button class="btn-secondary" id="overdueBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('overdue', 'Overdue')">Overdue <span id="overdueCount"></span></button>
+                <button class="btn-secondary" id="slaEscalatedBtn" style="height:36px; padding:0 14px; font-size:0.85rem; color:#dc2626; border-color:#fca5a5;" onclick="setFilter('sla_escalated', 'SLA Escalated')">🚨 SLA Alerts <span id="slaCount"></span></button>
                 <button class="btn-secondary" id="highBtn" style="height:36px; padding:0 14px; font-size:0.85rem;" onclick="setFilter('high', 'High priority')">High priority <span id="highCount"></span></button>
                 <button class="btn-secondary" id="myDeptBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem;" onclick="filterMyDept()">My Department</button>
                 <button class="btn-secondary" id="deletedTasksBtn" style="display:none; height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;" onclick="setFilter('deleted', 'Deleted Tasks')">Deleted Tasks</button>
                 <div class="clear-filter" id="clearFilterBtn" onclick="clearFilters()">Clear Filters ✕</div>
             </div>
+            
+            <div style="display:flex; gap:6px; margin-top:8px;" id="shiftFilterPills">
+                <button class="btn-secondary shift-pill active" onclick="setShiftFilter('')">All Shifts</button>
+                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Morning')">🌅 Morning</button>
+                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Afternoon')">🌤️ Afternoon</button>
+                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Night')">🌙 Night</button>
+                <button class="btn-secondary shift-pill" onclick="setShiftFilter('Full Day')">📅 Full Day</button>
+            </div>
+
             <div class="search-wrapper">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -1115,6 +1152,15 @@
                         <label>Title</label>
                         <input type="text" id="taskTitle" required placeholder="Brief description of the task">
                     </div>
+                    <div class="form-group full">
+                        <label>Shift</label>
+                        <div class="dept-tiles" id="taskShiftTiles">
+                            <div class="dept-tile selected" data-value="Morning">🌅 Morning</div>
+                            <div class="dept-tile" data-value="Afternoon">🌤️ Afternoon</div>
+                            <div class="dept-tile" data-value="Night">🌙 Night</div>
+                            <div class="dept-tile" data-value="Full Day">📅 Full Day</div>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label>Department</label>
                         <div class="dept-tiles" id="taskDeptTiles">
@@ -1136,6 +1182,10 @@
                             <option value="High">High / Urgent</option>
                             <option value="Low">Low</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Room / Location (Optional)</label>
+                        <input type="text" id="taskRoomLocation" placeholder="e.g. Room 304, Executive Lounge, Kitchen">
                     </div>
                     <div class="form-group">
                         <label>Status</label>
@@ -1170,6 +1220,39 @@
                     <button type="submit" class="btn btn-primary">Save Task</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Shift Report Modal -->
+    <div class="modal-overlay" id="shiftReportOverlay">
+        <div class="modal" style="max-width: 850px; width: 92%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; flex-wrap:wrap; gap:10px;">
+                <h2 style="margin:0;">Shift Handover Report</h2>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-primary" onclick="window.print()" style="display:flex; align-items:center; gap:6px;">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:16px; height:16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                        Print / Save PDF
+                    </button>
+                    <button class="btn" onclick="closeShiftReport()">Close</button>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:12px; margin-bottom: 20px; align-items:center; background:var(--surface); padding:12px 16px; border-radius:8px; border:1px solid var(--border);">
+                <div>
+                    <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Select Shift</label>
+                    <select id="reportShiftSelect" onchange="generateShiftReport()" style="padding:6px 12px; height:36px; border-radius:6px; border:1px solid var(--border);">
+                        <option value="All">All Shifts</option>
+                        <option value="Morning">Morning Shift</option>
+                        <option value="Afternoon">Afternoon Shift</option>
+                        <option value="Night">Night Shift</option>
+                        <option value="Full Day">Full Day</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="printableReportContent" style="background:white; color:#1a1a1a; padding:24px; border-radius:8px; border:1px solid var(--border);">
+                <!-- Populated dynamically by generateShiftReport() -->
+            </div>
         </div>
     </div>
 
@@ -1579,17 +1662,38 @@
             }
         }
 
+            let activeShiftFilter = '';
+            
+            window.setShiftFilter = function(val) {
+                activeShiftFilter = val;
+                document.querySelectorAll('#shiftFilterPills .shift-pill').forEach(btn => {
+                    const txt = btn.textContent.toLowerCase();
+                    const isMatch = (val === '' && txt.includes('all')) || (val && txt.toLowerCase().includes(val.toLowerCase()));
+                    btn.classList.toggle('active', isMatch);
+                });
+                renderTasks();
+            };
+
         function updateDashboard() {
             const pending = tasks.filter(t => (t.status || 'Pending') === 'Pending').length;
             const inProgress = tasks.filter(t => t.status === 'In Progress').length;
             const completed = tasks.filter(t => t.status === 'Completed').length;
             const overdue = tasks.filter(t => t.is_overdue).length;
             const high = tasks.filter(t => t.priority === 'High' && t.status !== 'Completed').length;
+            const now = Date.now();
+            const slaCount = tasks.filter(t => {
+                if (t.status === 'Completed' || t.is_deleted) return false;
+                const cTime = new Date(t.created_at || t.ts || now).getTime();
+                const hrs = (now - cTime) / (1000 * 60 * 60);
+                return t.priority === 'High' && (hrs >= 2 || t.is_overdue);
+            }).length;
+
             document.getElementById('countPending').innerText = pending;
             document.getElementById('countInProgress').innerText = inProgress;
             document.getElementById('countCompleted').innerText = completed;
             document.getElementById('overdueCount').innerText = overdue ? `(${overdue})` : '';
             document.getElementById('highCount').innerText = high ? `(${high})` : '';
+            document.getElementById('slaCount').innerText = slaCount ? `(${slaCount})` : '';
 
 
 
@@ -1687,6 +1791,14 @@
                     filtered = tasks.filter(t => (t.status || 'Pending') === activeFilter.value);
                 } else if (activeFilter.type === 'overdue') {
                     filtered = tasks.filter(t => t.is_overdue);
+                } else if (activeFilter.type === 'sla_escalated') {
+                    const now = Date.now();
+                    filtered = tasks.filter(t => {
+                        if (t.status === 'Completed' || t.is_deleted) return false;
+                        const cTime = new Date(t.created_at || t.ts || now).getTime();
+                        const hrs = (now - cTime) / (1000 * 60 * 60);
+                        return t.priority === 'High' && (hrs >= 2 || t.is_overdue);
+                    });
                 } else if (activeFilter.type === 'high') {
                     filtered = tasks.filter(t => t.priority === 'High' && t.status !== 'Completed');
                 } else if (activeFilter.type === 'assigned_to_me') {
@@ -1715,11 +1827,17 @@
                 }
             }
 
+            if (activeShiftFilter) {
+                filtered = filtered.filter(t => (t.shift || 'Morning') === activeShiftFilter);
+            }
+
             if (searchTerm) {
                 filtered = filtered.filter(t => {
                     return (t.title && t.title.toLowerCase().includes(searchTerm)) ||
                         (t.assigned_to && t.assigned_to.toLowerCase().includes(searchTerm)) ||
                         (t.created_by && t.created_by.toLowerCase().includes(searchTerm)) ||
+                        (t.room_location && t.room_location.toLowerCase().includes(searchTerm)) ||
+                        (t.shift && t.shift.toLowerCase().includes(searchTerm)) ||
                         (t.comment && t.comment.toLowerCase().includes(searchTerm));
                 });
             }
@@ -1738,6 +1856,23 @@
                     const deptClass = String(d).replace(/[^A-Za-z]/g, '');
                     return `<span class="badge dept-${deptClass}">${esc(d)}</span>`;
                 }).join(' ');
+
+                const shiftIconMap = { Morning: '🌅', Afternoon: '🌤️', Night: '🌙', 'Full Day': '📅' };
+                const shiftBadge = `<span class="badge" style="background:#f3f4f6; color:#374151; border-color:#d1d5db;">${shiftIconMap[task.shift || 'Morning'] || ''} ${esc(task.shift || 'Morning')}</span>`;
+                const roomBadge = task.room_location ? `<span class="badge" style="background:#eff6ff; color:#1e40af; border-color:#bfdbfe; font-weight:600;">📍 ${esc(task.room_location)}</span>` : '';
+
+                const isPendingOrProgress = task.status === 'Pending' || task.status === 'In Progress';
+                const createdTime = new Date(task.created_at || task.ts || Date.now()).getTime();
+                const hoursElapsed = (Date.now() - createdTime) / (1000 * 60 * 60);
+                const isSlaEscalated = isPendingOrProgress && task.priority === 'High' && (hoursElapsed >= 2 || task.is_overdue);
+                const slaBadge = isSlaEscalated ? `<span class="badge" style="background:#fef2f2; color:#dc2626; border-color:#fca5a5; font-weight:700;">🚨 SLA Escalated (>2h)</span>` : '';
+
+                const acks = task.acknowledged_by || [];
+                const isAckedByMe = currentUser && acks.some(a => a.name === currentUser.name);
+                const ackBadge = acks.length ? `<div style="font-size:0.78rem; color:#15803d; margin-top:6px; font-weight:600;">✓ Acknowledged by ${esc(acks.map(a => a.name).join(', '))}</div>` : '';
+                const ackButton = (isPendingOrProgress && !isAckedByMe) 
+                    ? `<button class="btn" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:600; padding:4px 10px; font-size:0.8rem;" onclick="acknowledgeTask('${task.id}')">✓ Acknowledge</button>` 
+                    : '';
 
                 const card = document.createElement('div');
                 card.id = `card-${task.id}`;
@@ -1766,18 +1901,28 @@
                                 ${esc(task.title)}
                                 ${task.is_overdue ? '<span class="badge priority-high" style="background:#ef4444; color:white; border-color:#dc2626;">OVERDUE</span>' : ''}
                                 ${task.priority === 'High' ? '<span class="badge priority-high">URGENT</span>' : ''}
+                                ${slaBadge}
                             </div>
                             <div class="task-meta">
+                                ${shiftBadge}
+                                ${roomBadge}
                                 ${deptBadges}
                                 <span>${(task.task_date || '').includes(' to ') ? 'From ' + esc(task.task_date) : 'For: ' + esc(task.task_date)}</span>
                                 <span>${esc(task.created_by || 'Unknown')} ➔ ${esc(task.assigned_to || 'Unassigned')}</span>
                                 <span>Created: ${task.created_at ? new Date(task.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown'}</span>
                             </div>
+                            ${ackBadge}
                         </div>
                         <div>
                             ${task.is_deleted ? '<span class="badge" style="background:#f3f4f6; color:#9ca3af; border: 1px solid #e5e7eb;">DELETED</span>' : `
                             <select class="status-select" onchange="quickUpdateStatus('${task.id}', this.value)">
                                 <option ${task.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                                <option ${task.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                                <option ${task.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                            </select>
+                            `}
+                        </div>
+                    </div>
                                 <option ${task.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                                 <option ${task.status === 'Completed' ? 'selected' : ''}>Completed</option>
                             </select>
@@ -1827,6 +1972,7 @@
                         <button class="toggle-btn" onclick="toggleDetails('${task.id}')" style="${hasActivity ? 'color: white; font-weight: 700; background: var(--danger); padding: 4px 12px; border-radius: 16px;' : ''}">
                             ${hasActivity ? `${totalNotes} Note${totalNotes > 1 ? 's' : ''}` : 'Add Note'}
                         </button>
+                        ${ackButton}
                         ${canEditTask(task) && !task.is_deleted
                             ? `<button class="btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick='openModal(${JSON.stringify(task).replace(/'/g, "&#39;")})'>Edit</button>`
                             : ''}
@@ -2015,6 +2161,20 @@
             btn.disabled = false;
         }
 
+        function getAutoShift() {
+            const hr = new Date().getHours();
+            if (hr >= 6 && hr < 14) return 'Morning';
+            if (hr >= 14 && hr < 22) return 'Afternoon';
+            return 'Night';
+        }
+
+        document.getElementById('taskShiftTiles').addEventListener('click', function(e) {
+            if (e.target.classList.contains('dept-tile')) {
+                document.querySelectorAll('#taskShiftTiles .dept-tile').forEach(t => t.classList.remove('selected'));
+                e.target.classList.add('selected');
+            }
+        });
+
         function openModal(task = null) {
             document.getElementById('modalOverlay').classList.add('open');
             document.getElementById('taskPhoto').value = '';
@@ -2022,6 +2182,12 @@
             document.getElementById('completedByGroup').style.display = 'none';
             document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => tile.classList.remove('selected'));
             document.getElementById('deleteBtn').disabled = false;
+
+            const shiftVal = task ? (task.shift || 'Morning') : getAutoShift();
+            document.querySelectorAll('#taskShiftTiles .dept-tile').forEach(t => {
+                t.classList.toggle('selected', t.dataset.value === shiftVal);
+            });
+            document.getElementById('taskRoomLocation').value = task ? (task.room_location || '') : '';
 
             if (task) {
                 document.getElementById('modalTitle').innerText = 'Edit Task';
@@ -2108,6 +2274,8 @@
 
             const selectedAssignees = getSelectedAssignees();
             const assignedTo = selectedAssignees.join(', ');
+            const selectedShift = document.querySelector('#taskShiftTiles .dept-tile.selected')?.dataset?.value || getAutoShift();
+            const roomLoc = document.getElementById('taskRoomLocation').value;
 
             const payload = {
                 task_date: taskDateValue,
@@ -2115,6 +2283,8 @@
                 department: selectedDepts,
                 status: document.getElementById('taskStatus').value,
                 priority: document.getElementById('taskPriority').value,
+                shift: selectedShift,
+                room_location: roomLoc,
                 assigned_to: assignedTo,
                 completed_by: document.getElementById('taskCompletedBy').value,
                 comment: document.getElementById('taskComment').value,
@@ -2202,12 +2372,110 @@
             request_delete: { icon: '🗑️', color: '#dc2626', label: 'requested delete' },
             cancel_delete:  { icon: '↩', color: '#64748b', label: 'dismissed delete' },
             delete_task:    { icon: '✕', color: '#b91c1c', label: 'deleted' },
+            acknowledge_task:{ icon: '✓', color: '#16a34a', label: 'acknowledged' },
             create_user:    { icon: '👤', color: '#059669', label: 'created user' },
             edit_user:      { icon: '👤', color: '#2563eb', label: 'updated user' },
             delete_user:    { icon: '👤', color: '#b91c1c', label: 'deleted user' },
         };
 
-        async function openActivity() {
+        async function acknowledgeTask(taskId) {
+            try {
+                const res = await authFetch(`/api/handovers/${taskId}/acknowledge`, { method: 'POST' });
+                if (res.ok) {
+                    showToast('Acknowledged handover!');
+                    await fetchHandovers(null, true);
+                } else {
+                    showToast('Failed to acknowledge task');
+                }
+            } catch (err) {
+                showToast('Failed to acknowledge task');
+            }
+        }
+
+        function openShiftReport() {
+            document.getElementById('shiftReportOverlay').classList.add('open');
+            generateShiftReport();
+        }
+
+        function closeShiftReport() {
+            document.getElementById('shiftReportOverlay').classList.remove('open');
+        }
+
+        function generateShiftReport() {
+            const shiftFilter = document.getElementById('reportShiftSelect').value;
+            const targetDate = (datePickerInput ? datePickerInput.value : '') || new Date().toISOString().split('T')[0];
+
+            let reportTasks = tasks.filter(t => !t.is_deleted);
+            if (shiftFilter && shiftFilter !== 'All') {
+                reportTasks = reportTasks.filter(t => (t.shift || 'Morning') === shiftFilter);
+            }
+
+            const pendingCount = reportTasks.filter(t => t.status === 'Pending').length;
+            const inProgCount = reportTasks.filter(t => t.status === 'In Progress').length;
+            const completedCount = reportTasks.filter(t => t.status === 'Completed').length;
+            const totalCount = reportTasks.length;
+
+            let html = `
+                <div style="text-align:center; border-bottom:2px solid var(--border); padding-bottom:16px; margin-bottom:20px;">
+                    <img src="/assets/majestic-logo.png" alt="Logo" style="height:48px; margin-bottom:8px;">
+                    <h2 style="margin:4px 0 0 0; font-size:1.4rem;">MAJESTIC HOTELS - END OF SHIFT HANDOVER REPORT</h2>
+                    <div style="font-size:0.9rem; color:#4b5563; margin-top:4px;">Date: <strong>${esc(targetDate)}</strong> | Shift: <strong>${esc(shiftFilter)}</strong> | Generated By: <strong>${esc(currentUser ? currentUser.name : 'System')}</strong></div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-bottom:20px; text-align:center;">
+                    <div style="background:#f9fafb; padding:12px; border-radius:8px; border:1px solid #e5e7eb;">
+                        <div style="font-size:1.5rem; font-weight:700;">${totalCount}</div>
+                        <div style="font-size:0.75rem; color:#6b7280; text-transform:uppercase;">Total Tasks</div>
+                    </div>
+                    <div style="background:#fef3c7; padding:12px; border-radius:8px; border:1px solid #fde68a;">
+                        <div style="font-size:1.5rem; font-weight:700; color:#d97706;">${pendingCount}</div>
+                        <div style="font-size:0.75rem; color:#92400e; text-transform:uppercase;">Pending</div>
+                    </div>
+                    <div style="background:#dbeafe; padding:12px; border-radius:8px; border:1px solid #bfdbfe;">
+                        <div style="font-size:1.5rem; font-weight:700; color:#2563eb;">${inProgCount}</div>
+                        <div style="font-size:0.75rem; color:#1e40af; text-transform:uppercase;">In Progress</div>
+                    </div>
+                    <div style="background:#dcfce7; padding:12px; border-radius:8px; border:1px solid #bbf7d0;">
+                        <div style="font-size:1.5rem; font-weight:700; color:#16a34a;">${completedCount}</div>
+                        <div style="font-size:0.75rem; color:#166534; text-transform:uppercase;">Completed</div>
+                    </div>
+                </div>
+            `;
+
+            if (!reportTasks.length) {
+                html += `<div style="text-align:center; padding:30px; color:#6b7280;">No handovers logged for this date and shift.</div>`;
+            } else {
+                html += `
+                    <table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+                        <thead>
+                            <tr style="background:#f3f4f6; border-bottom:2px solid #e5e7eb; text-align:left;">
+                                <th style="padding:10px;">Status</th>
+                                <th style="padding:10px;">Shift / Dept</th>
+                                <th style="padding:10px;">Task & Location</th>
+                                <th style="padding:10px;">Assigned To</th>
+                                <th style="padding:10px;">Notes / Comments</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${reportTasks.map(t => `
+                                <tr style="border-bottom:1px solid #e5e7eb;">
+                                    <td style="padding:10px; font-weight:700;">${esc(t.status)}</td>
+                                    <td style="padding:10px;">${esc(t.shift || 'Morning')}<br><small style="color:#6b7280;">${esc((t.department || []).join(', '))}</small></td>
+                                    <td style="padding:10px;">
+                                        <strong>${esc(t.title)}</strong>
+                                        ${t.room_location ? `<br><small style="color:#2563eb;">📍 ${esc(t.room_location)}</small>` : ''}
+                                    </td>
+                                    <td style="padding:10px;">${esc(t.assigned_to || 'Unassigned')}</td>
+                                    <td style="padding:10px; font-size:0.82rem; color:#374151;">${esc(t.comment || '-')}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            document.getElementById('printableReportContent').innerHTML = html;
+        }
             document.getElementById('activityOverlay').classList.add('open');
             document.getElementById('activityScopeNote').innerText = isAdmin()
                 ? 'Showing all activity across every department.'
