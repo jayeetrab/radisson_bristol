@@ -1923,13 +1923,7 @@
                             `}
                         </div>
                     </div>
-                                <option ${task.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
-                                <option ${task.status === 'Completed' ? 'selected' : ''}>Completed</option>
-                            </select>
-                            `}
-                        </div>
-                    </div>
-                    
+
                     ${task.status === 'Completed' && task.completed_by ? `<div class="completed-text"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Completed by ${esc(task.completed_by)}</div>` : ''}
 
                     ${task.is_deleted ? `<div style="margin-top: 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -2476,6 +2470,8 @@
 
             document.getElementById('printableReportContent').innerHTML = html;
         }
+
+        async function openActivity() {
             document.getElementById('activityOverlay').classList.add('open');
             document.getElementById('activityScopeNote').innerText = isAdmin()
                 ? 'Showing all activity across every department.'
