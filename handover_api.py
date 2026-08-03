@@ -554,6 +554,25 @@ def get_handovers():
         return jsonify({"error": "Failed to fetch tasks"}), 500
 
 
+@app.route('/api/handovers/<task_id>', methods=['GET'])
+@login_required
+def get_single_handover(task_id):
+    if mongo_tasks is None:
+        return jsonify({"error": "Database connection failed"}), 500
+
+    query_id = resolve_task_id(task_id)
+    task = mongo_tasks.find_one({"_id": query_id}) or (mongo_tasks.find_one({"id": query_id}) if isinstance(query_id, int) else None)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    task["id"] = str(task["_id"])
+    task.pop("_id", None)
+    today_str = date.today().isoformat()
+    t_end = task.get("end_date") or task.get("task_date", "")
+    task["is_overdue"] = (t_end < today_str) and (task.get("status") != "Completed")
+    return jsonify(task)
+
+
 @app.route('/api/handovers', methods=['POST'])
 @login_required
 def add_handover():

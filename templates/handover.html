@@ -2573,14 +2573,44 @@
             if (!taskId) return;
 
             const isDeletedAction = action === 'delete_task';
-            const existingInTasks = tasks.find(t => String(t.id) === String(taskId));
+            let existingInTasks = tasks.find(t => String(t.id) === String(taskId));
 
-            if (isDeletedAction && (!activeFilter || activeFilter.type !== 'deleted')) {
-                setFilter('deleted', 'Deleted Tasks');
-                await fetchHandovers();
-            } else if (!existingInTasks && activeFilter && activeFilter.type === 'deleted' && !isDeletedAction) {
-                clearFilters();
-                await fetchHandovers();
+            if (!existingInTasks) {
+                try {
+                    const res = await authFetch(`/api/handovers/${taskId}`);
+                    if (res.ok) {
+                        const targetTask = await res.json();
+                        if (targetTask && targetTask.task_date) {
+                            if (datePickerInput && datePickerInput._flatpickr) {
+                                datePickerInput._flatpickr.setDate(targetTask.task_date);
+                            } else {
+                                document.getElementById('datePicker').value = targetTask.task_date;
+                            }
+
+                            if (targetTask.is_deleted || isDeletedAction) {
+                                activeFilter = { type: 'deleted', value: 'Deleted Tasks' };
+                                document.getElementById('gridTitle').innerText = 'Deleted Tasks';
+                                document.getElementById('clearFilterBtn').style.display = 'block';
+                            } else {
+                                activeFilter = { type: null, value: null };
+                                document.getElementById('gridTitle').innerText = 'All Tasks';
+                                document.getElementById('clearFilterBtn').style.display = 'none';
+                            }
+
+                            await fetchHandovers(targetTask.task_date);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Failed to load target handover", err);
+                }
+            } else {
+                if (isDeletedAction && (!activeFilter || activeFilter.type !== 'deleted')) {
+                    setFilter('deleted', 'Deleted Tasks');
+                    await fetchHandovers();
+                } else if (activeFilter && activeFilter.type === 'deleted' && !isDeletedAction && !existingInTasks.is_deleted) {
+                    clearFilters();
+                    await fetchHandovers();
+                }
             }
 
             setTimeout(() => {
@@ -2588,13 +2618,13 @@
                 if (card) {
                     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     card.classList.add('highlight-card');
-                    setTimeout(() => card.classList.remove('highlight-card'), 2500);
+                    setTimeout(() => card.classList.remove('highlight-card'), 3000);
 
                     toggleDetails(taskId, true);
                 } else {
                     showToast('Handover loaded on dashboard');
                 }
-            }, 150);
+            }, 250);
         }
 
         async function renderUsersList() {
