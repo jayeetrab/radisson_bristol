@@ -36,7 +36,7 @@ except Exception as e:
     mongo_users = None
     mongo_activity = None
 
-DEPARTMENTS = ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "HR", "Other"]
+DEPARTMENTS = ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "HR", "Night Team", "Other"]
 ROLES = ["normal", "supervisor", "manager", "admin"]
 ROLE_RANK = {"normal": 1, "supervisor": 2, "manager": 3, "admin": 4}
 
