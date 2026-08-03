@@ -649,6 +649,21 @@
 
         .btn-quiet:hover { background: var(--surface); color: var(--text-main); }
 
+        .log-del {
+            background: none;
+            border: none;
+            color: #cbd5e1;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            flex-shrink: 0;
+            transition: color 0.15s, background 0.15s;
+        }
+
+        .log-del:hover { color: var(--danger); background: #fef2f2; }
+
         .dept-Maintenance {
             background: #fef2f2;
             color: #991b1b;
@@ -1481,6 +1496,7 @@
         const datePickerInput = document.getElementById('datePicker');
 
         function isAdmin() { return currentUser && currentUser.role === 'admin'; }
+        function canViewHistory() { return currentUser && ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor; }
         function canEditTask(task) {
             if (!currentUser) return false;
             if (ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) return true;
@@ -2049,7 +2065,7 @@
                             <div id="replyPhotoName-${task.id}" style="font-size:0.78rem; color:var(--text-muted); margin-top:6px; display:none;"></div>
                         </div>
 
-                        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
+                        ${canViewHistory() ? `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
                             <strong style="display: block; margin-bottom: 10px; font-size: 0.9rem; color: var(--text-main); display: flex; align-items: center; gap: 6px;">
                                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px; color: var(--text-muted);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                 Handover Activity History
@@ -2057,7 +2073,7 @@
                             <div id="task-activity-${task.id}" style="display: flex; flex-direction: column; gap: 6px;">
                                 <div style="font-size: 0.8rem; color: var(--text-muted);">Loading activity…</div>
                             </div>
-                        </div>
+                        </div>` : ''}
                     </div>
 
                     <div class="task-footer">
@@ -2091,7 +2107,7 @@
 
         async function loadTaskActivity(taskId) {
             const container = document.getElementById(`task-activity-${taskId}`);
-            if (!container) return;
+            if (!container || !canViewHistory()) return;
             try {
                 const res = await authFetch(`/api/handovers/${taskId}/activity`);
                 const history = res.ok ? await res.json() : [];
@@ -2107,12 +2123,26 @@
                             <span style="font-weight: 600; color: var(--text-main);">${esc(h.user_name || 'System')}</span>
                             <span style="color: var(--text-muted);">${esc(h.detail || m.label)}</span>
                             <span style="margin-left: auto; font-size: 0.75rem; color: var(--text-muted); white-space: nowrap;">${h.ts ? new Date(h.ts).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : ''}</span>
+                            ${isAdmin() && h.id ? `<button class="log-del" title="Delete this log entry" onclick="deleteActivityLog('${h.id}', () => loadTaskActivity('${taskId}'))"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:13px;height:13px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>` : ''}
                         </div>
                     `;
                 }).join('');
             } catch (_) {
                 container.innerHTML = '<div style="font-size: 0.8rem; color: var(--text-muted);">Failed to load activity.</div>';
             }
+        }
+
+        async function deleteActivityLog(entryId, onDone) {
+            if (!confirm('Delete this log entry permanently?')) return;
+            try {
+                const res = await authFetch(`/api/activity/${entryId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    showToast('Log entry deleted');
+                    if (typeof onDone === 'function') onDone();
+                } else {
+                    showToast('Failed to delete log entry');
+                }
+            } catch (_) { showToast('Failed to delete log entry'); }
         }
 
         async function quickUpdateStatus(id, newStatus) {
@@ -2689,6 +2719,7 @@
                             ${hasTaskTarget ? `<span style="margin-left:auto; font-size:0.72rem; color:var(--primary); font-weight:600;">View Handover →</span>` : ''}
                         </div>
                     </div>
+                    ${isAdmin() && e.id ? `<button class="log-del" title="Delete this log entry" style="align-self:flex-start;" onclick="event.stopPropagation(); deleteActivityLog('${e.id}', () => { window._activity = (window._activity || []).filter(x => x.id !== '${e.id}'); renderActivity(); })"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:14px;height:14px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>` : ''}
                 </div>`;
             }).join('');
         }

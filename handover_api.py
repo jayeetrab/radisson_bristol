@@ -246,7 +246,7 @@ def api_activity():
 
     entries = []
     for e in mongo_activity.find(query).sort("ts", -1).limit(limit):
-        e.pop("_id", None)
+        e["id"] = str(e.pop("_id"))
         ts = e.get("ts")
         e["ts"] = ts.isoformat() if hasattr(ts, "isoformat") else ts
         entries.append(e)
@@ -256,14 +256,16 @@ def api_activity():
 @app.route('/api/handovers/<task_id>/activity', methods=['GET'])
 @login_required
 def api_task_activity(task_id):
-    """Fetch activity history for a specific task."""
+    """Per-handover history is only for supervisors, managers and admins."""
     if mongo_activity is None:
         return jsonify([])
+    if rank(session.get("role")) < ROLE_RANK["supervisor"]:
+        return jsonify({"error": "Not permitted"}), 403
     try:
         query = {"$or": [{"target_id": str(task_id)}, {"target_id": task_id}]}
         entries = []
         for e in mongo_activity.find(query).sort("ts", -1).limit(100):
-            e.pop("_id", None)
+            e["id"] = str(e.pop("_id"))
             ts = e.get("ts")
             e["ts"] = ts.isoformat() if hasattr(ts, "isoformat") else ts
             entries.append(e)
@@ -271,6 +273,20 @@ def api_task_activity(task_id):
     except Exception as e:
         logger.error(f"Error fetching task activity: {e}")
         return jsonify([])
+
+
+@app.route('/api/activity/<entry_id>', methods=['DELETE'])
+@admin_required
+def api_delete_activity(entry_id):
+    """Admin (super-admin) can remove a specific activity-log entry."""
+    if mongo_activity is None:
+        return jsonify({"error": "Database connection failed"}), 500
+    try:
+        mongo_activity.delete_one({"_id": ObjectId(entry_id)})
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error deleting activity entry: {e}")
+        return jsonify({"error": "Failed to delete entry"}), 500
 
 
 # ---------------------------------------------------------------------------
