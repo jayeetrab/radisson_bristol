@@ -585,6 +585,18 @@
             font-weight: 500;
         }
 
+        .task-meta .hid {
+            font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #9ca3af;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 2px 7px;
+            letter-spacing: 0.03em;
+        }
+
         .badge {
             display: inline-flex;
             align-items: center;
@@ -1161,7 +1173,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
-                <input type="text" id="searchInput" placeholder="Search tasks..." onkeyup="renderTasks()" autocomplete="off" value="" readonly onfocus="this.removeAttribute('readonly');">
+                <input type="text" id="searchInput" placeholder="Search all handovers by ID, title, name…" onkeyup="handleSearch()" autocomplete="off" value="" readonly onfocus="this.removeAttribute('readonly');">
             </div>
         </div>
 
@@ -1221,7 +1233,6 @@
                             <div class="dept-tile" data-value="F&B">F&B</div>
                             <div class="dept-tile" data-value="Finance">Finance</div>
                             <div class="dept-tile" data-value="HR">HR</div>
-                            <div class="dept-tile" data-value="Night Team">Night Team</div>
                             <div class="dept-tile" data-value="Other">Other</div>
                         </div>
                     </div>
@@ -1434,7 +1445,6 @@
                             <div class="dept-tile" data-value="F&amp;B">F&amp;B</div>
                             <div class="dept-tile" data-value="Finance">Finance</div>
                             <div class="dept-tile" data-value="HR">HR</div>
-                            <div class="dept-tile" data-value="Night Team">Night Team</div>
                             <div class="dept-tile" data-value="Other">Other</div>
                         </div>
                     </div>
@@ -1461,6 +1471,9 @@
     <script>
         let tasks = [];
         let activeFilter = { type: null, value: null };
+        let searchMode = false;          // true while showing global-search results
+        let searchTimer = null;
+        window._searchResults = [];
         let currentUser = null;
         let userList = [];
         const ROLE_RANK = { normal: 1, supervisor: 2, manager: 3, admin: 4 };
@@ -1819,6 +1832,8 @@
         function clearFilters() {
             const prevType = activeFilter ? activeFilter.type : null;
             activeFilter = { type: null, value: null };
+            searchMode = false;
+            window._searchResults = [];
             document.getElementById('gridTitle').innerText = 'All Tasks';
             document.getElementById('clearFilterBtn').style.display = 'none';
             document.getElementById('searchInput').value = '';
@@ -1829,13 +1844,39 @@
             }
         }
 
+        function shortId(id) { return id ? String(id).slice(-6).toUpperCase() : ''; }
+
+        // Global search: queries every handover (all dates, all statuses, incl. completed)
+        // by ID, title, description, assignee, author, room or department.
+        function handleSearch() {
+            const q = document.getElementById('searchInput').value.trim();
+            clearTimeout(searchTimer);
+            if (q.length < 2) {
+                if (searchMode) { searchMode = false; window._searchResults = []; document.getElementById('gridTitle').innerText = 'All Tasks'; document.getElementById('clearFilterBtn').style.display = 'none'; }
+                renderTasks();
+                return;
+            }
+            searchTimer = setTimeout(async () => {
+                try {
+                    const res = await authFetch('/api/handovers/search?q=' + encodeURIComponent(q));
+                    window._searchResults = res.ok ? await res.json() : [];
+                } catch (_) { window._searchResults = []; }
+                searchMode = true;
+                activeFilter = { type: null, value: null };
+                document.getElementById('gridTitle').innerText = `Search results (${window._searchResults.length})`;
+                document.getElementById('clearFilterBtn').style.display = 'block';
+                renderTasks();
+            }, 300);
+        }
+
         function renderTasks() {
             const grid = document.getElementById('tasksGrid');
             grid.innerHTML = '';
 
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
 
-            let filtered = tasks;
+            // In global-search mode the server already searched every date/status.
+            let filtered = searchMode ? (window._searchResults || []) : tasks;
             if (activeFilter.type) {
                 if (activeFilter.type === 'status') {
                     filtered = tasks.filter(t => (t.status || 'Pending') === activeFilter.value);
@@ -1881,7 +1922,7 @@
                 filtered = filtered.filter(t => (t.shift || 'Morning') === activeShiftFilter);
             }
 
-            if (searchTerm) {
+            if (searchTerm && !searchMode) {
                 filtered = filtered.filter(t => {
                     return (t.title && t.title.toLowerCase().includes(searchTerm)) ||
                         (t.assigned_to && t.assigned_to.toLowerCase().includes(searchTerm)) ||
@@ -1937,7 +1978,8 @@
                     return `
                     <div style="background: #f9fafb; padding: 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); position: relative;">
                         <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">${esc(c.author)} <span style="font-weight: 400; font-size: 0.8rem;">• ${new Date(c.timestamp).toLocaleString()}</span></div>
-                        <div style="color: var(--text-main); font-size: 0.95rem; white-space: pre-wrap;">${esc(c.text)}</div>
+                        ${c.text ? `<div style="color: var(--text-main); font-size: 0.95rem; white-space: pre-wrap;">${esc(c.text)}</div>` : ''}
+                        ${c.photo ? `<img src="${c.photo}" style="max-width: 220px; max-height: 220px; border-radius: 8px; margin-top: 6px; border: 1px solid var(--border); cursor: pointer;" onclick="window.open('${c.photo}','_blank')">` : ''}
                         ${canDeleteComment ? `<button onclick="deleteComment('${task.id}', '${c.timestamp}')" style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: var(--danger); cursor: pointer; padding: 12px; display: flex; align-items: center; justify-content: center;" title="Delete Comment">
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>` : ''}
@@ -1954,6 +1996,7 @@
                                 ${slaBadge}
                             </div>
                             <div class="task-meta">
+                                <span class="meta-item hid" title="Handover ID">#${shortId(task.id)}</span>
                                 ${shiftBadge}
                                 ${roomBadge}
                                 ${deptBadges}
@@ -1995,10 +2038,15 @@
                                 ${commentsCount > 0 ? commentsHtml : '<div style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px;">No comments yet.</div>'}
                             </div>
                             
-                            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                            <div style="display: flex; gap: 8px; margin-top: 12px; align-items: center;">
                                 <input type="text" id="replyText-${task.id}" placeholder="Type a reply as ${esc(currentUser ? currentUser.name : 'you')}…" style="flex: 1; padding: 8px 12px; height: 38px;" onkeypress="if(event.key === 'Enter') addComment('${task.id}')">
+                                <input type="file" id="replyPhoto-${task.id}" accept="image/*" style="display:none;" onchange="onReplyPhoto('${task.id}')">
+                                <button class="btn btn-quiet" style="height:38px; padding:0 12px;" title="Attach photo" onclick="document.getElementById('replyPhoto-${task.id}').click()">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:18px; height:18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                </button>
                                 <button class="btn-primary" onclick="addComment('${task.id}')" style="padding: 0 16px; height: 38px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer;">Reply</button>
                             </div>
+                            <div id="replyPhotoName-${task.id}" style="font-size:0.78rem; color:var(--text-muted); margin-top:6px; display:none;"></div>
                         </div>
 
                         <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
@@ -2085,12 +2133,26 @@
             }
         }
 
+        // Holds a resized photo (data URI) pending attach to a comment, keyed by task id.
+        window._replyPhotos = {};
+        async function onReplyPhoto(taskId) {
+            const input = document.getElementById(`replyPhoto-${taskId}`);
+            const label = document.getElementById(`replyPhotoName-${taskId}`);
+            if (!input.files || !input.files[0]) return;
+            try {
+                window._replyPhotos[taskId] = await resizeImageFile(input.files[0]);
+                label.textContent = 'Photo attached: ' + input.files[0].name;
+                label.style.display = 'block';
+            } catch (_) { showToast('Failed to process image'); }
+        }
+
         async function addComment(taskId) {
             const textInput = document.getElementById(`replyText-${taskId}`);
             const text = textInput.value.trim();
+            const photo = window._replyPhotos[taskId] || null;
 
-            if (!text) {
-                showToast('Please enter a reply');
+            if (!text && !photo) {
+                showToast('Type a message or attach a photo');
                 textInput.focus();
                 return;
             }
@@ -2099,12 +2161,13 @@
                 const res = await authFetch(`/api/handovers/${taskId}/comments`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text })
+                    body: JSON.stringify({ text, photo })
                 });
 
                 if (res.ok) {
                     textInput.value = '';
-                    showToast('Comment added!');
+                    delete window._replyPhotos[taskId];
+                    showToast('Comment added');
                     // Keep details open by refreshing silently and passing the open state
                     const detailsState = document.getElementById(`details-${taskId}`).classList.contains('open');
                     await fetchHandovers(null, true);
@@ -2159,19 +2222,11 @@
 
             const selectedDepts = Array.from(document.querySelectorAll('#taskDeptTiles .dept-tile.selected')).map(t => t.dataset.value);
             
+            // Show every member of the selected department(s) — receptionists, room
+            // attendants, supervisors and managers alike — so any of them can be assigned.
             let eligibleUsers = userList;
             if (selectedDepts.length > 0) {
-                eligibleUsers = userList.filter(u => {
-                    const uRole = (u.role || 'normal').toLowerCase();
-                    const isManagerOrSup = uRole === 'supervisor' || uRole === 'manager' || uRole === 'admin';
-                    const hasDept = u.departments && u.departments.some(d => selectedDepts.includes(d));
-                    return isManagerOrSup && hasDept;
-                });
-            } else {
-                eligibleUsers = userList.filter(u => {
-                    const uRole = (u.role || 'normal').toLowerCase();
-                    return uRole === 'supervisor' || uRole === 'manager' || uRole === 'admin';
-                });
+                eligibleUsers = userList.filter(u => u.departments && u.departments.some(d => selectedDepts.includes(d)));
             }
 
             const names = eligibleUsers.map(u => u.name);
@@ -2180,7 +2235,7 @@
             });
 
             if (names.length === 0) {
-                container.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem; padding:6px 0;">No supervisors/managers available for selected department(s).</div>';
+                container.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem; padding:6px 0;">No staff found for the selected department(s).</div>';
                 return;
             }
 
@@ -2314,12 +2369,24 @@
             const taskDateValue = document.getElementById('newTaskDate').value;
             const selectedDepts = Array.from(document.querySelectorAll('#taskDeptTiles .dept-tile.selected'))
                                       .map(tile => tile.dataset.value);
-            if (selectedDepts.length === 0) selectedDepts.push('Other');
-
             const selectedAssignees = getSelectedAssignees();
             const assignedTo = selectedAssignees.join(', ');
-            const selectedShift = document.querySelector('#taskShiftTiles .dept-tile.selected')?.dataset?.value || getAutoShift();
+            const selectedShift = document.querySelector('#taskShiftTiles .dept-tile.selected')?.dataset?.value || '';
             const roomLoc = document.getElementById('taskRoomLocation').value;
+
+            // Required fields (everything except Room/Location, Photo and Description).
+            const missing = [];
+            if (!document.getElementById('taskTitle').value.trim()) missing.push('Title');
+            if (!taskDateValue) missing.push('Date');
+            if (selectedDepts.length === 0) missing.push('Department');
+            if (!selectedShift) missing.push('Shift');
+            if (selectedAssignees.length === 0) missing.push('Assign To');
+            if (document.getElementById('taskStatus').value === 'Completed' && !document.getElementById('taskCompletedBy').value.trim()) missing.push('Completed By');
+            if (missing.length) {
+                showToast('Please complete: ' + missing.join(', '));
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = 'Save Task'; }
+                return;
+            }
 
             const payload = {
                 task_date: taskDateValue,
@@ -2985,21 +3052,24 @@
 
             const clickedCard = e.target.closest('.task-card');
 
-            // Close all open cards that are NOT the one we just clicked
+            // Clicking anywhere that isn't the currently-open card collapses it —
+            // clicking empty space, the header, or another card all close it cleanly.
             document.querySelectorAll('.task-details.open').forEach(el => {
-                const card = el.closest('.task-card');
-                if (card !== clickedCard) {
-                    el.classList.remove('open');
-                }
+                if (el.closest('.task-card') !== clickedCard) el.classList.remove('open');
             });
 
-            // If we clicked a card, open it
             if (clickedCard) {
-                const isInteractive = e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' || e.target.closest('button') || e.target.closest('.task-details');
+                const isInteractive = e.target.closest('button') || e.target.closest('select')
+                    || e.target.closest('input') || e.target.closest('a') || e.target.closest('.task-details');
                 if (!isInteractive) {
                     const details = clickedCard.querySelector('.task-details');
                     if (details) {
-                        details.classList.add('open');
+                        const willOpen = !details.classList.contains('open');
+                        details.classList.toggle('open');   // clicking the card again closes it
+                        if (willOpen) {
+                            const tid = clickedCard.id.replace('card-', '');
+                            loadTaskActivity(tid);          // load history whichever way it opens
+                        }
                     }
                 }
             }

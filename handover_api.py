@@ -36,7 +36,7 @@ except Exception as e:
     mongo_users = None
     mongo_activity = None
 
-DEPARTMENTS = ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "HR", "Night Team", "Other"]
+DEPARTMENTS = ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "HR", "Other"]
 ROLES = ["normal", "supervisor", "manager", "admin"]
 ROLE_RANK = {"normal": 1, "supervisor": 2, "manager": 3, "admin": 4}
 
@@ -499,6 +499,45 @@ def api_delete_user(user_id):
 # ---------------------------------------------------------------------------
 # Handovers
 # ---------------------------------------------------------------------------
+@app.route('/api/handovers/search', methods=['GET'])
+@login_required
+def search_handovers():
+    """Global search across ALL handovers (any date, any status, including completed)
+    by handover ID, title, description, assignee, author, room or department."""
+    if mongo_tasks is None:
+        return jsonify([])
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify([])
+    import re as _re
+    rx = _re.compile(_re.escape(q), _re.IGNORECASE)
+    text_query = {"is_deleted": {"$ne": True}, "$or": [
+        {"title": rx}, {"comment": rx}, {"assigned_to": rx},
+        {"created_by": rx}, {"room_location": rx}, {"department": rx},
+    ]}
+    results = {}
+    for t in mongo_tasks.find(text_query).limit(200):
+        results[str(t["_id"])] = t
+
+    # Handover-ID match: the visible ID is the last 6 hex of the ObjectId.
+    hexq = q.lower().lstrip("#")
+    if _re.fullmatch(r"[0-9a-f]{2,24}", hexq):
+        for t in mongo_tasks.find({"is_deleted": {"$ne": True}}).limit(1000):
+            if hexq in str(t["_id"]).lower():
+                results[str(t["_id"])] = t
+
+    today = date.today().isoformat()
+    out = []
+    for t in results.values():
+        t["id"] = str(t["_id"])
+        t.pop("_id", None)
+        t_end = t.get("end_date") or t.get("task_date", "")
+        t["is_overdue"] = (t_end < today) and (t.get("status") != "Completed")
+        out.append(t)
+    out.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    return jsonify(out)
+
+
 @app.route('/api/handovers', methods=['GET'])
 @login_required
 def get_handovers():
@@ -808,11 +847,13 @@ def add_comment(task_id):
         user = current_user()
         data = request.json or {}
         text = (data.get("text") or "").strip()
-        if not text:
-            return jsonify({"error": "Text is required"}), 400
+        photo = data.get("photo")
+        if not text and not photo:
+            return jsonify({"error": "A message or photo is required"}), 400
         new_comment = {
             "author": user["name"],
             "text": text,
+            "photo": photo,
             "timestamp": datetime.utcnow().isoformat(),
         }
         qid = resolve_task_id(task_id)
@@ -820,7 +861,7 @@ def add_comment(task_id):
         mongo_tasks.update_one({"_id": qid}, {"$push": {"comments": new_comment}})
         log_activity("comment", target_type="task", target_id=task_id,
                      target_title=(task or {}).get("title"), task_departments=(task or {}).get("department"),
-                     detail=f"Commented: {text[:80]}")
+                     detail=(f"Commented: {text[:80]}" if text else "Added a photo"))
         return jsonify(new_comment), 201
     except Exception as e:
         logger.error(f"Error adding comment: {e}")
