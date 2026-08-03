@@ -627,6 +627,18 @@
             font-weight: 600;
         }
 
+        .seen-line {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+            font-weight: 500;
+        }
+
+        .seen-line:empty { display: none; }
+
         .btn-ack {
             background: #ffffff;
             color: #15803d;
@@ -1076,16 +1088,6 @@
                 </svg>
                 Shift Report
             </button>
-            <button class="btn-secondary" id="notifBtn" onclick="openNotifications()" style="display: none; position: relative; padding: 10px;"
-                title="Activity Feed">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px;">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9">
-                    </path>
-                </svg>
-                <span id="notifBadge"
-                    style="display: none; position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; font-size: 0.7rem; font-weight: 700; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">0</span>
-            </button>
             <button class="btn-secondary" id="activityBtn" onclick="openActivity()" style="display:none;" title="Activity log">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -1497,6 +1499,28 @@
 
         function isAdmin() { return currentUser && currentUser.role === 'admin'; }
         function canViewHistory() { return currentUser && ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor; }
+
+        const EYE_MINI = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>';
+        function seenLineHtml(seenBy) {
+            if (!seenBy || !seenBy.length) return '';
+            return `${EYE_MINI} Seen by ${esc(seenBy.map(s => s.name).join(', '))}`;
+        }
+
+        // Records that the current user has opened (seen) a handover, and updates the
+        // card's "Seen by" line in place without a jarring re-render.
+        async function markSeen(taskId) {
+            if (!currentUser) return;
+            const task = (tasks || []).find(t => t.id === taskId) || (window._searchResults || []).find(t => t.id === taskId);
+            if (task && (task.seen_by || []).some(s => s.name === currentUser.name)) return;
+            try {
+                const res = await authFetch(`/api/handovers/${taskId}/seen`, { method: 'POST' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (task) task.seen_by = data.seen_by || task.seen_by;
+                const el = document.getElementById(`seen-${taskId}`);
+                if (el) el.innerHTML = seenLineHtml(data.seen_by || (task ? task.seen_by : []));
+            } catch (_) { /* non-critical */ }
+        }
         function canEditTask(task) {
             if (!currentUser) return false;
             if (ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) return true;
@@ -1543,12 +1567,14 @@
             if (currentUser.can_manage_users) {
                 document.getElementById('usersBtn').style.display = 'inline-flex';
             }
-            if (ROLE_RANK[currentUser.role] >= ROLE_RANK.supervisor) {
-                document.getElementById('notifBtn').style.display = 'inline-flex';
-            }
             const dtBtn = document.getElementById('deletedTasksBtn');
             if (dtBtn) dtBtn.style.display = 'inline-flex';
             initPwToggles();
+
+            // Wipe any username the browser/password-manager autofilled into the
+            // search box after the login redirect (fires a few times to catch late fills).
+            clearSearchAutofill();
+            [200, 600, 1500].forEach(t => setTimeout(clearSearchAutofill, t));
 
             if (currentUser.must_change_password) {
                 openChangePassword(true);
@@ -1556,8 +1582,6 @@
 
             await loadUserList();
             await fetchHandovers();
-            pollNotifications();
-            setInterval(pollNotifications, 10000);
 
             // Periodic presence heartbeat and online status sync
             setInterval(async () => {
@@ -1862,6 +1886,11 @@
 
         function shortId(id) { return id ? String(id).slice(-6).toUpperCase() : ''; }
 
+        function clearSearchAutofill() {
+            const el = document.getElementById('searchInput');
+            if (el && document.activeElement !== el && !searchMode) el.value = '';
+        }
+
         // Global search: queries every handover (all dates, all statuses, incl. completed)
         // by ID, title, description, assignee, author, room or department.
         function handleSearch() {
@@ -1977,6 +2006,7 @@
                 const acks = task.acknowledged_by || [];
                 const isAckedByMe = currentUser && acks.some(a => a.name === currentUser.name);
                 const ackBadge = acks.length ? `<div class="ack-line">${CHK} Acknowledged by ${esc(acks.map(a => a.name).join(', '))}</div>` : '';
+                const seenHtml = seenLineHtml(task.seen_by);
                 const ackButton = !isPendingOrProgress ? '' : (isAckedByMe
                     ? `<button class="btn btn-quiet" onclick="unacknowledgeTask('${task.id}')">Undo acknowledgement</button>`
                     : `<button class="btn btn-ack" onclick="acknowledgeTask('${task.id}')">Acknowledge</button>`);
@@ -2021,6 +2051,7 @@
                                 <span class="meta-item">Created ${task.created_at ? new Date(task.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown'}</span>
                             </div>
                             ${ackBadge}
+                            <div id="seen-${task.id}" class="seen-line">${seenHtml}</div>
                         </div>
                         <div>
                             ${task.is_deleted ? '<span class="badge" style="background:#f3f4f6; color:#9ca3af; border: 1px solid #e5e7eb;">DELETED</span>' : `
@@ -2102,6 +2133,7 @@
             }
             if (el.classList.contains('open')) {
                 loadTaskActivity(id);
+                markSeen(id);
             }
         }
 
@@ -3100,22 +3132,22 @@
                         if (willOpen) {
                             const tid = clickedCard.id.replace('card-', '');
                             loadTaskActivity(tid);          // load history whichever way it opens
+                            markSeen(tid);                  // opening = seen
                         }
                     }
                 }
             }
         });
 
-        // Auto-refresh the dashboard and poll notifications
+        // Auto-refresh the dashboard (skips while a modal or an expanded card is open)
         setInterval(() => {
             const isModalOpen = document.getElementById('modalOverlay').classList.contains('open');
             const isAnyCardOpen = document.querySelector('.task-details.open') !== null;
 
-            if (!isModalOpen && !isAnyCardOpen) {
+            if (!isModalOpen && !isAnyCardOpen && !searchMode) {
                 const date = datePickerInput.value || new Date().toISOString().split('T')[0];
                 fetchHandovers(date, true);
             }
-            pollNotifications();
         }, 15000);
 
         // Init

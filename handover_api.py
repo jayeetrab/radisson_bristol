@@ -667,6 +667,7 @@ def add_handover():
             "photo": data.get("photo"),
             "comments": [],
             "acknowledged_by": [],
+            "seen_by": [],
             "created_at": datetime.utcnow(),
         }
         result = mongo_tasks.insert_one(task)
@@ -785,6 +786,24 @@ def unacknowledge_handover(task_id):
                  target_title=task.get("title", ""), task_departments=task.get("department"),
                  detail="Removed acknowledgement")
     return jsonify({"success": True, "acknowledged_by": acknowledged_by})
+
+
+@app.route('/api/handovers/<task_id>/seen', methods=['POST'])
+@login_required
+def mark_handover_seen(task_id):
+    """Record that the current user has opened (seen) this handover. Idempotent."""
+    if mongo_tasks is None:
+        return jsonify({"error": "Database connection failed"}), 500
+    user = current_user()
+    query_id = resolve_task_id(task_id)
+    task = mongo_tasks.find_one({"_id": query_id}) or (mongo_tasks.find_one({"id": query_id}) if isinstance(query_id, int) else None)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    seen_by = task.get("seen_by", []) or []
+    if not any(s.get("name") == user["name"] for s in seen_by):
+        seen_by.append({"name": user["name"], "ts": datetime.utcnow().isoformat()})
+        mongo_tasks.update_one({"_id": task["_id"]}, {"$set": {"seen_by": seen_by}})
+    return jsonify({"success": True, "seen_by": seen_by})
 
 
 @app.route('/api/handovers/<task_id>', methods=['DELETE'])
