@@ -579,6 +579,15 @@
             white-space: nowrap;
         }
 
+        /* The created-by → assignees line can be long; let it wrap instead of
+           running off-screen and pushing the card (and Edit button) out of reach. */
+        .task-meta .meta-people {
+            display: inline;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            min-width: 0;
+        }
+
         .task-meta .meta-arrow {
             color: #9ca3af;
             margin: 0 4px;
@@ -2175,7 +2184,7 @@
                                 ${roomBadge}
                                 ${deptBadges}
                                 <span class="meta-item">${(task.task_date || '').includes(' to ') ? 'From ' + esc(task.task_date) : 'For ' + esc(task.task_date)}</span>
-                                <span class="meta-item">${esc(task.created_by || 'Unknown')} <span class="meta-arrow">to</span> ${esc(task.assigned_to || 'Unassigned')}</span>
+                                <span class="meta-item meta-people">${esc(task.created_by || 'Unknown')} <span class="meta-arrow">to</span> ${esc(task.assigned_to || 'Unassigned')}</span>
                                 <span class="meta-item">Created ${task.created_at ? new Date(task.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown'}</span>
                             </div>
                             ${ackBadge}
