@@ -714,6 +714,32 @@
             background: #fef2f2;
         }
 
+        .mention-dd {
+            position: absolute;
+            display: none;
+            z-index: 70;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            box-shadow: var(--shadow-lg);
+            max-height: 220px;
+            overflow-y: auto;
+            padding: 4px;
+        }
+
+        .mention-opt {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 7px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .mention-opt:hover { background: var(--surface); }
+
         .dept-Maintenance {
             background: #fef2f2;
             color: #991b1b;
@@ -1172,6 +1198,14 @@
                 </svg>
                 Shift Report
             </button> -->
+            <button class="btn-secondary" id="notifBtn" onclick="openNotifications()" style="position: relative; padding: 10px;"
+                title="Your mentions">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                </svg>
+                <span id="notifBadge" style="display:none; position:absolute; top:-4px; right:-4px; background:var(--danger); color:#fff; font-size:0.68rem; font-weight:700; min-width:18px; height:18px; padding:0 4px; border-radius:9px; align-items:center; justify-content:center;">0</span>
+            </button>
             <button class="btn-secondary" id="activityBtn" onclick="openActivity()" style="display:none;"
                 title="Activity log">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
@@ -1616,6 +1650,20 @@
         </div>
     </div>
 
+    <!-- Image lightbox (view full size + download) -->
+    <div class="modal-overlay" id="imageOverlay" style="z-index:60;">
+        <div style="max-width:92vw; max-height:92vh; display:flex; flex-direction:column; align-items:center; gap:14px;">
+            <img id="imageOverlayImg" src="" style="max-width:92vw; max-height:80vh; object-fit:contain; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.4); background:#fff;">
+            <div style="display:flex; gap:12px;">
+                <a id="imageOverlayDownload" href="" download="photo.jpg" class="btn btn-primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:8px;">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:18px;height:18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Download
+                </a>
+                <button class="btn" style="background:#fff;" onclick="closeImage()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div class="toast-container" id="toastContainer"></div>
 
     <!-- Flatpickr JS -->
@@ -1718,6 +1766,8 @@
 
             await loadUserList();
             await fetchHandovers();
+            pollNotifications();
+            setInterval(pollNotifications, 30000);
 
             // Periodic presence heartbeat and online status sync
             setInterval(async () => {
@@ -2027,6 +2077,19 @@
             if (el && document.activeElement !== el && !searchMode) el.value = '';
         }
 
+        // Full-size image viewer with a download button (works for data: URIs).
+        function openImage(src, filename) {
+            document.getElementById('imageOverlayImg').src = src;
+            const dl = document.getElementById('imageOverlayDownload');
+            dl.href = src;
+            dl.setAttribute('download', filename || 'photo.jpg');
+            document.getElementById('imageOverlay').classList.add('open');
+        }
+        function closeImage() {
+            document.getElementById('imageOverlay').classList.remove('open');
+            document.getElementById('imageOverlayImg').src = '';
+        }
+
         // Global search: queries every handover (all dates, all statuses, incl. completed)
         // by ID, title, description, assignee, author, room or department.
         function handleSearch() {
@@ -2161,7 +2224,7 @@
                     <div style="background: #f9fafb; padding: 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); position: relative;">
                         <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">${esc(c.author)} <span style="font-weight: 400; font-size: 0.8rem;">• ${new Date(c.timestamp).toLocaleString()}</span></div>
                         ${c.text ? `<div style="color: var(--text-main); font-size: 0.95rem; white-space: pre-wrap;">${esc(c.text)}</div>` : ''}
-                        ${c.photo ? `<img src="${c.photo}" style="max-width: 220px; max-height: 220px; border-radius: 8px; margin-top: 6px; border: 1px solid var(--border); cursor: pointer;" onclick="window.open('${c.photo}','_blank')">` : ''}
+                        ${c.photo ? `<img src="${c.photo}" style="max-width: 220px; max-height: 220px; border-radius: 8px; margin-top: 6px; border: 1px solid var(--border); cursor: zoom-in;" onclick="openImage('${c.photo}', 'comment-photo.jpg')" title="Click to view / download">` : ''}
                         ${canDeleteComment ? `<button onclick="deleteComment('${task.id}', '${c.timestamp}')" style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: var(--danger); cursor: pointer; padding: 12px; display: flex; align-items: center; justify-content: center;" title="Delete Comment">
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>` : ''}
@@ -2214,7 +2277,7 @@
 
                     <div class="task-details" id="details-${task.id}">
                         ${hasDescription ? `<div style="margin-bottom: 16px; white-space: pre-wrap;"><strong>Description:</strong><br>${esc(task.comment)}</div>` : ''}
-                        ${task.photo ? `<div style="margin-bottom: 16px;"><strong>Photo:</strong><br><img src="${task.photo}" style="max-width: 100%; max-height: 400px; border-radius: 8px; margin-top: 8px; object-fit: contain; border: 1px solid var(--border);"></div>` : ''}
+                        ${task.photo ? `<div style="margin-bottom: 16px;"><strong>Photo:</strong><br><img src="${task.photo}" style="max-width: 100%; max-height: 400px; border-radius: 8px; margin-top: 8px; object-fit: contain; border: 1px solid var(--border); cursor: zoom-in;" onclick="openImage('${task.photo}', 'handover-${shortId(task.id)}.jpg')" title="Click to view / download"></div>` : ''}
                         
                         <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
                             <strong style="display: block; margin-bottom: 12px;">Discussion</strong>
@@ -2223,7 +2286,7 @@
                             </div>
                             
                             <div style="display: flex; gap: 8px; margin-top: 12px; align-items: center;">
-                                <input type="text" id="replyText-${task.id}" placeholder="Type a reply as ${esc(currentUser ? currentUser.name : 'you')}…" style="flex: 1; padding: 8px 12px; height: 38px;" onkeypress="if(event.key === 'Enter') addComment('${task.id}')">
+                                <input type="text" id="replyText-${task.id}" placeholder="Reply… use @ to mention someone" autocomplete="off" style="flex: 1; padding: 8px 12px; height: 38px;" oninput="onReplyInput('${task.id}')" onblur="setTimeout(hideMentionDropdown, 180)" onkeypress="if(event.key === 'Enter') addComment('${task.id}')">
                                 <input type="file" id="replyPhoto-${task.id}" accept="image/*" style="display:none;" onchange="onReplyPhoto('${task.id}')">
                                 <button class="btn btn-quiet" style="height:38px; padding:0 12px;" title="Attach photo" onclick="document.getElementById('replyPhoto-${task.id}').click()">
                                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:18px; height:18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
@@ -2345,10 +2408,62 @@
             } catch (_) { showToast('Failed to process image'); }
         }
 
+        // ---- @mention autocomplete in the reply box ----
+        window._replyMentions = {};   // taskId -> Set of mentioned names
+        let _mentionCtx = null;
+
+        function mentionDropdown() {
+            let dd = document.getElementById('mentionDropdown');
+            if (!dd) {
+                dd = document.createElement('div');
+                dd.id = 'mentionDropdown';
+                dd.className = 'mention-dd';
+                document.body.appendChild(dd);
+            }
+            return dd;
+        }
+        function hideMentionDropdown() { mentionDropdown().style.display = 'none'; _mentionCtx = null; }
+
+        function onReplyInput(taskId) {
+            const input = document.getElementById(`replyText-${taskId}`);
+            const caret = input.selectionStart;
+            const before = input.value.slice(0, caret);
+            const m = before.match(/@([A-Za-z]*)$/);   // an @token being typed (no space yet)
+            if (!m) { hideMentionDropdown(); return; }
+            const q = m[1].toLowerCase();
+            const matches = (userList || []).filter(u => u.name && u.name.toLowerCase().includes(q)).slice(0, 6);
+            const dd = mentionDropdown();
+            if (!matches.length) { hideMentionDropdown(); return; }
+            _mentionCtx = { taskId, start: caret - m[0].length };
+            dd.innerHTML = matches.map(u =>
+                `<div class="mention-opt" onmousedown="event.preventDefault(); pickMention(${JSON.stringify(u.name).replace(/"/g, '&quot;')})">
+                    <span>${esc(u.name)}</span>
+                    <span style="color:var(--text-muted); font-size:0.72rem;">${esc((u.departments || []).join(', '))}</span>
+                </div>`).join('');
+            const r = input.getBoundingClientRect();
+            dd.style.left = (r.left + window.scrollX) + 'px';
+            dd.style.top = (r.bottom + window.scrollY + 4) + 'px';
+            dd.style.width = r.width + 'px';
+            dd.style.display = 'block';
+        }
+
+        function pickMention(name) {
+            if (!_mentionCtx) return;
+            const { taskId, start } = _mentionCtx;
+            const input = document.getElementById(`replyText-${taskId}`);
+            const caret = input.selectionStart;
+            input.value = input.value.slice(0, start) + '@' + name + ' ' + input.value.slice(caret);
+            (window._replyMentions[taskId] = window._replyMentions[taskId] || new Set()).add(name);
+            hideMentionDropdown();
+            input.focus();
+        }
+
         async function addComment(taskId) {
             const textInput = document.getElementById(`replyText-${taskId}`);
             const text = textInput.value.trim();
             const photo = window._replyPhotos[taskId] || null;
+            // Only keep mentions whose name is still present in the text.
+            const mentions = [...(window._replyMentions[taskId] || [])].filter(n => textInput.value.includes('@' + n));
 
             if (!text && !photo) {
                 showToast('Type a message or attach a photo');
@@ -2360,13 +2475,14 @@
                 const res = await authFetch(`/api/handovers/${taskId}/comments`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text, photo })
+                    body: JSON.stringify({ text, photo, mentions })
                 });
 
                 if (res.ok) {
                     textInput.value = '';
                     delete window._replyPhotos[taskId];
-                    showToast('Comment added');
+                    delete window._replyMentions[taskId];
+                    showToast(mentions.length ? ('Comment added · ' + mentions.length + ' notified & assigned') : 'Comment added');
                     // Keep details open by refreshing silently and passing the open state
                     const detailsState = document.getElementById(`details-${taskId}`).classList.contains('open');
                     await fetchHandovers(null, true);
@@ -3163,81 +3279,54 @@
             if (e.target === document.getElementById('pwOverlay')) closeChangePassword();
         });
 
-        // Notifications Feature
-        let lastSeenNotifTime = localStorage.getItem('lastSeenNotifTime') || '1970-01-01T00:00:00Z';
-        let lastPoppedUpTime = lastSeenNotifTime; // Prevent spamming popups on page load
+        document.getElementById('imageOverlay').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('imageOverlay')) closeImage();
+        });
+
+        // Mention notifications: personal "you were @mentioned" inbox.
         window.latestNotifs = [];
 
         async function pollNotifications() {
-            if (!currentUser || ROLE_RANK[currentUser.role] < ROLE_RANK.supervisor) return;
+            if (!currentUser) return;
             try {
                 const res = await authFetch('/api/notifications');
-                const notifs = await res.json();
-                window.latestNotifs = notifs;
-
-                if (notifs.length === 0) return;
-
-                let newCount = 0;
-                let newlyArrived = [];
-
-                notifs.forEach(n => {
-                    if (n.timestamp > lastSeenNotifTime) newCount++;
-                    if (n.timestamp > lastPoppedUpTime) newlyArrived.push(n);
-                });
-
-                // Update Badge UI
+                window.latestNotifs = res.ok ? await res.json() : [];
+                const unread = window.latestNotifs.filter(n => !n.read).length;
                 const badge = document.getElementById('notifBadge');
-                if (newCount > 0) {
-                    badge.style.display = 'flex';
-                    badge.innerText = newCount;
-                } else {
-                    badge.style.display = 'none';
-                }
-
-                // Show toast popups for newly arrived (if page was already open)
-                if (lastPoppedUpTime !== '1970-01-01T00:00:00Z') {
-                    newlyArrived.forEach(n => {
-                        showToast(`New reply from ${n.author}!`);
-                    });
-                }
-
-                // Track highest seen timestamp
-                if (notifs[0].timestamp > lastPoppedUpTime) {
-                    lastPoppedUpTime = notifs[0].timestamp;
-                }
-            } catch (err) {
-                console.error("Failed to poll notifications");
-            }
+                if (!badge) return;
+                if (unread > 0) { badge.style.display = 'flex'; badge.innerText = unread > 9 ? '9+' : unread; }
+                else { badge.style.display = 'none'; }
+            } catch (_) { /* non-critical */ }
         }
 
         async function openNotifications() {
             document.getElementById('notifOverlay').classList.add('open');
-            const notifs = window.latestNotifs;
+            const notifs = window.latestNotifs || [];
+            const list = document.getElementById('notifList');
 
-            if (notifs.length > 0) {
-                lastSeenNotifTime = notifs[0].timestamp;
-                localStorage.setItem('lastSeenNotifTime', lastSeenNotifTime);
+            if (!notifs.length) {
+                list.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:24px;">No mentions yet.<br>When someone @mentions you in a comment, it appears here.</div>';
+            } else {
+                list.innerHTML = notifs.map(n => `
+                    <div onclick="openMentionTask('${n.task_id}')" style="padding:14px 16px; border-bottom:1px solid var(--border); cursor:pointer; background:${n.read ? 'transparent' : 'var(--surface)'};">
+                        <div style="font-size:0.9rem;"><strong>${esc(n.actor_name)}</strong> mentioned you on <span style="color:var(--primary); font-weight:600;">${esc(n.task_title || 'a handover')}</span></div>
+                        ${n.text ? `<div style="font-size:0.9rem; color:var(--text-main); background:var(--surface); padding:8px 12px; border-radius:8px; margin-top:6px; white-space:pre-wrap;">${esc(n.text)}</div>` : ''}
+                        <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">${n.ts ? new Date(n.ts).toLocaleString() : ''}${n.task_date ? ' • For ' + esc(n.task_date) : ''} <span style="color:var(--primary); font-weight:600; margin-left:6px;">Open →</span></div>
+                    </div>
+                `).join('');
+            }
+
+            // Mark everything read.
+            try {
+                await authFetch('/api/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                (window.latestNotifs || []).forEach(n => n.read = true);
                 document.getElementById('notifBadge').style.display = 'none';
-            }
+            } catch (_) { /* non-critical */ }
+        }
 
-            if (notifs.length === 0) {
-                document.getElementById('notifList').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No recent activity.</div>';
-                return;
-            }
-
-            document.getElementById('notifList').innerHTML = notifs.map(n => `
-                <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; background: ${n.timestamp > localStorage.getItem('lastSeenNotifTime') ? 'var(--surface-hover)' : 'transparent'};">
-                    <div style="font-size: 0.9rem;">
-                        <strong>${esc(n.author)}</strong> replied on <span style="font-weight: 600; color: var(--primary); cursor: pointer;" onclick="closeNotifications(); document.getElementById('datePicker')._flatpickr.setDate('${esc(n.task_date)}'); fetchHandovers('${esc(n.task_date)}')">${esc(n.title)}</span>
-                    </div>
-                    <div style="font-size: 0.95rem; color: var(--text-main); background: var(--surface); padding: 8px 12px; border-radius: 8px; white-space: pre-wrap;">
-                        ${esc(n.text)}
-                    </div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">
-                        ${new Date(n.timestamp).toLocaleString()} • For ${esc(n.task_date)}
-                    </div>
-                </div>
-            `).join('');
+        function openMentionTask(taskId) {
+            closeNotifications();
+            goToTask(taskId);   // loads the correct date, scrolls to and highlights the handover
         }
 
         function closeNotifications() {
@@ -3246,7 +3335,7 @@
 
         // Accordion Card Logic
         document.addEventListener('click', (e) => {
-            if (e.target.closest('#modalOverlay') || e.target.closest('#notifOverlay') || e.target.closest('#usersOverlay') || e.target.closest('#activityOverlay') || e.target.closest('#pwOverlay') || e.target.closest('.toast-container')) {
+            if (e.target.closest('#modalOverlay') || e.target.closest('#notifOverlay') || e.target.closest('#usersOverlay') || e.target.closest('#activityOverlay') || e.target.closest('#pwOverlay') || e.target.closest('#imageOverlay') || e.target.closest('.toast-container')) {
                 return;
             }
 

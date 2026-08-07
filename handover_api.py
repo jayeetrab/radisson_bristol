@@ -25,6 +25,7 @@ try:
     mongo_tasks = mongo_db["tasks"]
     mongo_users = mongo_db["users"]
     mongo_activity = mongo_db["activity"]
+    mongo_notifications = mongo_db["notifications"]
     try:
         mongo_tasks.create_index([("is_deleted", 1), ("task_date", 1)])
         mongo_tasks.create_index([("created_at", -1)])
@@ -35,8 +36,9 @@ except Exception as e:
     mongo_tasks = None
     mongo_users = None
     mongo_activity = None
+    mongo_notifications = None
 
-DEPARTMENTS = ["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "HR", "Other"]
+DEPARTMENTS =["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "HR", "Other"]
 ROLES = ["normal", "supervisor", "manager", "admin"]
 ROLE_RANK = {"normal": 1, "supervisor": 2, "manager": 3, "admin": 4}
 
@@ -885,15 +887,43 @@ def add_comment(task_id):
         photo = data.get("photo")
         if not text and not photo:
             return jsonify({"error": "A message or photo is required"}), 400
+        ts = datetime.utcnow().isoformat()
+        # @-mentioned people (names) picked from the mention dropdown.
+        mentions = [m for m in (data.get("mentions") or []) if isinstance(m, str) and m.strip()]
         new_comment = {
             "author": user["name"],
             "text": text,
             "photo": photo,
-            "timestamp": datetime.utcnow().isoformat(),
+            "mentions": mentions,
+            "timestamp": ts,
         }
         qid = resolve_task_id(task_id)
         task = mongo_tasks.find_one({"_id": qid})
         mongo_tasks.update_one({"_id": qid}, {"$push": {"comments": new_comment}})
+
+        if mentions and task is not None:
+            # 1) Add mentioned people to the handover's assignees (from any department).
+            existing = [a.strip() for a in (task.get("assigned_to") or "").split(",") if a.strip()]
+            for name in mentions:
+                if name not in existing:
+                    existing.append(name)
+            mongo_tasks.update_one({"_id": qid}, {"$set": {"assigned_to": ", ".join(existing)}})
+            # 2) Notify each mentioned person (skip self-mentions).
+            if mongo_notifications is not None:
+                for name in mentions:
+                    if name == user["name"]:
+                        continue
+                    mongo_notifications.insert_one({
+                        "recipient_name": name,
+                        "actor_name": user["name"],
+                        "task_id": str(task.get("_id")),
+                        "task_title": task.get("title", ""),
+                        "task_date": task.get("task_date", ""),
+                        "text": text[:200],
+                        "ts": ts,
+                        "read": False,
+                    })
+
         log_activity("comment", target_type="task", target_id=task_id,
                      target_title=(task or {}).get("title"), task_departments=(task or {}).get("department"),
                      detail=(f"Commented: {text[:80]}" if text else "Added a photo"))
@@ -928,27 +958,37 @@ def delete_comment(task_id, timestamp):
 @app.route('/api/notifications', methods=['GET'])
 @login_required
 def get_notifications():
-    if mongo_tasks is None:
+    """The current user's personal @-mention notifications, newest first."""
+    if mongo_notifications is None:
         return jsonify([])
     try:
-        pipeline = [
-            {"$unwind": "$comments"},
-            {"$sort": {"comments.timestamp": -1}},
-            {"$limit": 30},
-            {"$project": {
-                "_id": 0,
-                "task_id": {"$toString": "$_id"},
-                "title": 1,
-                "task_date": 1,
-                "author": "$comments.author",
-                "text": "$comments.text",
-                "timestamp": "$comments.timestamp",
-            }},
-        ]
-        return jsonify(list(mongo_tasks.aggregate(pipeline)))
+        user = current_user()
+        items = []
+        for n in mongo_notifications.find({"recipient_name": user["name"]}).sort("ts", -1).limit(50):
+            n["id"] = str(n.pop("_id"))
+            items.append(n)
+        return jsonify(items)
     except Exception as e:
         logger.error(f"Error fetching notifications: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify([])
+
+
+@app.route('/api/notifications/read', methods=['POST'])
+@login_required
+def mark_notifications_read():
+    """Mark the current user's notifications read (all, or a single id)."""
+    if mongo_notifications is None:
+        return jsonify({"success": True})
+    user = current_user()
+    entry_id = (request.json or {}).get("id")
+    q = {"recipient_name": user["name"]}
+    if entry_id:
+        try:
+            q["_id"] = ObjectId(entry_id)
+        except Exception:
+            pass
+    mongo_notifications.update_many(q, {"$set": {"read": True}})
+    return jsonify({"success": True})
 
 
 if __name__ == '__main__':
