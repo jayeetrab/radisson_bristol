@@ -135,6 +135,30 @@ def resolve_task_id(task_id):
         return task_id
 
 
+def parse_names(assigned_to):
+    return [a.strip() for a in (assigned_to or "").split(",") if a.strip()]
+
+
+def create_notification(recipient_name, actor_name, task, ntype="assignment", text=""):
+    """Add a personal notification for a user (skips self and empty recipients)."""
+    if mongo_notifications is None or not recipient_name or recipient_name == actor_name:
+        return
+    try:
+        mongo_notifications.insert_one({
+            "recipient_name": recipient_name,
+            "actor_name": actor_name,
+            "type": ntype,
+            "task_id": str(task.get("_id")),
+            "task_title": task.get("title", ""),
+            "task_date": task.get("task_date", ""),
+            "text": (text or "")[:200],
+            "ts": datetime.utcnow().isoformat(),
+            "read": False,
+        })
+    except Exception as e:
+        logger.error(f"Notification error: {e}")
+
+
 def log_activity(action, target_type=None, target_id=None, target_title=None, task_departments=None, detail=""):
     """Record an auditable action. `depts` (actor's + target's departments) is what
     scopes visibility: managers see entries touching their department(s)."""
@@ -673,6 +697,10 @@ def add_handover():
             "created_at": datetime.utcnow(),
         }
         result = mongo_tasks.insert_one(task)
+        # Notify everyone assigned to this new handover.
+        notif_task = {"_id": result.inserted_id, "title": title, "task_date": task_date}
+        for name in parse_names(data.get("assigned_to")):
+            create_notification(name, user["name"], notif_task, "assignment")
         log_activity("create_task", target_type="task", target_id=result.inserted_id,
                      target_title=title, task_departments=data.get("department"),
                      detail="Created handover")
@@ -727,6 +755,13 @@ def update_handover(task_id):
         result = mongo_tasks.update_one({"_id": query_id}, {"$set": update_data})
         if result.matched_count == 0 and isinstance(query_id, int):
             mongo_tasks.update_one({"id": query_id}, {"$set": update_data})
+
+        # Notify anyone newly added to the assignees on this edit.
+        if "assigned_to" in update_data:
+            old_names = parse_names(task.get("assigned_to"))
+            for name in parse_names(update_data["assigned_to"]):
+                if name not in old_names:
+                    create_notification(name, user["name"], task, "assignment")
 
         if "status" in update_data and status_only:
             detail = f"Changed status to {update_data['status']}"
@@ -909,20 +944,8 @@ def add_comment(task_id):
                     existing.append(name)
             mongo_tasks.update_one({"_id": qid}, {"$set": {"assigned_to": ", ".join(existing)}})
             # 2) Notify each mentioned person (skip self-mentions).
-            if mongo_notifications is not None:
-                for name in mentions:
-                    if name == user["name"]:
-                        continue
-                    mongo_notifications.insert_one({
-                        "recipient_name": name,
-                        "actor_name": user["name"],
-                        "task_id": str(task.get("_id")),
-                        "task_title": task.get("title", ""),
-                        "task_date": task.get("task_date", ""),
-                        "text": text[:200],
-                        "ts": ts,
-                        "read": False,
-                    })
+            for name in mentions:
+                create_notification(name, user["name"], task, "mention", text)
 
         log_activity("comment", target_type="task", target_id=task_id,
                      target_title=(task or {}).get("title"), task_departments=(task or {}).get("department"),

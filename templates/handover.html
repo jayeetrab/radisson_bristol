@@ -3309,7 +3309,7 @@
             } else {
                 list.innerHTML = notifs.map(n => `
                     <div onclick="openMentionTask('${n.task_id}')" style="padding:14px 16px; border-bottom:1px solid var(--border); cursor:pointer; background:${n.read ? 'transparent' : 'var(--surface)'};">
-                        <div style="font-size:0.9rem;"><strong>${esc(n.actor_name)}</strong> mentioned you on <span style="color:var(--primary); font-weight:600;">${esc(n.task_title || 'a handover')}</span></div>
+                        <div style="font-size:0.9rem;"><strong>${esc(n.actor_name)}</strong> ${n.type === 'assignment' ? 'assigned you to' : 'mentioned you on'} <span style="color:var(--primary); font-weight:600;">${esc(n.task_title || 'a handover')}</span></div>
                         ${n.text ? `<div style="font-size:0.9rem; color:var(--text-main); background:var(--surface); padding:8px 12px; border-radius:8px; margin-top:6px; white-space:pre-wrap;">${esc(n.text)}</div>` : ''}
                         <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">${n.ts ? new Date(n.ts).toLocaleString() : ''}${n.task_date ? ' • For ' + esc(n.task_date) : ''} <span style="color:var(--primary); font-weight:600; margin-left:6px;">Open →</span></div>
                     </div>
