@@ -740,6 +740,35 @@
 
         .mention-opt:hover { background: var(--surface); }
 
+        .mention-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .mention-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--primary-light);
+            color: var(--primary);
+            border: 1px solid #fecaca;
+            border-radius: 999px;
+            padding: 2px 6px 2px 10px;
+            font-size: 0.8rem;
+        }
+
+        .mention-chip button {
+            background: none;
+            border: none;
+            color: var(--primary);
+            cursor: pointer;
+            font-size: 1rem;
+            line-height: 1;
+            padding: 0 2px;
+        }
+
         .dept-Maintenance {
             background: #fef2f2;
             color: #991b1b;
@@ -2223,7 +2252,7 @@
                     return `
                     <div style="background: #f9fafb; padding: 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); position: relative;">
                         <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">${esc(c.author)} <span style="font-weight: 400; font-size: 0.8rem;">• ${new Date(c.timestamp).toLocaleString()}</span></div>
-                        ${c.text ? `<div style="color: var(--text-main); font-size: 0.95rem; white-space: pre-wrap;">${esc(c.text)}</div>` : ''}
+                        ${c.text ? `<div style="color: var(--text-main); font-size: 0.95rem; white-space: pre-wrap;">${highlightMentions(esc(c.text), c.mentions)}</div>` : ''}
                         ${c.photo ? `<img src="${c.photo}" style="max-width: 220px; max-height: 220px; border-radius: 8px; margin-top: 6px; border: 1px solid var(--border); cursor: zoom-in;" onclick="openImage('${c.photo}', 'comment-photo.jpg')" title="Click to view / download">` : ''}
                         ${canDeleteComment ? `<button onclick="deleteComment('${task.id}', '${c.timestamp}')" style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: var(--danger); cursor: pointer; padding: 12px; display: flex; align-items: center; justify-content: center;" title="Delete Comment">
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -2294,6 +2323,7 @@
                                 <button class="btn-primary" onclick="addComment('${task.id}')" style="padding: 0 16px; height: 38px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer;">Reply</button>
                             </div>
                             <div id="replyPhotoName-${task.id}" style="font-size:0.78rem; color:var(--text-muted); margin-top:6px; display:none;"></div>
+                            <div id="replyChips-${task.id}" class="mention-chips" style="display:none;"></div>
                         </div>
 
                         ${canViewHistory() ? `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
@@ -2424,6 +2454,17 @@
         }
         function hideMentionDropdown() { mentionDropdown().style.display = 'none'; _mentionCtx = null; }
 
+        // These people surface at the top of the @ list, in this order; everyone else
+        // follows alphabetically (the list scrolls, so anyone can still be picked).
+        const PRIORITY_MENTIONS = ['Yulia', 'Jay', 'Mariia', 'Melih', 'Ray'];
+        function mentionRank(name) {
+            const lower = (name || '').toLowerCase();
+            for (let i = 0; i < PRIORITY_MENTIONS.length; i++) {
+                if (lower.startsWith(PRIORITY_MENTIONS[i].toLowerCase())) return i;
+            }
+            return PRIORITY_MENTIONS.length + 1;
+        }
+
         function onReplyInput(taskId) {
             const input = document.getElementById(`replyText-${taskId}`);
             const caret = input.selectionStart;
@@ -2431,15 +2472,22 @@
             const m = before.match(/@([A-Za-z]*)$/);   // an @token being typed (no space yet)
             if (!m) { hideMentionDropdown(); return; }
             const q = m[1].toLowerCase();
-            const matches = (userList || []).filter(u => u.name && u.name.toLowerCase().includes(q)).slice(0, 6);
+            const matches = (userList || [])
+                .filter(u => u.name && u.name.toLowerCase().includes(q))
+                .sort((a, b) => {
+                    const ra = mentionRank(a.name), rb = mentionRank(b.name);
+                    return ra !== rb ? ra - rb : a.name.localeCompare(b.name);
+                });
             const dd = mentionDropdown();
             if (!matches.length) { hideMentionDropdown(); return; }
             _mentionCtx = { taskId, start: caret - m[0].length };
-            dd.innerHTML = matches.map(u =>
-                `<div class="mention-opt" onmousedown="event.preventDefault(); pickMention(${JSON.stringify(u.name).replace(/"/g, '&quot;')})">
+            dd.innerHTML = matches.map(u => {
+                const nameArg = JSON.stringify(u.name).replace(/"/g, '&quot;');
+                return `<div class="mention-opt" onmousedown="event.preventDefault()" onclick="event.stopPropagation(); pickMention(${nameArg})">
                     <span>${esc(u.name)}</span>
                     <span style="color:var(--text-muted); font-size:0.72rem;">${esc((u.departments || []).join(', '))}</span>
-                </div>`).join('');
+                </div>`;
+            }).join('');
             const r = input.getBoundingClientRect();
             dd.style.left = (r.left + window.scrollX) + 'px';
             dd.style.top = (r.bottom + window.scrollY + 4) + 'px';
@@ -2455,7 +2503,37 @@
             input.value = input.value.slice(0, start) + '@' + name + ' ' + input.value.slice(caret);
             (window._replyMentions[taskId] = window._replyMentions[taskId] || new Set()).add(name);
             hideMentionDropdown();
+            renderMentionChips(taskId);
             input.focus();
+        }
+
+        // Show the tagged people as bold chips under the reply box, with a remove (×).
+        function renderMentionChips(taskId) {
+            const wrap = document.getElementById(`replyChips-${taskId}`);
+            if (!wrap) return;
+            const names = [...(window._replyMentions[taskId] || [])];
+            wrap.innerHTML = names.map(n =>
+                `<span class="mention-chip"><strong>@${esc(n)}</strong><button type="button" onclick="removeMention('${taskId}', ${JSON.stringify(n).replace(/"/g, '&quot;')})" aria-label="Remove">×</button></span>`
+            ).join('');
+            wrap.style.display = names.length ? 'flex' : 'none';
+        }
+
+        function removeMention(taskId, name) {
+            const set = window._replyMentions[taskId];
+            if (set) set.delete(name);
+            const input = document.getElementById(`replyText-${taskId}`);
+            if (input) input.value = input.value.split('@' + name + ' ').join('').split('@' + name).join('');
+            renderMentionChips(taskId);
+        }
+
+        // Bold @mentions inside a rendered (already HTML-escaped) comment.
+        function highlightMentions(escapedText, mentions) {
+            let out = escapedText;
+            (mentions || []).forEach(n => {
+                const token = '@' + esc(n);
+                out = out.split(token).join(`<strong style="color:var(--primary);">${token}</strong>`);
+            });
+            return out;
         }
 
         async function addComment(taskId) {
@@ -3335,7 +3413,7 @@
 
         // Accordion Card Logic
         document.addEventListener('click', (e) => {
-            if (e.target.closest('#modalOverlay') || e.target.closest('#notifOverlay') || e.target.closest('#usersOverlay') || e.target.closest('#activityOverlay') || e.target.closest('#pwOverlay') || e.target.closest('#imageOverlay') || e.target.closest('.toast-container')) {
+            if (e.target.closest('#modalOverlay') || e.target.closest('#notifOverlay') || e.target.closest('#usersOverlay') || e.target.closest('#activityOverlay') || e.target.closest('#pwOverlay') || e.target.closest('#imageOverlay') || e.target.closest('#mentionDropdown') || e.target.closest('.toast-container')) {
                 return;
             }
 
