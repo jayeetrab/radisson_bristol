@@ -1329,9 +1329,6 @@
                 <button class="btn-secondary" id="overdueBtn"
                     style="height:36px; padding:0 14px; font-size:0.85rem; color:#b91c1c; border-color:#fecaca;"
                     onclick="setFilter('overdue', 'Overdue')">Overdue <span id="overdueCount"></span></button>
-                <button class="btn-secondary" id="slaEscalatedBtn"
-                    style="height:36px; padding:0 14px; font-size:0.85rem; color:#dc2626; border-color:#fca5a5;"
-                    onclick="setFilter('sla_escalated', 'SLA Alerts')">SLA Alerts <span id="slaCount"></span></button>
                 <button class="btn-secondary" id="highBtn" style="height:36px; padding:0 14px; font-size:0.85rem;"
                     onclick="setFilter('high', 'High priority')">High priority <span id="highCount"></span></button>
                 <button class="btn-secondary" id="myDeptBtn"
@@ -1998,20 +1995,12 @@
             const completed = tasks.filter(t => t.status === 'Completed').length;
             const overdue = tasks.filter(t => t.is_overdue).length;
             const high = tasks.filter(t => t.priority === 'High' && t.status !== 'Completed').length;
-            const now = Date.now();
-            const slaCount = tasks.filter(t => {
-                if (t.status === 'Completed' || t.is_deleted) return false;
-                const cTime = new Date(t.created_at || t.ts || now).getTime();
-                const hrs = (now - cTime) / (1000 * 60 * 60);
-                return t.priority === 'High' && (hrs >= 2 || t.is_overdue);
-            }).length;
 
             document.getElementById('countPending').innerText = pending;
             document.getElementById('countInProgress').innerText = inProgress;
             document.getElementById('countCompleted').innerText = completed;
             document.getElementById('overdueCount').innerText = overdue ? `(${overdue})` : '';
             document.getElementById('highCount').innerText = high ? `(${high})` : '';
-            document.getElementById('slaCount').innerText = slaCount ? `(${slaCount})` : '';
 
 
 
@@ -2155,14 +2144,6 @@
                     filtered = tasks.filter(t => (t.status || 'Pending') === activeFilter.value);
                 } else if (activeFilter.type === 'overdue') {
                     filtered = tasks.filter(t => t.is_overdue);
-                } else if (activeFilter.type === 'sla_escalated') {
-                    const now = Date.now();
-                    filtered = tasks.filter(t => {
-                        if (t.status === 'Completed' || t.is_deleted) return false;
-                        const cTime = new Date(t.created_at || t.ts || now).getTime();
-                        const hrs = (now - cTime) / (1000 * 60 * 60);
-                        return t.priority === 'High' && (hrs >= 2 || t.is_overdue);
-                    });
                 } else if (activeFilter.type === 'high') {
                     filtered = tasks.filter(t => t.priority === 'High' && t.status !== 'Completed');
                 } else if (activeFilter.type === 'assigned_to_me') {
@@ -2225,10 +2206,6 @@
                 const roomBadge = task.room_location ? `<span class="badge badge-info">${esc(task.room_location)}</span>` : '';
 
                 const isPendingOrProgress = task.status === 'Pending' || task.status === 'In Progress';
-                const createdTime = new Date(task.created_at || task.ts || Date.now()).getTime();
-                const hoursElapsed = (Date.now() - createdTime) / (1000 * 60 * 60);
-                const isSlaEscalated = isPendingOrProgress && task.priority === 'High' && (hoursElapsed >= 2 || task.is_overdue);
-                const slaBadge = isSlaEscalated ? `<span class="badge badge-danger">SLA breached</span>` : '';
 
                 const CHK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="width:13px;height:13px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>';
                 const acks = task.acknowledged_by || [];
@@ -2268,7 +2245,6 @@
                                 ${esc(task.title)}
                                 ${task.is_overdue ? '<span class="badge priority-high" style="background:#ef4444; color:white; border-color:#dc2626;">OVERDUE</span>' : ''}
                                 ${task.priority === 'High' ? '<span class="badge priority-high">URGENT</span>' : ''}
-                                ${slaBadge}
                             </div>
                             <div class="task-meta">
                                 <span class="meta-item hid" title="Handover ID">#${shortId(task.id)}</span>
