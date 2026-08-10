@@ -1550,9 +1550,35 @@
                         aria-label="Show password"></button>
                 </div>
             </div>
+            <div class="form-group" style="margin-bottom:16px;">
+                <label>Confirm New Password</label>
+                <div class="pw-wrap">
+                    <input type="password" id="pwConfirm" autocomplete="new-password" placeholder="Re-type the new password">
+                    <button type="button" class="pw-toggle" onclick="togglePw(this)"
+                        aria-label="Show password"></button>
+                </div>
+            </div>
             <div class="modal-actions" style="margin-top:8px;">
                 <button type="button" class="btn" id="pwCancelBtn" onclick="closeChangePassword()">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="saveOwnPassword()">Update Password</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset-password result: shows the temporary password to hand over -->
+    <div class="modal-overlay" id="resetPwOverlay" style="z-index:65;">
+        <div class="modal" style="max-width: 440px;">
+            <h2>Temporary password</h2>
+            <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:16px;">
+                New temporary password for <strong id="resetPwName"></strong>. Share it with them now &mdash; it is shown
+                only once, and they will be asked to set their own password on their next login.
+            </p>
+            <div style="display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 16px;">
+                <code id="resetPwValue" style="font-family:ui-monospace, Menlo, monospace; font-size:1.05rem; font-weight:700; letter-spacing:0.02em; flex:1; word-break:break-all;"></code>
+                <button type="button" class="btn" style="padding:6px 12px; font-size:0.82rem;" onclick="copyResetPw()">Copy</button>
+            </div>
+            <div class="modal-actions" style="margin-top:20px;">
+                <button type="button" class="btn btn-primary" onclick="closeResetResult()">Done</button>
             </div>
         </div>
     </div>
@@ -1838,6 +1864,7 @@
             document.getElementById('pwOverlay').classList.add('open');
             document.getElementById('pwCurrent').value = '';
             document.getElementById('pwNew').value = '';
+            document.getElementById('pwConfirm').value = '';
             document.getElementById('pwForcedNote').style.display = forced ? 'block' : 'none';
             document.getElementById('pwCancelBtn').style.display = forced ? 'none' : 'inline-flex';
         }
@@ -1848,7 +1875,9 @@
         async function saveOwnPassword() {
             const current = document.getElementById('pwCurrent').value;
             const nw = document.getElementById('pwNew').value;
+            const confirm = document.getElementById('pwConfirm').value;
             if (nw.length < 6) { showToast('New password must be at least 6 characters'); return; }
+            if (nw !== confirm) { showToast('New password and confirmation do not match'); return; }
             try {
                 const res = await authFetch('/api/me/password', {
                     method: 'POST',
@@ -1863,9 +1892,8 @@
             } catch (_) { showToast('Failed to update password'); }
         }
 
-        // Generate a strong password for a new/reset staff account and reveal it so the
-        // manager can hand it over. Nothing is stored plaintext - it's hashed on save.
-        function generatePassword() {
+        // A strong, readable temporary password (no ambiguous chars).
+        function genPasswordString() {
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
             const specials = '!@#$%&*';
             const arr = new Uint32Array(11);
@@ -1873,11 +1901,50 @@
             let pw = '';
             for (let i = 0; i < 10; i++) pw += chars[arr[i] % chars.length];
             pw += specials[arr[10] % specials.length];
+            return pw;
+        }
+
+        // "Generate strong password" in the create/edit user form: fills + reveals it.
+        function generatePassword() {
             const inp = document.getElementById('userPassword');
-            inp.value = pw;
+            inp.value = genPasswordString();
             inp.type = 'text';
             const toggle = inp.parentElement.querySelector('.pw-toggle');
             if (toggle) toggle.innerHTML = EYE_OFF_SVG;
+        }
+
+        // One-click reset: sets a new temporary password, reveals it to hand over, and
+        // forces the user to choose their own on next login (enforced server-side).
+        async function resetUserPassword(id, name) {
+            const pw = genPasswordString();
+            try {
+                const res = await authFetch(`/api/users/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pw })
+                });
+                if (res.ok) {
+                    showResetResult(name, pw);
+                    loadUserList();
+                } else {
+                    const d = await res.json().catch(() => ({}));
+                    showToast(d.error || 'Failed to reset password');
+                }
+            } catch (_) { showToast('Failed to reset password'); }
+        }
+
+        function showResetResult(name, pw) {
+            document.getElementById('resetPwName').innerText = name;
+            document.getElementById('resetPwValue').innerText = pw;
+            document.getElementById('resetPwOverlay').classList.add('open');
+        }
+        function copyResetPw() {
+            const pw = document.getElementById('resetPwValue').innerText;
+            navigator.clipboard && navigator.clipboard.writeText(pw);
+            showToast('Password copied');
+        }
+        function closeResetResult() {
+            document.getElementById('resetPwOverlay').classList.remove('open');
         }
 
         function filterMyDept() {
@@ -3153,7 +3220,8 @@
                             ${u.active ? '' : ' · <span style="color:var(--danger);">disabled</span>'}
                         </div>
                     </div>
-                    <div style="display:flex; gap:8px;">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                        ${u.id === currentUser.id ? '' : `<button class="btn" style="padding:6px 12px; font-size:0.82rem;" onclick="resetUserPassword('${u.id}', this.dataset.n)" data-n="${esc(u.name)}">Reset password</button>`}
                         <button class="btn" style="padding:6px 12px; font-size:0.82rem;" onclick='editUser(${esc(JSON.stringify(u))})'>Edit</button>
                         ${u.id === currentUser.id ? '' : `<button class="btn btn-danger" style="padding:6px 12px; font-size:0.82rem;" onclick="deleteUser('${u.id}', this.dataset.n)" data-n="${esc(u.name)}">Delete</button>`}
                     </div>
@@ -3337,6 +3405,10 @@
             if (e.target === document.getElementById('imageOverlay')) closeImage();
         });
 
+        document.getElementById('resetPwOverlay').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('resetPwOverlay')) closeResetResult();
+        });
+
         // Mention notifications: personal "you were @mentioned" inbox.
         window.latestNotifs = [];
 
@@ -3389,7 +3461,7 @@
 
         // Accordion Card Logic
         document.addEventListener('click', (e) => {
-            if (e.target.closest('#modalOverlay') || e.target.closest('#notifOverlay') || e.target.closest('#usersOverlay') || e.target.closest('#activityOverlay') || e.target.closest('#pwOverlay') || e.target.closest('#imageOverlay') || e.target.closest('#mentionDropdown') || e.target.closest('.toast-container')) {
+            if (e.target.closest('#modalOverlay') || e.target.closest('#notifOverlay') || e.target.closest('#usersOverlay') || e.target.closest('#activityOverlay') || e.target.closest('#pwOverlay') || e.target.closest('#imageOverlay') || e.target.closest('#resetPwOverlay') || e.target.closest('#mentionDropdown') || e.target.closest('.toast-container')) {
                 return;
             }
 
