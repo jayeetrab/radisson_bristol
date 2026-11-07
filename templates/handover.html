@@ -113,33 +113,40 @@
         }
         .aurora-orb { position: absolute; border-radius: 50%; pointer-events: none; will-change: transform; }
         .aurora-orb.orb-1 {
-            width: 620px; height: 620px; top: -140px; right: -80px;
-            background: radial-gradient(circle, rgba(255, 59, 48, .10) 0%, rgba(225, 29, 72, .04) 45%, transparent 70%);
-            filter: blur(85px); animation: orbFloat1 32s ease-in-out infinite alternate;
+            width: 720px; height: 720px; top: -260px; right: -120px;
+            background: radial-gradient(circle, rgba(255, 59, 48, .30) 0%, rgba(225, 29, 72, .12) 45%, transparent 70%);
+            filter: blur(80px); animation: orbFloat1 18s ease-in-out infinite alternate;
         }
         .aurora-orb.orb-2 {
-            width: 540px; height: 540px; bottom: -120px; left: -100px;
-            background: radial-gradient(circle, rgba(235, 45, 60, .085) 0%, rgba(255, 69, 58, .03) 45%, transparent 70%);
-            filter: blur(90px); animation: orbFloat2 36s ease-in-out infinite alternate;
+            width: 640px; height: 640px; bottom: -160px; left: -140px;
+            background: radial-gradient(circle, rgba(235, 45, 60, .26) 0%, rgba(255, 69, 58, .10) 45%, transparent 70%);
+            filter: blur(85px); animation: orbFloat2 22s ease-in-out infinite alternate;
         }
         .aurora-orb.orb-3 {
-            width: 480px; height: 480px; top: 36%; left: 28%;
-            background: radial-gradient(circle, rgba(255, 45, 85, .06) 0%, rgba(255, 59, 48, .02) 50%, transparent 70%);
-            filter: blur(95px); animation: orbFloat3 28s ease-in-out infinite alternate;
+            width: 560px; height: 560px; top: 34%; left: 26%;
+            background: radial-gradient(circle, rgba(255, 45, 85, .18) 0%, rgba(255, 59, 48, .07) 50%, transparent 70%);
+            filter: blur(90px); animation: orbFloat3 16s ease-in-out infinite alternate;
         }
-        @keyframes orbFloat1 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-60px, 45px) scale(1.08); } 100% { transform: translate(-30px, 80px) scale(.96); } }
-        @keyframes orbFloat2 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(65px, -40px) scale(1.06); } 100% { transform: translate(35px, -75px) scale(.95); } }
-        @keyframes orbFloat3 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-45px, -45px) scale(1.1); } 100% { transform: translate(45px, 35px) scale(.92); } }
+        /* Sweeps along the top so the red flows behind the frosted nav bar */
+        .aurora-orb.orb-4 {
+            width: 600px; height: 420px; top: -220px; left: -10%;
+            background: radial-gradient(ellipse, rgba(255, 59, 48, .28) 0%, rgba(215, 0, 21, .10) 50%, transparent 72%);
+            filter: blur(70px); animation: orbSweep 20s ease-in-out infinite alternate;
+        }
+        @keyframes orbFloat1 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-220px, 120px) scale(1.15); } 100% { transform: translate(-380px, 40px) scale(.92); } }
+        @keyframes orbFloat2 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(260px, -140px) scale(1.12); } 100% { transform: translate(420px, -40px) scale(.94); } }
+        @keyframes orbFloat3 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-200px, -160px) scale(1.2); } 100% { transform: translate(220px, 120px) scale(.9); } }
+        @keyframes orbSweep { 0% { transform: translateX(0) scale(1); } 50% { transform: translateX(45vw) scale(1.15); } 100% { transform: translateX(85vw) scale(.95); } }
 
         /* ===== Top navigation (frosted glass) ===== */
         .top-nav {
             position: sticky; top: 0; z-index: 40;
             display: flex; align-items: center; gap: 16px;
             height: 64px; padding: 0 28px;
-            background: rgba(251, 251, 253, .72);
-            -webkit-backdrop-filter: saturate(180%) blur(20px);
-            backdrop-filter: saturate(180%) blur(20px);
-            border-bottom: 1px solid rgba(0, 0, 0, .06);
+            background: rgba(255, 255, 255, .38);
+            -webkit-backdrop-filter: saturate(180%) blur(24px);
+            backdrop-filter: saturate(180%) blur(24px);
+            border-bottom: 1px solid rgba(255, 255, 255, .5);
         }
         .top-nav::before {
             content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1.5px; pointer-events: none;
@@ -947,6 +954,7 @@
         <div class="aurora-orb orb-1"></div>
         <div class="aurora-orb orb-2"></div>
         <div class="aurora-orb orb-3"></div>
+        <div class="aurora-orb orb-4"></div>
     </div>
 
     <header class="top-nav" id="topNav">
