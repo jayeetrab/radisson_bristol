@@ -102,51 +102,18 @@
         @keyframes pageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
         @keyframes badgePop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
 
-        /* ===== Ambient aurora (white canvas, minimal red light, heavy blur) ===== */
-        .aurora-bg {
-            position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
-            background:
-                radial-gradient(1200px 650px at 90% -5%, rgba(255, 59, 48, .055) 0%, rgba(225, 29, 72, .02) 40%, transparent 65%),
-                radial-gradient(1100px 600px at -5% 105%, rgba(235, 45, 60, .045) 0%, rgba(255, 69, 58, .015) 45%, transparent 65%),
-                radial-gradient(850px 450px at 50% 25%, rgba(255, 45, 85, .025) 0%, transparent 60%),
-                var(--bg);
-        }
-        .aurora-orb { position: absolute; border-radius: 50%; pointer-events: none; will-change: transform; }
-        .aurora-orb.orb-1 {
-            width: 720px; height: 720px; top: -260px; right: -120px;
-            background: radial-gradient(circle, rgba(255, 59, 48, .30) 0%, rgba(225, 29, 72, .12) 45%, transparent 70%);
-            filter: blur(80px); animation: orbFloat1 18s ease-in-out infinite alternate;
-        }
-        .aurora-orb.orb-2 {
-            width: 640px; height: 640px; bottom: -160px; left: -140px;
-            background: radial-gradient(circle, rgba(235, 45, 60, .26) 0%, rgba(255, 69, 58, .10) 45%, transparent 70%);
-            filter: blur(85px); animation: orbFloat2 22s ease-in-out infinite alternate;
-        }
-        .aurora-orb.orb-3 {
-            width: 560px; height: 560px; top: 34%; left: 26%;
-            background: radial-gradient(circle, rgba(255, 45, 85, .18) 0%, rgba(255, 59, 48, .07) 50%, transparent 70%);
-            filter: blur(90px); animation: orbFloat3 16s ease-in-out infinite alternate;
-        }
-        /* Sweeps along the top so the red flows behind the frosted nav bar */
-        .aurora-orb.orb-4 {
-            width: 600px; height: 420px; top: -220px; left: -10%;
-            background: radial-gradient(ellipse, rgba(255, 59, 48, .28) 0%, rgba(215, 0, 21, .10) 50%, transparent 72%);
-            filter: blur(70px); animation: orbSweep 20s ease-in-out infinite alternate;
-        }
-        @keyframes orbFloat1 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-220px, 120px) scale(1.15); } 100% { transform: translate(-380px, 40px) scale(.92); } }
-        @keyframes orbFloat2 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(260px, -140px) scale(1.12); } 100% { transform: translate(420px, -40px) scale(.94); } }
-        @keyframes orbFloat3 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-200px, -160px) scale(1.2); } 100% { transform: translate(220px, 120px) scale(.9); } }
-        @keyframes orbSweep { 0% { transform: translateX(0) scale(1); } 50% { transform: translateX(45vw) scale(1.15); } 100% { transform: translateX(85vw) scale(.95); } }
+        /* ===== Plain white canvas ===== */
+        .aurora-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: var(--bg); }
 
         /* ===== Top navigation (frosted glass) ===== */
         .top-nav {
             position: sticky; top: 0; z-index: 40;
             display: flex; align-items: center; gap: 16px;
             height: 64px; padding: 0 28px;
-            background: rgba(255, 255, 255, .38);
-            -webkit-backdrop-filter: saturate(180%) blur(24px);
-            backdrop-filter: saturate(180%) blur(24px);
-            border-bottom: 1px solid rgba(255, 255, 255, .5);
+            background: rgba(251, 251, 253, .72);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 1px solid rgba(0, 0, 0, .06);
         }
         .top-nav::before {
             content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1.5px; pointer-events: none;
@@ -928,7 +895,6 @@
         /* ===== Reduced motion ===== */
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
-            .aurora-orb { animation: none !important; }
         }
 
         /* ===== Print (shift report) ===== */
@@ -951,10 +917,6 @@
     </form>
 
     <div class="aurora-bg" aria-hidden="true">
-        <div class="aurora-orb orb-1"></div>
-        <div class="aurora-orb orb-2"></div>
-        <div class="aurora-orb orb-3"></div>
-        <div class="aurora-orb orb-4"></div>
     </div>
 
     <header class="top-nav" id="topNav">
