@@ -1098,6 +1098,16 @@
                 <input type="password" style="display:none" autocomplete="current-password">
 
                 <input type="hidden" id="taskId">
+                <div class="form-group" id="tplGroup" style="margin-bottom:16px;">
+                    <label>Quick start</label>
+                    <div class="chips" id="tplRow">
+                        <button type="button" class="chip" data-tpl="0">Late check-out</button>
+                        <button type="button" class="chip" data-tpl="1">Add breakfast</button>
+                        <button type="button" class="chip" data-tpl="2">Take payment</button>
+                        <button type="button" class="chip" data-tpl="3">Room issue</button>
+                        <button type="button" class="chip" data-tpl="4">Housekeeping request</button>
+                    </div>
+                </div>
                 <div class="form-grid">
                     <div class="form-group full">
                         <label>Date of Task</label>
@@ -1715,6 +1725,28 @@
                 const currentSelected = getSelectedAssignees();
                 populateAssignees(currentSelected);
             }
+        });
+
+        // Quick-start templates: prefill title + departments, then the user adds the room and details
+        const TEMPLATES = [
+            { title: 'Late check-out', depts: ['Front Office', 'Housekeeping'], hint: 'Agreed check-out time, charge if any' },
+            { title: 'Add breakfast', depts: ['Front Office', 'F&B'], hint: 'Number of guests and dates' },
+            { title: 'Take payment', depts: ['Front Office', 'Finance'], hint: 'Amount, booking source and reservation number' },
+            { title: 'Room issue', depts: ['Maintenance', 'Front Office'], hint: 'What is wrong and since when' },
+            { title: 'Housekeeping request', depts: ['Housekeeping'], hint: 'Items or service requested' },
+        ];
+        document.getElementById('tplRow').addEventListener('click', function (e) {
+            const btn = e.target.closest('[data-tpl]');
+            if (!btn) return;
+            const t = TEMPLATES[btn.dataset.tpl];
+            this.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c === btn));
+            document.getElementById('taskTitle').value = t.title;
+            document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => tile.classList.toggle('selected', t.depts.includes(tile.dataset.value)));
+            populateAssignees(getSelectedAssignees());
+            document.getElementById('taskComment').placeholder = t.hint;
+            const room = document.getElementById('taskRoomLocation');
+            room.placeholder = 'Room number';
+            room.focus();
         });
 
         document.getElementById('taskAssigneeTiles').addEventListener('click', function (e) {
@@ -2545,6 +2577,10 @@
                 t.classList.toggle('selected', t.dataset.value === shiftVal);
             });
             document.getElementById('taskRoomLocation').value = task ? (task.room_location || '') : '';
+            document.getElementById('taskRoomLocation').placeholder = 'e.g. Room 304, Executive Lounge, Kitchen';
+            document.getElementById('taskComment').placeholder = 'Any additional details or context...';
+            document.getElementById('tplGroup').style.display = task ? 'none' : '';
+            document.querySelectorAll('#tplRow .chip').forEach(c => c.classList.remove('active'));
 
             if (task) {
                 document.getElementById('modalTitle').innerText = 'Edit Task';
