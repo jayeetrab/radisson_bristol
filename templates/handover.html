@@ -1746,7 +1746,7 @@
                 const title = document.getElementById('taskTitle');
                 if (title.value === t.title) title.value = '';
                 document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => tile.classList.remove('selected'));
-                populateAssignees(getSelectedAssignees());
+                populateAssignees('');
                 document.getElementById('taskComment').placeholder = 'Any additional details or context...';
                 room.placeholder = 'e.g. Room 304, Executive Lounge, Kitchen';
                 return;
@@ -1755,6 +1755,7 @@
             document.getElementById('taskTitle').value = t.title;
             document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => tile.classList.toggle('selected', t.depts.includes(tile.dataset.value)));
             populateAssignees(getSelectedAssignees());
+            document.querySelectorAll('#taskAssigneeTiles .dept-tile').forEach(tile => tile.classList.add('selected'));
             document.getElementById('taskComment').placeholder = t.hint;
             room.placeholder = 'Room number';
             room.focus();
