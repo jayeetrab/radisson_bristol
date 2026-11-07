@@ -4,179 +4,212 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Sign in · Handover Dashboard</title>
+    <title>Sign in · Majestic Handover</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='5' y='5' width='90' height='90' fill='white' stroke='%231a1a1a' stroke-width='8'/><text x='50' y='76' font-family='Georgia, serif' font-size='72' font-weight='bold' fill='%231a1a1a' text-anchor='middle'>M</text></svg>">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=League+Spartan:wght@400;500;600;700;800&display=swap"
-        rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --font-display: 'League Spartan', sans-serif;
-            --font-body: 'Inter', sans-serif;
-            --bg: #ffffff;
-            --surface: #f5f5f5;
-            --border: #e5e5e5;
-            --text-main: #1a1a1a;
-            --text-muted: #666666;
-            --primary: hsl(360, 89%, 38%);
-            --primary-hover: hsl(360, 89%, 32%);
-            --primary-light: hsl(360, 89%, 98%);
-            --danger: hsl(0, 84%, 60%);
-            --radius-sm: 8px;
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: var(--font-body);
-            color: var(--text-main);
-            background: var(--surface);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
+            display: flex; align-items: center; justify-content: center;
+            color: #1d1d1f; background: #fbfbfd;
+            position: relative; overflow: hidden;
+            -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
         }
 
-        .login-card {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
-            width: 100%;
-            max-width: 400px;
-            padding: 40px;
+        /* Luminous liquid-glass canvas with a slight red ambient touch */
+        .apple-liquid-canvas {
+            position: absolute; inset: 0; overflow: hidden; z-index: 1;
+            background:
+                radial-gradient(1200px 700px at 85% 5%, rgba(255, 59, 48, .055) 0%, rgba(225, 29, 72, .02) 40%, transparent 65%),
+                radial-gradient(1000px 600px at 12% 95%, rgba(235, 45, 60, .045) 0%, rgba(255, 69, 58, .015) 45%, transparent 65%),
+                radial-gradient(circle at 50% 10%, #ffffff 0%, #f6f6f9 70%, #ececf2 100%);
+        }
+        .liquid-orb { position: absolute; border-radius: 50%; filter: blur(100px); pointer-events: none; will-change: transform; }
+        .orb-red { width: 660px; height: 660px; top: -12%; right: 12%; background: radial-gradient(circle, rgba(255, 59, 48, .16) 0%, rgba(225, 29, 72, .07) 45%, transparent 70%); animation: floatLiquid 26s infinite ease-in-out -3s; }
+        .orb-red-2 { width: 540px; height: 540px; bottom: -12%; left: 10%; background: radial-gradient(circle, rgba(235, 45, 60, .12) 0%, rgba(255, 69, 58, .045) 45%, transparent 72%); animation: floatLiquid 30s infinite ease-in-out reverse -9s; }
+        .orb-blue { width: 600px; height: 600px; top: -6%; left: 18%; background: radial-gradient(circle, rgba(0, 113, 227, .14) 0%, rgba(96, 165, 250, .06) 45%, transparent 70%); animation: floatLiquid 24s infinite ease-in-out; }
+        .orb-purple { width: 680px; height: 680px; bottom: -10%; right: 18%; background: radial-gradient(circle, rgba(139, 92, 246, .12) 0%, rgba(192, 132, 252, .05) 40%, transparent 70%); animation: floatLiquid 28s infinite ease-in-out reverse; }
+        .orb-peach { width: 480px; height: 480px; top: 36%; left: 32%; background: radial-gradient(circle, rgba(255, 45, 85, .10) 0%, rgba(255, 59, 48, .035) 45%, transparent 70%); animation: floatLiquid 20s infinite ease-in-out -6s; }
+        .orb-cyan { width: 450px; height: 450px; top: 18%; right: 25%; background: radial-gradient(circle, rgba(6, 182, 212, .09) 0%, transparent 65%); animation: floatLiquid 22s infinite ease-in-out -12s; }
+        @keyframes floatLiquid {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(50px, -40px) scale(1.1); }
+            66% { transform: translate(-40px, 35px) scale(.92); }
         }
 
-        .brand {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 28px;
-            text-align: center;
+        /* Soft light that trails the cursor */
+        .cursor-spotlight {
+            position: absolute; top: 0; left: 0; z-index: 2;
+            width: 700px; height: 700px; border-radius: 50%; pointer-events: none;
+            background: radial-gradient(circle, rgba(255, 59, 48, .075) 0%, rgba(0, 113, 227, .065) 28%, rgba(255, 255, 255, .8) 48%, transparent 70%);
+            filter: blur(55px); opacity: 0; transition: opacity .5s ease; will-change: transform;
         }
+        .glass-vignette { position: absolute; inset: 0; z-index: 3; pointer-events: none; background: radial-gradient(circle at 50% 50%, transparent 45%, rgba(240, 242, 246, .55) 100%); }
 
-        .brand h1 {
-            font-family: var(--font-display);
-            font-size: 1.5rem;
-            font-weight: 700;
+        /* Frosted glass card */
+        .login-container { position: relative; z-index: 10; width: 100%; max-width: 420px; padding: 20px; perspective: 1000px; }
+        .login-box {
+            position: relative; width: 100%; overflow: hidden; text-align: center;
+            padding: 44px 38px 34px; border-radius: 28px;
+            background: rgba(255, 255, 255, .76);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, .85);
+            border-top: 1.5px solid rgba(255, 255, 255, .95);
+            border-left: 1.5px solid rgba(255, 255, 255, .9);
+            box-shadow: 0 30px 80px -15px rgba(0, 20, 60, .12), 0 0 0 1px rgba(0, 0, 0, .04), inset 0 1px 2px 0 rgba(255, 255, 255, .95);
+            transition: transform .25s cubic-bezier(.16, 1, .3, 1), box-shadow .25s ease;
+            will-change: transform;
+            animation: cardIn .9s cubic-bezier(.2, .95, .28, 1) backwards;
         }
-
-        .brand p { color: var(--text-muted); font-size: 0.9rem; }
-
-        label {
-            display: block;
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-bottom: 6px;
-            margin-top: 16px;
+        @keyframes cardIn { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+        .login-box.shake { animation: shake .45s cubic-bezier(.36, .07, .19, .97); }
+        @keyframes shake {
+            10%, 90% { transform: translateX(-2px); }
+            20%, 80% { transform: translateX(4px); }
+            30%, 50%, 70% { transform: translateX(-6px); }
+            40%, 60% { transform: translateX(6px); }
         }
-
-        input {
-            width: 100%;
-            padding: 12px 14px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            font-family: var(--font-body);
-            font-size: 0.95rem;
-            outline: none;
-            transition: all 0.2s;
+        .card-specular-gloss {
+            position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: 28px;
+            background: radial-gradient(600px circle at var(--card-mouse-x, 50%) var(--card-mouse-y, 0%), rgba(255, 255, 255, .72) 0%, rgba(255, 59, 48, .065) 25%, rgba(0, 113, 227, .04) 45%, transparent 65%);
         }
-
-        input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px var(--primary-light);
+        .card-lip-reflection {
+            position: absolute; top: 0; left: 12%; right: 12%; height: 1.5px; z-index: 2; pointer-events: none;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .95), rgba(255, 59, 48, .42), rgba(255, 255, 255, .95), transparent);
         }
+        .card-content { position: relative; z-index: 5; }
 
-        .btn-primary {
-            width: 100%;
-            margin-top: 24px;
-            background: var(--primary);
-            color: #fff;
-            border: none;
-            padding: 13px;
-            border-radius: var(--radius-sm);
-            font-size: 1rem;
-            font-weight: 600;
-            font-family: var(--font-body);
-            cursor: pointer;
-            transition: background 0.2s;
+        .brand-wrap { display: inline-flex; flex-direction: column; align-items: center; margin-bottom: 24px; }
+        .brand-logo { height: 52px; width: auto; object-fit: contain; margin-bottom: 14px; filter: drop-shadow(0 4px 12px rgba(0, 0, 0, .06)); transition: transform .25s ease; }
+        .brand-logo:hover { transform: scale(1.03); }
+        .portal-title { font-size: 26px; font-weight: 600; letter-spacing: -.025em; line-height: 1.25; margin-bottom: 6px; }
+        .portal-subtitle { font-size: 14px; color: #86868b; line-height: 1.4; }
+
+        .form-group { text-align: left; margin-bottom: 18px; position: relative; }
+        .form-group label { display: block; font-size: 12px; font-weight: 500; color: #86868b; margin-bottom: 6px; letter-spacing: -.01em; }
+        .input-wrapper { position: relative; display: flex; align-items: center; }
+        .form-group input {
+            width: 100%; height: 46px; padding: 0 14px; border-radius: 13px;
+            border: 1px solid rgba(0, 0, 0, .12); background: rgba(255, 255, 255, .85);
+            color: #1d1d1f; font-size: 15px; font-family: inherit; outline: none;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, .03);
+            transition: all .2s cubic-bezier(.16, 1, .3, 1);
         }
-
-        .btn-primary:hover { background: var(--primary-hover); }
-        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-        .pw-wrap {
-            position: relative;
-            display: flex;
-            align-items: center;
+        .form-group input::placeholder { color: #a1a1a6; }
+        .form-group input:focus { border-color: #0071e3; background: #fff; box-shadow: 0 0 0 4px rgba(0, 113, 227, .16), 0 6px 16px rgba(0, 113, 227, .08); }
+        .pw-input { padding-right: 46px !important; }
+        .pw-eye {
+            position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+            width: 32px; height: 32px; border-radius: 8px; border: none; background: none; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; color: #86868b;
+            transition: color .15s ease, background .15s ease;
         }
-
-        .pw-wrap input {
-            padding-right: 46px;
-        }
-
-        .pw-toggle {
-            position: absolute;
-            right: 6px;
-            width: auto;
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: var(--text-muted);
-            padding: 8px;
-            display: flex;
-            align-items: center;
-            border-radius: 8px;
-        }
-
-        .pw-toggle:hover { color: var(--text-main); }
-        .pw-toggle svg { width: 20px; height: 20px; }
+        .pw-eye:hover { color: #1d1d1f; background: rgba(0, 0, 0, .04); }
+        .pw-eye svg { width: 19px; height: 19px; }
 
         .error {
-            display: none;
-            background: #fef2f2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
-            padding: 10px 14px;
-            border-radius: var(--radius-sm);
-            font-size: 0.88rem;
-            margin-top: 18px;
+            display: none; text-align: left; margin-bottom: 16px;
+            padding: 11px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.4;
+            background: rgba(255, 59, 48, .08); color: #d70015; border: 1px solid rgba(255, 59, 48, .2);
+            animation: errIn .35s cubic-bezier(.2, .95, .28, 1);
+        }
+        @keyframes errIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+        .btn-apple {
+            width: 100%; height: 46px; margin-top: 10px; padding: 0 20px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            border: none; border-radius: 13px; cursor: pointer; position: relative; overflow: hidden;
+            background: linear-gradient(135deg, #0071e3 0%, #0077ed 100%);
+            color: #fff; font-size: 15px; font-weight: 500; font-family: inherit; letter-spacing: -.01em;
+            box-shadow: 0 10px 24px -4px rgba(0, 113, 227, .42), inset 0 1px 1px 0 rgba(255, 255, 255, .4);
+            transition: all .2s cubic-bezier(.16, 1, .3, 1);
+        }
+        .btn-apple:hover { background: linear-gradient(135deg, #0077ed 0%, #006edb 100%); transform: translateY(-1.5px); box-shadow: 0 14px 32px -4px rgba(0, 113, 227, .55), inset 0 1px 1px 0 rgba(255, 255, 255, .5); }
+        .btn-apple:active { transform: translateY(0) scale(.99); box-shadow: 0 4px 12px rgba(0, 113, 227, .35); }
+        .btn-apple:disabled { opacity: .75; cursor: progress; transform: none; }
+        .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff; animation: spin .7s linear infinite; display: none; }
+        .btn-apple.loading .spinner { display: block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .portal-footer { margin-top: 22px; font-size: 12px; color: #86868b; line-height: 1.55; }
+        .portal-footer strong { color: #6e6e73; font-weight: 500; }
+
+        @media (max-width: 480px) {
+            .login-box { padding: 36px 24px 28px; border-radius: 24px; }
+            .card-specular-gloss { border-radius: 24px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .liquid-orb, .login-box, .error { animation: none !important; }
+            .cursor-spotlight { display: none; }
         }
     </style>
 </head>
 
 <body>
-    <form class="login-card" id="loginForm" onsubmit="doLogin(event)">
-        <div class="brand">
-            <img src="/assets/majestic-logo.png" alt="Majestic Logo" style="height: 56px; width: auto; object-fit: contain; margin-bottom: 12px;">
-            <h1>Handover Dashboard</h1>
-            <p>Sign in to continue</p>
-        </div>
+    <div class="apple-liquid-canvas" aria-hidden="true">
+        <div class="liquid-orb orb-red"></div>
+        <div class="liquid-orb orb-blue"></div>
+        <div class="liquid-orb orb-red-2"></div>
+        <div class="liquid-orb orb-purple"></div>
+        <div class="liquid-orb orb-peach"></div>
+        <div class="liquid-orb orb-cyan"></div>
+        <div class="cursor-spotlight" id="cursorSpotlight"></div>
+        <div class="glass-vignette"></div>
+    </div>
 
-        <label for="username">Username</label>
-        <input type="text" id="username" autocomplete="username" autofocus required>
+    <div class="login-container">
+        <form class="login-box" id="loginBox" onsubmit="doLogin(event)" autocomplete="on">
+            <div class="card-specular-gloss"></div>
+            <div class="card-lip-reflection"></div>
+            <div class="card-content">
+                <div class="brand-wrap">
+                    <img class="brand-logo" src="/assets/majestic-logo.png" alt="Majestic Hotels">
+                    <h1 class="portal-title">Sign In</h1>
+                    <p class="portal-subtitle">Majestic Handover Dashboard</p>
+                </div>
 
-        <label for="password">Password</label>
-        <div class="pw-wrap">
-            <input type="password" id="password" autocomplete="current-password" required>
-            <button type="button" class="pw-toggle" onclick="togglePw(this)" aria-label="Show password">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-            </button>
-        </div>
+                <div class="error" id="errorBox" role="alert"></div>
 
-        <div class="error" id="errorBox"></div>
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="username" autocomplete="username" spellcheck="false" autocapitalize="off" placeholder="firstname.x" autofocus required>
+                    </div>
+                </div>
 
-        <button type="submit" class="btn-primary" id="submitBtn">Sign in</button>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="input-wrapper">
+                        <input type="password" id="password" class="pw-input" autocomplete="current-password" placeholder="••••••••" required>
+                        <button type="button" class="pw-eye" onclick="togglePw(this)" aria-label="Show password" title="Show password">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                        </button>
+                    </div>
+                </div>
 
-        <p style="margin-top:18px; text-align:center; font-size:0.82rem; color:#6e6e73;">
-            Forgot your password? Ask your manager or an admin to reset it for you.
-        </p>
-    </form>
+                <button type="submit" class="btn-apple" id="submitBtn">
+                    <span class="spinner" aria-hidden="true"></span>
+                    <span id="submitLabel">Sign In</span>
+                </button>
+
+                <div class="portal-footer">
+                    <div>Forgot your password? <strong>Ask your manager or an admin to reset it.</strong></div>
+                    <div>Majestic Hotels &copy; <span id="yr"></span></div>
+                </div>
+            </div>
+        </form>
+    </div>
 
     <script>
+        document.getElementById('yr').textContent = new Date().getFullYear();
+
         const EYE_OFF_SVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>`;
         const EYE_SVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>`;
         function togglePw(btn) {
@@ -187,11 +220,14 @@
 
         async function doLogin(e) {
             e.preventDefault();
+            const box = document.getElementById('loginBox');
             const btn = document.getElementById('submitBtn');
+            const label = document.getElementById('submitLabel');
             const err = document.getElementById('errorBox');
             err.style.display = 'none';
             btn.disabled = true;
-            btn.innerText = 'Signing in…';
+            btn.classList.add('loading');
+            label.textContent = 'Signing in…';
             try {
                 const res = await fetch('/api/login', {
                     method: 'POST',
@@ -202,20 +238,55 @@
                     })
                 });
                 if (res.ok) {
+                    label.textContent = 'Welcome';
                     window.location.href = '/';
-                } else {
-                    const data = await res.json().catch(() => ({}));
-                    err.innerText = data.error || 'Sign in failed';
-                    err.style.display = 'block';
+                    return;
                 }
+                const data = await res.json().catch(() => ({}));
+                err.innerText = data.error || 'Sign in failed';
+                err.style.display = 'block';
             } catch (_) {
                 err.innerText = 'Network error. Please try again.';
                 err.style.display = 'block';
-            } finally {
-                btn.disabled = false;
-                btn.innerText = 'Sign in';
             }
+            box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+            btn.disabled = false;
+            btn.classList.remove('loading');
+            label.textContent = 'Sign In';
         }
+
+        // Cursor spotlight + specular reflection + gentle 3D tilt (pointer devices only).
+        (function () {
+            const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+            if (reduce || !finePointer) return;
+            const spotlight = document.getElementById('cursorSpotlight');
+            const card = document.getElementById('loginBox');
+            let mouseX = innerWidth / 2, mouseY = innerHeight / 2, curX = mouseX, curY = mouseY;
+            addEventListener('mousemove', function (e) {
+                mouseX = e.clientX; mouseY = e.clientY;
+                spotlight.style.opacity = '1';
+                const r = card.getBoundingClientRect();
+                card.style.setProperty('--card-mouse-x', ((e.clientX - r.left) / r.width * 100) + '%');
+                card.style.setProperty('--card-mouse-y', ((e.clientY - r.top) / r.height * 100) + '%');
+                if (!card.classList.contains('shake')) {
+                    const tiltX = (e.clientY - (r.top + r.height / 2)) / (r.height / 2) * -3;
+                    const tiltY = (e.clientX - (r.left + r.width / 2)) / (r.width / 2) * 3;
+                    card.style.transform = 'perspective(1000px) rotateX(' + tiltX.toFixed(2) + 'deg) rotateY(' + tiltY.toFixed(2) + 'deg)';
+                }
+            });
+            document.addEventListener('mouseleave', function () {
+                spotlight.style.opacity = '0';
+                card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
+            });
+            card.addEventListener('animationend', () => card.classList.remove('shake'));
+            (function render() {
+                curX += (mouseX - curX) * 0.085;
+                curY += (mouseY - curY) * 0.085;
+                spotlight.style.transform = 'translate(' + (curX - 350) + 'px, ' + (curY - 350) + 'px)';
+                requestAnimationFrame(render);
+            })();
+        })();
     </script>
 </body>
 
