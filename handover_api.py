@@ -371,6 +371,7 @@ DEFAULT_SETTINGS = {
         {"title": "Housekeeping request", "depts": ["Housekeeping"], "hint": "Items or service requested"},
     ],
     "mention_priority": ["Yulia", "Jay", "Mariia", "Melih", "Tun"],
+    "assign_pinned": ["Jay", "Mariia Maslokh", "Yulia"],
 }
 
 
@@ -394,12 +395,13 @@ def api_put_settings():
         depts = [d for d in (t.get("depts") or []) if d in DEPARTMENTS]
         if title and depts:
             templates.append({"title": title, "depts": depts, "hint": str(t.get("hint", "")).strip()[:120]})
-    priority = [str(n).strip()[:40] for n in (data.get("mention_priority") or []) if str(n).strip()][:20]
+    clean = lambda key: [str(n).strip()[:40] for n in (data.get(key) or []) if str(n).strip()][:20]
+    priority, pinned = clean("mention_priority"), clean("assign_pinned")
     mongo_settings.update_one({"_id": "app"}, {"$set": {"templates": templates, "mention_priority": priority,
-                                                        "updated_at": datetime.utcnow()}}, upsert=True)
+                                                        "assign_pinned": pinned, "updated_at": datetime.utcnow()}}, upsert=True)
     log_activity("update_settings", target_type="settings", target_title="App settings",
                  detail=f"{len(templates)} templates, mention order: {', '.join(priority) or 'none'}")
-    return jsonify({"success": True, "templates": templates, "mention_priority": priority})
+    return jsonify({"success": True, "templates": templates, "mention_priority": priority, "assign_pinned": pinned})
 
 
 @app.route('/api/users/list', methods=['GET'])

@@ -1355,6 +1355,10 @@
                 <label for="mentionOrderInput">Shown first when typing @ (in order, separated by commas)</label>
                 <input type="text" id="mentionOrderInput" autocomplete="off" placeholder="e.g. Yulia, Jay, Mariia">
             </div>
+            <div class="form-group" style="margin-top:16px;">
+                <label for="assignPinnedInput">Always shown first in Assign to (in order, separated by commas)</label>
+                <input type="text" id="assignPinnedInput" autocomplete="off" placeholder="e.g. Jay, Mariia Maslokh, Yulia">
+            </div>
             <div class="modal-actions">
                 <button type="button" class="btn" onclick="closeSettings()">Cancel</button>
                 <button type="button" class="btn btn-primary" id="saveSettingsBtn" onclick="saveSettings()">Save settings</button>
@@ -1750,6 +1754,7 @@
 
         // Quick-start templates (admin-configurable in Settings): prefill title + departments
         let TEMPLATES = [];
+        let ASSIGN_PINNED = [];
         function renderTplRow() {
             document.getElementById('tplRow').innerHTML = TEMPLATES
                 .map((t, i) => `<button type="button" class="chip" data-tpl="${i}">${esc(t.title)}</button>`).join('');
@@ -1760,6 +1765,7 @@
                 const s = await (await fetch('/api/settings')).json();
                 TEMPLATES = s.templates || [];
                 PRIORITY_MENTIONS = s.mention_priority || [];
+                ASSIGN_PINNED = s.assign_pinned || [];
             } catch (_) { /* keep current values */ }
             renderTplRow();
         }
@@ -1783,7 +1789,10 @@
             document.getElementById('taskTitle').value = t.title;
             document.querySelectorAll('#taskDeptTiles .dept-tile').forEach(tile => tile.classList.toggle('selected', t.depts.includes(tile.dataset.value)));
             populateAssignees(getSelectedAssignees());
-            document.querySelectorAll('#taskAssigneeTiles .dept-tile').forEach(tile => tile.classList.add('selected'));
+            document.querySelectorAll('#taskAssigneeTiles .dept-tile').forEach(tile => {
+                const u = userList.find(x => x.name === tile.dataset.value);
+                if (u && (u.departments || []).some(d => t.depts.includes(d))) tile.classList.add('selected');
+            });
             document.getElementById('taskComment').placeholder = t.hint;
             room.placeholder = 'Room number';
             room.focus();
@@ -2564,6 +2573,11 @@
                 if (s && s !== 'Unassigned' && !names.includes(s)) names.push(s);
             });
 
+            // Pinned people (Settings) are always listed first, whatever department is picked
+            const pinRank = n => { const l = (n || '').toLowerCase(); const i = ASSIGN_PINNED.findIndex(p => l.startsWith(p.toLowerCase())); return i < 0 ? 999 : i; };
+            userList.forEach(u => { if (pinRank(u.name) < 999 && !names.includes(u.name)) names.push(u.name); });
+            names.sort((a, b) => pinRank(a) - pinRank(b));
+
             if (names.length === 0) {
                 container.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem; padding:6px 0;">No staff found for the selected department(s).</div>';
                 return;
@@ -2831,6 +2845,7 @@
             await loadSettings();
             document.getElementById('tplEditor').innerHTML = TEMPLATES.map(t => tplEditHtml(t)).join('');
             document.getElementById('mentionOrderInput').value = PRIORITY_MENTIONS.join(', ');
+            document.getElementById('assignPinnedInput').value = ASSIGN_PINNED.join(', ');
             document.getElementById('settingsOverlay').classList.add('open');
         }
         function closeSettings() { document.getElementById('settingsOverlay').classList.remove('open'); }
@@ -2847,14 +2862,15 @@
                 rows[bad].querySelector('.tpl-title').focus();
                 return;
             }
-            const mention_priority = document.getElementById('mentionOrderInput').value.split(',').map(s => s.trim()).filter(Boolean);
+            const splitNames = id => document.getElementById(id).value.split(',').map(s => s.trim()).filter(Boolean);
+            const mention_priority = splitNames('mentionOrderInput'), assign_pinned = splitNames('assignPinnedInput');
             const btn = document.getElementById('saveSettingsBtn');
             btn.disabled = true;
             try {
-                const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates, mention_priority }) });
+                const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates, mention_priority, assign_pinned }) });
                 const data = await res.json();
                 if (!res.ok) { alert(data.error || 'Could not save settings'); return; }
-                TEMPLATES = data.templates; PRIORITY_MENTIONS = data.mention_priority;
+                TEMPLATES = data.templates; PRIORITY_MENTIONS = data.mention_priority; ASSIGN_PINNED = data.assign_pinned;
                 renderTplRow();
                 closeSettings();
             } catch (_) { alert('Could not save settings. Check your connection.'); }
