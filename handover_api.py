@@ -90,12 +90,16 @@ def current_user():
 
 
 def touch_user_active():
+    """Stamp last_active. Returns False if the account was deactivated or deleted."""
     uid = session.get("uid")
     if uid and mongo_users is not None:
         try:
-            mongo_users.update_one({"_id": ObjectId(uid)}, {"$set": {"last_active": datetime.utcnow()}})
+            res = mongo_users.update_one({"_id": ObjectId(uid), "active": {"$ne": False}},
+                                         {"$set": {"last_active": datetime.utcnow()}})
+            return res.matched_count > 0
         except Exception:
-            pass
+            pass  # DB hiccup: don't lock everyone out
+    return True
 
 
 def login_required(f):
@@ -103,7 +107,9 @@ def login_required(f):
     def wrapper(*args, **kwargs):
         if not session.get("uid"):
             return jsonify({"error": "Authentication required"}), 401
-        touch_user_active()
+        if not touch_user_active():
+            session.clear()
+            return jsonify({"error": "Your account has been deactivated"}), 401
         return f(*args, **kwargs)
     return wrapper
 
@@ -530,6 +536,10 @@ def api_update_user(user_id):
                 update[field] = data[field]
     if update.get("role") and update["role"] not in ROLES:
         return jsonify({"error": "Invalid role"}), 400
+    if "active" in update:
+        if actor["role"] != "admin":
+            return jsonify({"error": "Only the admin can deactivate or reactivate accounts"}), 403
+        update["active"] = bool(update["active"])
 
     # A manager may only touch manageable users in their department, and may not
     # promote anyone to manager/admin or move them outside their department.

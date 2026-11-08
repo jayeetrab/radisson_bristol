@@ -3173,12 +3173,13 @@
                             <span class="role-tag">${esc(u.role)}</span>
                             ${u.actual_role ? `<span>${esc(u.actual_role)}</span><span>·</span>` : ''}
                             <span>${esc((u.departments || []).join(', ')) || 'No department'}</span>
-                            ${u.active ? '' : '<span>·</span><span style="color:var(--danger);">Disabled</span>'}
+                            ${u.active ? '' : '<span>·</span><span style="color:var(--danger);">Deactivated</span>'}
                         </div>
                     </div>
                     <div class="user-row-actions">
                         ${u.id === currentUser.id ? '' : `<button class="btn btn-quiet btn-sm" onclick="resetUserPassword('${u.id}', this.dataset.n)" data-n="${esc(u.name)}">Reset password</button>`}
                         <button class="btn btn-sm" onclick='editUser(${esc(JSON.stringify(u))})'>Edit</button>
+                        ${isAdmin() && u.id !== currentUser.id ? `<button class="btn btn-quiet btn-sm" onclick="setUserActive('${u.id}', ${!u.active}, this.dataset.n)" data-n="${esc(u.name)}">${u.active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
                         ${u.id === currentUser.id ? '' : `<button class="btn btn-soft-danger btn-sm" onclick="deleteUser('${u.id}', this.dataset.n)" data-n="${esc(u.name)}">Delete</button>`}
                     </div>
                 </div>
@@ -3281,6 +3282,16 @@
                     alert(data.error || 'Failed to save user');
                 }
             } catch (_) { alert('Failed to save user'); }
+        }
+
+        async function setUserActive(id, active, name) {
+            if (!active && !confirm(`Deactivate ${name}? They will be signed out and cannot log in until reactivated. Their handovers and history are kept.`)) return;
+            try {
+                const res = await authFetch(`/api/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) });
+                if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Could not update the account'); return; }
+                renderUsersList();
+                loadUserList();
+            } catch (_) { alert('Could not update the account. Check your connection.'); }
         }
 
         async function deleteUser(id, name) {
