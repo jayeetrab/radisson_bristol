@@ -26,6 +26,7 @@ try:
     mongo_users = mongo_db["users"]
     mongo_activity = mongo_db["activity"]
     mongo_notifications = mongo_db["notifications"]
+    mongo_settings = mongo_db["settings"]
     try:
         mongo_tasks.create_index([("is_deleted", 1), ("task_date", 1)])
         mongo_tasks.create_index([("created_at", -1)])
@@ -37,6 +38,7 @@ except Exception as e:
     mongo_users = None
     mongo_activity = None
     mongo_notifications = None
+    mongo_settings = None
 
 DEPARTMENTS =["Maintenance", "Housekeeping", "Front Office", "Management", "F&B", "Finance", "HR", "Other"]
 ROLES = ["normal", "supervisor", "manager", "admin"]
@@ -352,6 +354,46 @@ def manager_can_manage(actor, target_role, target_departments):
 def api_ping():
     touch_user_active()
     return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()})
+
+
+DEFAULT_SETTINGS = {
+    "templates": [
+        {"title": "Late check-out", "depts": ["Front Office", "Housekeeping"], "hint": "Agreed check-out time, charge if any"},
+        {"title": "Add breakfast", "depts": ["Front Office", "F&B"], "hint": "Number of guests and dates"},
+        {"title": "Take payment", "depts": ["Front Office", "Finance"], "hint": "Amount, booking source and reservation number"},
+        {"title": "Room issue", "depts": ["Maintenance", "Front Office"], "hint": "What is wrong and since when"},
+        {"title": "Housekeeping request", "depts": ["Housekeeping"], "hint": "Items or service requested"},
+    ],
+    "mention_priority": ["Yulia", "Jay", "Mariia", "Melih", "Tun"],
+}
+
+
+@app.route('/api/settings', methods=['GET'])
+@login_required
+def api_get_settings():
+    doc = (mongo_settings.find_one({"_id": "app"}) if mongo_settings is not None else None) or {}
+    return jsonify({k: doc.get(k, v) for k, v in DEFAULT_SETTINGS.items()})
+
+
+@app.route('/api/settings', methods=['PUT'])
+@login_required
+@admin_required
+def api_put_settings():
+    if mongo_settings is None:
+        return jsonify({"error": "Database unavailable"}), 503
+    data = request.get_json(silent=True) or {}
+    templates = []
+    for t in (data.get("templates") or [])[:20]:
+        title = str((t or {}).get("title", "")).strip()[:80]
+        depts = [d for d in (t.get("depts") or []) if d in DEPARTMENTS]
+        if title and depts:
+            templates.append({"title": title, "depts": depts, "hint": str(t.get("hint", "")).strip()[:120]})
+    priority = [str(n).strip()[:40] for n in (data.get("mention_priority") or []) if str(n).strip()][:20]
+    mongo_settings.update_one({"_id": "app"}, {"$set": {"templates": templates, "mention_priority": priority,
+                                                        "updated_at": datetime.utcnow()}}, upsert=True)
+    log_activity("update_settings", target_type="settings", target_title="App settings",
+                 detail=f"{len(templates)} templates, mention order: {', '.join(priority) or 'none'}")
+    return jsonify({"success": True, "templates": templates, "mention_priority": priority})
 
 
 @app.route('/api/users/list', methods=['GET'])

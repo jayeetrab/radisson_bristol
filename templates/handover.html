@@ -718,6 +718,8 @@
         .pw-toggle:hover { color: var(--ink); background: rgba(0, 0, 0, .05); }
         .pw-toggle svg { width: 18px; height: 18px; }
 
+        .tpl-edit { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin: 10px 0 12px; }
+        .tpl-edit .form-grid { margin-bottom: 12px; }
         #userFormWrap {
             background: rgba(245, 245, 247, .7) !important; border: 1px solid var(--hairline) !important;
             border-radius: 18px !important; animation: fadeUp .4s var(--ease-out);
@@ -957,6 +959,10 @@
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z"></path></svg>
                     <span class="nav-label">Users</span>
                 </button>
+                <button class="nav-icon" id="settingsBtn" onclick="openSettings()" style="display:none;" title="Settings">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    <span class="nav-label">Settings</span>
+                </button>
             </div>
 
             <button class="btn-new" onclick="openModal()" title="New handover">
@@ -1100,13 +1106,7 @@
                 <input type="hidden" id="taskId">
                 <div class="form-group" id="tplGroup" style="margin-bottom:16px;">
                     <label>Quick start</label>
-                    <div class="chips" id="tplRow">
-                        <button type="button" class="chip" data-tpl="0">Late check-out</button>
-                        <button type="button" class="chip" data-tpl="1">Add breakfast</button>
-                        <button type="button" class="chip" data-tpl="2">Take payment</button>
-                        <button type="button" class="chip" data-tpl="3">Room issue</button>
-                        <button type="button" class="chip" data-tpl="4">Housekeeping request</button>
-                    </div>
+                    <div class="chips" id="tplRow"></div>
                 </div>
                 <div class="form-grid">
                     <div class="form-group full">
@@ -1343,6 +1343,25 @@
         </div>
     </div>
 
+    <!-- Settings Modal (admin only) -->
+    <div class="modal-overlay" id="settingsOverlay">
+        <div class="modal" style="max-width: 720px;">
+            <h2>Settings</h2>
+            <p class="page-sub" style="margin-bottom:18px;">Changes apply to everyone the next time they open a New Handover. People, roles and departments are managed in Users.</p>
+            <div class="td-label">Quick start templates</div>
+            <div id="tplEditor"></div>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="addTplEdit()">Add template</button>
+            <div class="form-group" style="margin-top:22px;">
+                <label for="mentionOrderInput">Shown first when typing @ (in order, separated by commas)</label>
+                <input type="text" id="mentionOrderInput" autocomplete="off" placeholder="e.g. Yulia, Jay, Mariia">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn" onclick="closeSettings()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveSettingsBtn" onclick="saveSettings()">Save settings</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Users Management Modal (admin) -->
     <div class="modal-overlay" id="usersOverlay">
         <div class="modal" style="max-width: 760px;">
@@ -1535,6 +1554,8 @@
             if (currentUser.can_manage_users) {
                 document.getElementById('usersBtn').style.display = 'inline-flex';
             }
+            if (isAdmin()) document.getElementById('settingsBtn').style.display = 'inline-flex';
+            loadSettings();
             const dtBtn = document.getElementById('deletedTasksBtn');
             if (dtBtn) dtBtn.style.display = 'inline-flex';
             initPwToggles();
@@ -1727,14 +1748,21 @@
             }
         });
 
-        // Quick-start templates: prefill title + departments, then the user adds the room and details
-        const TEMPLATES = [
-            { title: 'Late check-out', depts: ['Front Office', 'Housekeeping'], hint: 'Agreed check-out time, charge if any' },
-            { title: 'Add breakfast', depts: ['Front Office', 'F&B'], hint: 'Number of guests and dates' },
-            { title: 'Take payment', depts: ['Front Office', 'Finance'], hint: 'Amount, booking source and reservation number' },
-            { title: 'Room issue', depts: ['Maintenance', 'Front Office'], hint: 'What is wrong and since when' },
-            { title: 'Housekeeping request', depts: ['Housekeeping'], hint: 'Items or service requested' },
-        ];
+        // Quick-start templates (admin-configurable in Settings): prefill title + departments
+        let TEMPLATES = [];
+        function renderTplRow() {
+            document.getElementById('tplRow').innerHTML = TEMPLATES
+                .map((t, i) => `<button type="button" class="chip" data-tpl="${i}">${esc(t.title)}</button>`).join('');
+            document.getElementById('tplGroup').hidden = TEMPLATES.length === 0;
+        }
+        async function loadSettings() {
+            try {
+                const s = await (await fetch('/api/settings')).json();
+                TEMPLATES = s.templates || [];
+                PRIORITY_MENTIONS = s.mention_priority || [];
+            } catch (_) { /* keep current values */ }
+            renderTplRow();
+        }
         document.getElementById('tplRow').addEventListener('click', function (e) {
             const btn = e.target.closest('[data-tpl]');
             if (!btn) return;
@@ -1970,7 +1998,7 @@
             if (typeof hideMentionDropdown === 'function') hideMentionDropdown();
             const closers = [['imageOverlay', 'closeImage'], ['resetPwOverlay', 'closeResetResult'], ['pwOverlay', 'closeChangePassword'],
                 ['modalOverlay', 'closeModal'], ['notifOverlay', 'closeNotifications'], ['activityOverlay', 'closeActivity'],
-                ['usersOverlay', 'closeUsers'], ['shiftReportOverlay', 'closeShiftReport']];
+                ['usersOverlay', 'closeUsers'], ['settingsOverlay', 'closeSettings'], ['shiftReportOverlay', 'closeShiftReport']];
             for (const [id, fn] of closers) {
                 const el = document.getElementById(id);
                 if (el && el.classList.contains('open') && typeof window[fn] === 'function') { window[fn](); break; }
@@ -2365,7 +2393,7 @@
 
         // These people surface at the top of the @ list, in this order; everyone else
         // follows alphabetically (the list scrolls, so anyone can still be picked).
-        const PRIORITY_MENTIONS = ['Yulia', 'Jay', 'Mariia', 'Melih', 'Tun'];
+        let PRIORITY_MENTIONS = [];  // loaded from /api/settings (editable by admin)
         function mentionRank(name) {
             const lower = (name || '').toLowerCase();
             for (let i = 0; i < PRIORITY_MENTIONS.length; i++) {
@@ -2778,6 +2806,61 @@
             document.getElementById('usersOverlay').classList.remove('open');
         }
 
+        // ---- Settings (admin only) ----
+        const ALL_DEPTS = ['Maintenance', 'Housekeeping', 'Front Office', 'Management', 'F&B', 'Finance', 'HR', 'Other'];
+        function tplEditHtml(t = { title: '', depts: [], hint: '' }) {
+            return `<div class="tpl-edit">
+                <div class="form-grid">
+                    <div class="form-group"><label>Button name</label><input type="text" class="tpl-title" value="${esc(t.title)}" placeholder="e.g. Late check-out"></div>
+                    <div class="form-group"><label>Description hint</label><input type="text" class="tpl-hint" value="${esc(t.hint)}" placeholder="What staff should write"></div>
+                    <div class="form-group full"><label>Departments (everyone in them is assigned)</label>
+                        <div class="dept-tiles">${ALL_DEPTS.map(d => `<div class="dept-tile${t.depts.includes(d) ? ' selected' : ''}" data-value="${esc(d)}">${esc(d)}</div>`).join('')}</div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-soft-danger btn-sm" onclick="this.closest('.tpl-edit').remove()">Remove</button>
+            </div>`;
+        }
+        function addTplEdit() {
+            document.getElementById('tplEditor').insertAdjacentHTML('beforeend', tplEditHtml());
+            document.querySelector('#tplEditor .tpl-edit:last-child .tpl-title').focus();
+        }
+        document.getElementById('tplEditor').addEventListener('click', e => {
+            if (e.target.classList.contains('dept-tile')) e.target.classList.toggle('selected');
+        });
+        async function openSettings() {
+            await loadSettings();
+            document.getElementById('tplEditor').innerHTML = TEMPLATES.map(t => tplEditHtml(t)).join('');
+            document.getElementById('mentionOrderInput').value = PRIORITY_MENTIONS.join(', ');
+            document.getElementById('settingsOverlay').classList.add('open');
+        }
+        function closeSettings() { document.getElementById('settingsOverlay').classList.remove('open'); }
+        async function saveSettings() {
+            const rows = [...document.querySelectorAll('#tplEditor .tpl-edit')];
+            const templates = rows.map(r => ({
+                title: r.querySelector('.tpl-title').value.trim(),
+                hint: r.querySelector('.tpl-hint').value.trim(),
+                depts: [...r.querySelectorAll('.dept-tile.selected')].map(t => t.dataset.value),
+            }));
+            const bad = templates.findIndex(t => !t.title || !t.depts.length);
+            if (bad >= 0) {
+                alert(`Template ${bad + 1} needs a button name and at least one department.`);
+                rows[bad].querySelector('.tpl-title').focus();
+                return;
+            }
+            const mention_priority = document.getElementById('mentionOrderInput').value.split(',').map(s => s.trim()).filter(Boolean);
+            const btn = document.getElementById('saveSettingsBtn');
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates, mention_priority }) });
+                const data = await res.json();
+                if (!res.ok) { alert(data.error || 'Could not save settings'); return; }
+                TEMPLATES = data.templates; PRIORITY_MENTIONS = data.mention_priority;
+                renderTplRow();
+                closeSettings();
+            } catch (_) { alert('Could not save settings. Check your connection.'); }
+            finally { btn.disabled = false; }
+        }
+
         // ---- Activity log (admin: all; manager: their department + own) ----
         const ACTION_META = {
             login: { icon: '●', color: '#64748b', label: 'signed in' },
@@ -2792,6 +2875,7 @@
             undo_delete_task: { icon: '●', color: '#059669', label: 'restored' },
             acknowledge_task: { icon: '●', color: '#16a34a', label: 'acknowledged' },
             create_user: { icon: '●', color: '#059669', label: 'created user' },
+            update_settings: { icon: '●', color: '#0071e3', label: 'updated settings' },
             edit_user: { icon: '●', color: '#2563eb', label: 'updated user' },
             delete_user: { icon: '●', color: '#b91c1c', label: 'deleted user' },
             change_password: { icon: '●', color: '#64748b', label: 'changed password' },
